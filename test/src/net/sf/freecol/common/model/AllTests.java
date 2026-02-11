@@ -49,6 +49,9 @@ public class AllTests {
         suite.addTestSuite(ModifierTest.class);
         suite.addTestSuite(MonarchTest.class);
         suite.addTestSuite(MovementTest.class);
+        suite.addTestSuite(PartitionMovementValidityTest.class); // New added Testcase
+        suite.addTestSuite(MovementFSMTest.class); // New added Testcase
+
         suite.addTestSuite(NationTypeTest.class);
         suite.addTestSuite(PlayerTest.class);
         suite.addTestSuite(ProductionTypeTest.class);
