@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Goods.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">Goods.java</span></div><h1>Goods.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.util.Utils;
+
+
+/**
+ * Represents locatable goods of a specified type and amount. Use
+ * AbstractGoods to represent abstract or potential goods that need
+ * not be present in any particular location.
+ *
+ * @see AbstractGoods
+ */
+public class Goods extends AbstractGoods implements Locatable, Ownable {
+
+    public static final String TAG = &quot;goods&quot;;
+
+
+    /** 
+     * The game containing these goods.  It would be nice to make this
+     * a FreeColGameObject, but then it could not extend AbstractGoods.
+     */
+    private final Game game;
+
+    /**
+     * Where the goods are.  This should always be non-null except for the
+     * really special case of goods that are in the process of being looted
+     * from a ship --- we can not use the ship as it is removed/disposed
+     * at once while the looting is still being resolved.
+     */
+    private Location location;
+
+
+    /**
+     * Fundamental constructor.
+     *
+     * @param game The enclosing {@code Game}.
+     */
+<span class="fc" id="L61">    private Goods(Game game) {</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        if (game == null) throw new RuntimeException(&quot;Null game: &quot; + this);</span>
+<span class="fc" id="L63">        this.game = game;</span>
+<span class="fc" id="L64">    }</span>
+    
+    /**
+     * Creates a standard {@code Goods}-instance given the place where
+     * the goods is.
+     *
+     * Used by Game.newInstance.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param id The identifier (ignored, type gives identifier here).
+     */
+    public Goods(Game game, @SuppressWarnings(&quot;unused&quot;) String id) {
+<span class="nc" id="L76">        this(game);</span>
+<span class="nc" id="L77">    }</span>
+    
+    /**
+     * Creates a standard {@code Goods}-instance given the place
+     * where the goods is.
+     *
+     * This constructor only asserts that the game and that the
+     * location (if given) can store goods. The goods will not be
+     * added to the location (use Location.add for this).
+     *
+     * @param game The enclosing {@code Game}.
+     * @param location The {@code Location} of the goods (may be null).
+     * @param type The {@code GoodsType} for the goods.
+     * @param amount The amount of the goods.
+     */
+    public Goods(Game game, Location location, GoodsType type, int amount) {
+<span class="fc" id="L93">        this(game);</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L95">            throw new RuntimeException(&quot;Null type: &quot; + this);</span>
+        }
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">        if (location != null &amp;&amp; location.getGoodsContainer() == null) {</span>
+<span class="nc" id="L98">            throw new RuntimeException(&quot;Can not store goods at: &quot; + location);</span>
+        }
+
+<span class="fc" id="L101">        setId(type.getId());</span>
+<span class="fc" id="L102">        setType(type);</span>
+<span class="fc" id="L103">        setAmount(amount);</span>
+<span class="fc" id="L104">        this.location = location;</span>
+<span class="fc" id="L105">    }</span>
+
+    /**
+     * Creates a new {@code Goods} instance.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if an error occurs
+     */
+    public Goods(Game game, FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L115">        this(game);</span>
+
+<span class="nc" id="L117">        readFromXML(xr);</span>
+<span class="nc" id="L118">    }</span>
+
+
+    /**
+     * If the amount of goods is greater than the container can hold,
+     * then this method adjusts the amount to the maximum amount possible.
+     */
+    public void adjustAmount() {
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">        if (this.location == null) return;</span>
+<span class="fc" id="L127">        GoodsContainer gc = this.location.getGoodsContainer();</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (gc != null) {</span>
+<span class="fc" id="L129">            int maxAmount = gc.getGoodsCount(getType());</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">            if (getAmount() &gt; maxAmount) setAmount(maxAmount);</span>
+        }
+<span class="fc" id="L132">    }</span>
+
+
+    // Interface Locatable
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getLocation() {
+<span class="fc" id="L142">        return this.location;</span>
+    }
+
+    /**
+     * @param location The Settlement that is located on this Tile
+     */
+    @Override
+    public boolean setLocation(Location location) {
+<span class="fc" id="L150">        this.location = location;</span>
+<span class="fc" id="L151">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isInEurope() {
+<span class="nc bnc" id="L159" title="All 4 branches missed.">        return (this.location instanceof Europe)</span>
+            || (this.location instanceof Unit
+<span class="nc bnc" id="L161" title="All 2 branches missed.">                &amp;&amp; ((Unit)this.location).isInEurope());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Tile getTile() {
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        return (this.location == null) ? null : this.location.getTile();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getSpaceTaken() {
+<span class="fc" id="L177">        return 1;</span>
+    }
+
+
+    // Interface Ownable
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Player getOwner() {
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        return (this.location instanceof Ownable)</span>
+<span class="nc" id="L189">            ? ((Ownable)this.location).getOwner()</span>
+<span class="nc" id="L190">            : null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setOwner(Player p) {
+<span class="fc" id="L198">        throw new UnsupportedOperationException();</span>
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Specification getSpecification() {
+<span class="nc" id="L209">        return getGame().getSpecification();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setSpecification(Specification specification) {
+<span class="nc" id="L217">        throw new RuntimeException(&quot;Can not set specification: &quot; + this);</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Game getGame() {
+<span class="nc" id="L225">        return this.game;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setGame(Game game) {
+<span class="nc" id="L233">        throw new RuntimeException(&quot;Can not set game: &quot; + this);</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColObject getDisplayObject() {
+<span class="nc" id="L241">        return getType();</span>
+    }
+
+    
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L252">        Goods o = copyInCast(other, Goods.class);</span>
+<span class="nc bnc" id="L253" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+        //Game can not change.  No: this.game = o.getGame();
+<span class="nc" id="L255">        this.location = getGame().updateLocationRef(o.getLocation());</span>
+<span class="nc" id="L256">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String AMOUNT_TAG = &quot;amount&quot;;
+    private static final String LOCATION_TAG = &quot;location&quot;;
+    private static final String TYPE_TAG = &quot;type&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L272">        super.writeAttributes(xw);</span>
+
+<span class="nc" id="L274">        xw.writeAttribute(TYPE_TAG, this.type);</span>
+
+<span class="nc" id="L276">        xw.writeAttribute(AMOUNT_TAG, this.amount);</span>
+
+<span class="nc bnc" id="L278" title="All 2 branches missed.">        if (this.location != null) {</span>
+<span class="nc" id="L279">            xw.writeLocationAttribute(LOCATION_TAG, this.location);</span>
+        }
+<span class="nc" id="L281">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L288">        final Specification spec = getSpecification();</span>
+
+<span class="nc" id="L290">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L292">        this.type = xr.getType(spec, TYPE_TAG, GoodsType.class, (GoodsType)null);</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">        if (this.type == null) {</span>
+<span class="nc" id="L294">            throw new XMLStreamException(&quot;Null goods type: &quot; + this);</span>
+        } else {
+<span class="nc" id="L296">            setId(this.type.getId());</span>
+        }
+
+<span class="nc" id="L299">        this.amount = xr.getAttribute(AMOUNT_TAG, 0);</span>
+
+<span class="nc" id="L301">        this.location = xr.getLocationAttribute(game, LOCATION_TAG, true);</span>
+<span class="nc" id="L302">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="nc" id="L307">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">        if (o instanceof Goods) {</span>
+<span class="fc" id="L318">            Goods other = (Goods)o;</span>
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">            return this.location == other.location</span>
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">                &amp;&amp; super.equals(other);</span>
+        }
+<span class="nc" id="L322">        return false;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="nc" id="L330">        int hash = super.hashCode();</span>
+<span class="nc" id="L331">        return 31 * hash + Utils.hashCode(this.location);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

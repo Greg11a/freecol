@@ -1,0 +1,971 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AIUnit.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai</a> &gt; <span class="el_source">AIUnit.java</span></div><h1>AIUnit.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.Colony;
+import static net.sf.freecol.common.model.Constants.*;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Locatable;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Map;
+import net.sf.freecol.common.model.PathNode;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Role;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitLocation;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.common.util.Utils;
+import net.sf.freecol.server.ai.mission.BuildColonyMission;
+import net.sf.freecol.server.ai.mission.CashInTreasureTrainMission;
+import net.sf.freecol.server.ai.mission.DefendSettlementMission;
+import net.sf.freecol.server.ai.mission.EscortUnitMission;
+import net.sf.freecol.server.ai.mission.IdleAtSettlementMission;
+import net.sf.freecol.server.ai.mission.IndianBringGiftMission;
+import net.sf.freecol.server.ai.mission.IndianDemandMission;
+import net.sf.freecol.server.ai.mission.Mission;
+import net.sf.freecol.server.ai.mission.MissionaryMission;
+import net.sf.freecol.server.ai.mission.PioneeringMission;
+import net.sf.freecol.server.ai.mission.PrivateerMission;
+import net.sf.freecol.server.ai.mission.ScoutingMission;
+import net.sf.freecol.server.ai.mission.TransportMission;
+import net.sf.freecol.server.ai.mission.UnitSeekAndDestroyMission;
+import net.sf.freecol.server.ai.mission.UnitWanderHostileMission;
+import net.sf.freecol.server.ai.mission.UnitWanderMission;
+import net.sf.freecol.server.ai.mission.WishRealizationMission;
+import net.sf.freecol.server.ai.mission.WorkInsideColonyMission;
+
+
+/**
+ * Objects of this class contains AI-information for a single {@link Unit}.
+ *
+ * AIUnits are successfully initialized by a call to
+ * {@link #setUnit(Unit)} with a non-null actual {@link Unit}.
+
+ * The method {@link #doMission(LogBuilder)} is called once each turn,
+ * by {@link AIPlayer#startWorking()}, to perform the assigned
+ * {@code Mission}.  Most of the methods in this class just
+ * delegates the call to that mission.
+ *
+ * @see Mission
+ */
+public final class AIUnit extends TransportableAIObject {
+
+<span class="fc" id="L85">    private static final Logger logger = Logger.getLogger(AIUnit.class.getName());</span>
+
+    public static final String TAG = &quot;aiUnit&quot;;
+
+    /** The Unit this AIObject contains AI-information for. */
+    private Unit unit;
+
+    /** The mission to which this AI unit has been assigned. */
+    private Mission mission;
+
+
+    /**
+     * Creates a new uninitialized {@code AIUnit}.
+     *
+     * @param aiMain The main AI-object.
+     * @param id The object identifier.
+     */
+    public AIUnit(AIMain aiMain, String id) {
+<span class="fc" id="L103">        super(aiMain, id);</span>
+
+<span class="fc" id="L105">        this.unit = null;</span>
+<span class="fc" id="L106">        this.mission = null;</span>
+<span class="fc" id="L107">        this.initialized = false;</span>
+<span class="fc" id="L108">    }</span>
+
+    /**
+     * Creates a new {@code AIUnit}.
+     *
+     * @param aiMain The main AI-object.
+     * @param unit The unit to make an {@link AIObject} for.
+     */
+    public AIUnit(AIMain aiMain, Unit unit) {
+<span class="fc" id="L117">        this(aiMain, unit.getId());</span>
+
+<span class="fc" id="L119">        this.unit = unit;</span>
+<span class="fc" id="L120">        this.mission = null;</span>
+<span class="fc" id="L121">        setInitialized();</span>
+<span class="fc" id="L122">    }</span>
+
+    /**
+     * Creates a new {@code AIUnit} from the given
+     * XML-representation.
+     *
+     * @param aiMain The main AI-object.
+     * @param xr The input stream containing the XML.
+     * @exception XMLStreamException if a problem was encountered
+     *     during parsing.
+     */
+    public AIUnit(AIMain aiMain,
+                  FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L135">        super(aiMain, xr);</span>
+
+<span class="fc" id="L137">        setInitialized();</span>
+<span class="fc" id="L138">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    public void setInitialized() {
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        this.initialized = getUnit() != null;</span>
+<span class="fc" id="L146">    }</span>
+
+    /**
+     * Gets the {@code Unit} this {@code AIUnit} controls.
+     *
+     * @return The {@code Unit}.
+     */
+    public final Unit getUnit() {
+<span class="fc" id="L154">        return this.unit;</span>
+    }
+
+    /**
+     * Set the {@code Unit} this {@code AIUnit} controls.
+     *
+     * Note: it is an error to change the unit once it is set.
+     *
+     * @param unit The new {@code Unit}.
+     */
+    private final void setUnit(Unit unit) {
+<span class="pc bpc" id="L165" title="3 of 4 branches missed.">        if (this.unit != null &amp;&amp; unit != this.unit) {</span>
+<span class="nc" id="L166">            throw new RuntimeException(&quot;Attempt to change AI Unit &quot; + getId()</span>
+                + &quot; to &quot; + unit
+<span class="nc" id="L168">                + &quot;\n&quot; + net.sf.freecol.common.debug.FreeColDebugger.stackTraceToString());</span>
+        }
+<span class="fc" id="L170">        this.unit = unit;</span>
+<span class="fc" id="L171">    }</span>
+
+    /**
+     * Checks if this unit has been assigned a mission.
+     *
+     * @return True if this unit has a mission.
+     */
+    public final boolean hasMission() {
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        return this.mission != null;</span>
+    }
+
+    /**
+     * Gets the mission this unit has been assigned.
+     *
+     * @return The {@code Mission}.
+     */
+    public final Mission getMission() {
+<span class="fc" id="L188">        return this.mission;</span>
+    }
+
+    /**
+     * Assigns a mission to unit. 
+     *
+     * @param mission The new {@code Mission}.
+     */
+    public final void setMission(Mission mission) {
+<span class="fc" id="L197">        this.mission = mission;</span>
+<span class="fc" id="L198">    }</span>
+
+
+    // Internal
+
+    /**
+     * Request a rearrangement of any colony at the current location.
+     */
+    private void requestLocalRearrange() {
+        Location loc;
+        Colony colony;
+        AIColony aiColony;
+<span class="nc" id="L210">        final Unit unit = getUnit();</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">        if (unit != null</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">            &amp;&amp; (loc = unit.getLocation()) != null</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">            &amp;&amp; (colony = loc.getColony()) != null</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">            &amp;&amp; (aiColony = getAIMain().getAIColony(colony)) != null) {</span>
+<span class="nc" id="L215">            aiColony.requestRearrange();</span>
+        }
+<span class="nc" id="L217">    }</span>
+
+    /**
+     * Take the current carrier as transport, keeping the transport mission/s
+     * consistent.
+     */
+    private void takeTransport() {
+<span class="nc" id="L224">        Unit carrier = getUnit().getCarrier();</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">        AIUnit aiCarrier = (carrier == null) ? null</span>
+<span class="nc" id="L226">            : getAIMain().getAIUnit(carrier);</span>
+<span class="nc" id="L227">        AIUnit transport = getTransport();</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">        if (transport != aiCarrier) {</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">            if (transport != null) {</span>
+<span class="nc" id="L230">                logger.warning(&quot;Taking different transport: &quot; + aiCarrier);</span>
+<span class="nc" id="L231">                dropTransport();</span>
+            }
+<span class="nc" id="L233">            setTransport(aiCarrier);</span>
+        }
+<span class="nc" id="L235">    }</span>
+
+
+    // Public routines
+
+    /**
+     * Get the {@code Player} that owns this AIUnit.
+     *
+     * @return The owning {@code Player}.
+     */
+    public Player getOwner() {
+<span class="fc" id="L246">        final Unit unit = getUnit();</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        return (unit == null) ? null : unit.getOwner();</span>
+    }
+
+    /**
+     * Gets the AIPlayer that owns this AIUnit.
+     *
+     * @return The owning AIPlayer.
+     */
+    public AIPlayer getAIOwner() {
+<span class="fc" id="L256">        final Player owner = getOwner();</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        return (owner == null) ? null : getAIMain().getAIPlayer(owner);</span>
+    }
+
+    /**
+     * Gets the PRNG to use with this unit.
+     *
+     * @return A {@code Random} instance.
+     */
+    public Random getAIRandom() {
+<span class="nc" id="L266">        AIPlayer aiOwner = getAIOwner();</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        return (aiOwner == null) ? null : aiOwner.getAIRandom();</span>
+    }
+
+    /**
+     * Get a trivial target, usually a safe nearby settlement or Europe.
+     *
+     * @return A trivial target, or null if none found.
+     */
+    public Location getTrivialTarget() {
+<span class="fc" id="L276">        final Unit unit = getUnit();</span>
+        PathNode path;
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">        return (unit == null</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">            || (path = unit.getTrivialPath()) == null) ? null</span>
+<span class="fc" id="L280">            : Location.upLoc(path.getLastNode().getLocation());</span>
+    }
+
+    /**
+     * Is this AI unit carrying any cargo (units or goods).
+     *
+     * @return True if the unit has cargo aboard.
+     */
+    public final boolean hasCargo() {
+<span class="nc" id="L289">        final Unit unit = getUnit();</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        return (unit == null) ? false : unit.hasCargo();</span>
+    }
+
+    /**
+     * Does this unit have a particular class of mission?
+     *
+     * @param &lt;T&gt; The type of the mission.
+     * @param returnClass The {@code Class} of mission to check.
+     * @return True if the mission is of the given class.
+     */
+    public &lt;T extends Mission&gt; boolean hasMission(Class&lt;T&gt; returnClass) {
+<span class="fc bfc" id="L301" title="All 2 branches covered.">        return getMission(returnClass) != null;</span>
+    }
+
+    /**
+     * Get the unit mission if it is of a given class.
+     *
+     * @param &lt;T&gt; The type of the mission.
+     * @param returnClass The {@code Class} of the mission.
+     * @return The {@code Mission}, or null if it is not of the
+     *     given class.
+     */
+    public &lt;T extends Mission&gt; T getMission(Class&lt;T&gt; returnClass) {
+        try {
+<span class="fc" id="L314">            return returnClass.cast(this.mission);</span>
+<span class="fc" id="L315">        } catch (ClassCastException cce) {</span>
+<span class="fc" id="L316">            return null;</span>
+        }
+    }
+
+    /**
+     * Performs the mission this unit has been assigned.
+     *
+     * Do *not* check mission validity.  The mission itself does that,
+     * and has special case error handling.
+     *
+     * @param lb A {@code LogBuilder} to log to.
+     */
+    public void doMission(LogBuilder lb) {
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">        if (this.mission != null) this.mission.doMission(lb);</span>
+<span class="fc" id="L330">    }</span>
+
+    /**
+     * Change the mission of a unit.
+     *
+     * @param mission The new {@code Mission}.
+     * @return The new current {@code Mission}.
+     */
+    public Mission changeMission(Mission mission) {
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        if (this.mission == mission) return this.mission;</span>
+
+<span class="fc" id="L341">        removeMission();</span>
+<span class="fc" id="L342">        setMission(mission);</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        if (mission != null) {</span>
+<span class="fc" id="L344">            setTransportPriority(mission.getBaseTransportPriority());</span>
+        }
+<span class="fc" id="L346">        return this.mission;</span>
+    }
+
+    public void removeMission() {
+<span class="fc bfc" id="L350" title="All 2 branches covered.">        if (this.mission != null) {</span>
+<span class="fc" id="L351">            this.mission.dispose();</span>
+<span class="fc" id="L352">            this.mission = null;</span>
+        }
+<span class="fc" id="L354">    }</span>
+
+
+    // Helper methods for AIColony
+
+    public boolean hasDefendSettlementMission() {
+<span class="nc" id="L360">        return hasMission(DefendSettlementMission.class);</span>
+    }
+
+    public boolean isCompleteWishRealizationMission(Colony colony) {
+<span class="nc" id="L364">        WishRealizationMission wm</span>
+<span class="nc" id="L365">            = getMission(WishRealizationMission.class);</span>
+<span class="nc bnc" id="L366" title="All 4 branches missed.">        return (wm != null &amp;&amp; Map.isSameLocation(wm.getTarget(), colony));</span>
+    }
+
+    public boolean isAvailableForWork(Colony colony) {
+<span class="nc" id="L370">        Mission m = getMission();</span>
+<span class="nc bnc" id="L371" title="All 4 branches missed.">        return (m == null</span>
+            || (m instanceof BuildColonyMission
+<span class="nc bnc" id="L373" title="All 2 branches missed.">                &amp;&amp; (Map.isSameLocation(m.getTarget(), colony.getTile())</span>
+<span class="nc bnc" id="L374" title="All 8 branches missed.">                    || colony.getUnitCount() &lt;= 1))</span>
+            // FIXME: drop this when the AI stops building excessive armies
+            || m instanceof DefendSettlementMission
+            || m instanceof IdleAtSettlementMission
+            || m instanceof WorkInsideColonyMission
+            );
+    }
+
+    public boolean tryWorkInsideColonyMission(AIColony aiColony, LogBuilder lb) {
+<span class="fc" id="L383">        WorkInsideColonyMission wic</span>
+<span class="fc" id="L384">            = getMission(WorkInsideColonyMission.class);</span>
+<span class="fc bfc" id="L385" title="All 2 branches covered.">        if (wic == null) {</span>
+<span class="fc" id="L386">            AIPlayer aiPlayer = getAIOwner();</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">            if (!(aiPlayer instanceof EuropeanAIPlayer) ||</span>
+                    ((EuropeanAIPlayer)aiPlayer)
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">                    .getWorkInsideColonyMission(this, aiColony) == null) {</span>
+<span class="nc" id="L390">                return false; </span>
+            }
+<span class="fc" id="L392">            lb.add(&quot;, &quot;, getMission());</span>
+<span class="fc" id="L393">            dropTransport();</span>
+        }
+<span class="fc" id="L395">        return true;</span>
+    }
+
+    public boolean tryPioneeringMission(LogBuilder lb) {
+<span class="nc" id="L399">        Mission m = getMission();</span>
+<span class="nc bnc" id="L400" title="All 2 branches missed.">        Location oldTarget = (m == null) ? null : m.getTarget();</span>
+<span class="nc" id="L401">        AIPlayer aiPlayer = getAIOwner();</span>
+
+<span class="nc bnc" id="L403" title="All 2 branches missed.">        if (aiPlayer instanceof EuropeanAIPlayer) {</span>
+<span class="nc" id="L404">            EuropeanAIPlayer euaiPlayer = (EuropeanAIPlayer)aiPlayer;</span>
+<span class="nc bnc" id="L405" title="All 2 branches missed.">            if (euaiPlayer.getPioneeringMission(this, null) != null) {</span>
+<span class="nc" id="L406">                lb.add(&quot;, &quot;, getMission());</span>
+<span class="nc" id="L407">                euaiPlayer.updateTransport(this, oldTarget, lb);</span>
+<span class="nc" id="L408">                return true;</span>
+            }
+        }
+<span class="nc" id="L411">        return false;</span>
+    }
+
+    public boolean trySomeUsefulMission(Colony colony, LogBuilder lb) {
+<span class="fc" id="L415">        Mission m = getMission();</span>
+<span class="pc bpc" id="L416" title="6 of 12 branches missed.">        if (m instanceof BuildColonyMission</span>
+            || m instanceof DefendSettlementMission
+            || m instanceof MissionaryMission
+            || m instanceof PioneeringMission
+            || m instanceof ScoutingMission
+            || m instanceof UnitSeekAndDestroyMission)
+<span class="nc" id="L422">            return true;</span>
+<span class="pc bpc" id="L423" title="1 of 2 branches missed.">        Location oldTarget = (m == null) ? null : m.getTarget();</span>
+<span class="fc" id="L424">        AIPlayer aiPlayer = getAIOwner();</span>
+
+<span class="fc" id="L426">        final Unit unit = getUnit();</span>
+<span class="pc bpc" id="L427" title="1 of 2 branches missed.">        if(aiPlayer instanceof EuropeanAIPlayer) {</span>
+<span class="fc" id="L428">            EuropeanAIPlayer euaiPlayer = (EuropeanAIPlayer)getAIOwner();</span>
+
+<span class="pc bpc" id="L430" title="1 of 2 branches missed.">            if (unit.hasAbility(Ability.SPEAK_WITH_CHIEF)</span>
+<span class="nc bnc" id="L431" title="All 2 branches missed.">                &amp;&amp; (m = euaiPlayer.getScoutingMission(this)) != null) {</span>
+<span class="nc" id="L432">                lb.add(&quot;, &quot;, m);</span>
+<span class="nc" id="L433">                euaiPlayer.updateTransport(this, oldTarget, lb);</span>
+<span class="nc" id="L434">                return true;</span>
+<span class="pc bpc" id="L435" title="1 of 2 branches missed.">            } else if (unit.isDefensiveUnit()</span>
+<span class="nc bnc" id="L436" title="All 2 branches missed.">                &amp;&amp; (m = euaiPlayer.getDefendSettlementMission(this, colony)) != null) {</span>
+<span class="nc" id="L437">                lb.add(&quot;, &quot;, m);</span>
+<span class="nc" id="L438">                euaiPlayer.updateTransport(this, oldTarget, lb);</span>
+<span class="nc" id="L439">                return true;</span>
+<span class="pc bpc" id="L440" title="1 of 2 branches missed.">            } else if (unit.hasAbility(Ability.ESTABLISH_MISSION)</span>
+<span class="nc bnc" id="L441" title="All 2 branches missed.">                &amp;&amp; (m = euaiPlayer.getMissionaryMission(this)) != null) {</span>
+<span class="nc" id="L442">                lb.add(&quot;, &quot;, m);</span>
+<span class="nc" id="L443">                euaiPlayer.updateTransport(this, oldTarget, lb);</span>
+<span class="nc" id="L444">                return true;</span>
+            }
+        }
+<span class="fc" id="L447">        return false;</span>
+    }
+
+    public void removeTransportable(AIGoods ag) {
+<span class="nc" id="L451">        TransportMission tm = getMission(TransportMission.class);</span>
+<span class="nc bnc" id="L452" title="All 2 branches missed.">        if (tm != null) {</span>
+<span class="nc" id="L453">            tm.removeTransportable(ag);</span>
+        }
+<span class="nc" id="L455">    }</span>
+
+    /**
+     * Moves a unit to the new world.
+     *
+     * @return True if there was no c-s problem.
+     */
+    public boolean moveToAmerica() {
+<span class="nc" id="L463">        return AIMessage.askMoveTo(this, getOwner().getGame().getMap());</span>
+    }
+
+    /**
+     * Moves a unit to Europe.
+     *
+     * @return True if there was no c-s problem.
+     */
+    public boolean moveToEurope() {
+<span class="nc" id="L472">        return AIMessage.askMoveTo(this, getOwner().getEurope());</span>
+    }
+
+    /**
+     * Moves this AI unit.
+     *
+     * @param direction The {@code Direction} to move.
+     * @return True if the move succeeded.
+     */
+    public boolean move(Direction direction) {
+<span class="fc" id="L482">        final Unit unit = getUnit();</span>
+<span class="fc" id="L483">        Tile start = unit.getTile();</span>
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">        return unit.getMoveType(direction).isProgress()</span>
+<span class="pc bpc" id="L485" title="1 of 2 branches missed.">            &amp;&amp; AIMessage.askMove(this, direction)</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">            &amp;&amp; unit.getTile() != start;</span>
+    }
+
+    /**
+     * Equips this AI unit for a particular role.
+     *
+     * The unit must be at a location where the required goods are available
+     * (possibly requiring a purchase, which may fail due to lack of gold
+     * or boycotts in effect).
+     *
+     * @param role The {@code Role} to equip for identifier.
+     * @return True if the role change was successful.
+     */
+    public boolean equipForRole(Role role) {
+<span class="fc" id="L500">        final Player player = getOwner();</span>
+<span class="fc" id="L501">        final Unit unit = getUnit();</span>
+<span class="fc" id="L502">        Location loc = Location.upLoc(unit.getLocation());</span>
+<span class="pc bpc" id="L503" title="1 of 2 branches missed.">        if (!(loc instanceof UnitLocation)) return false;</span>
+<span class="fc" id="L504">        int count = role.getMaximumCount();</span>
+<span class="pc bpc" id="L505" title="1 of 2 branches missed.">        if (count &gt; 0) {</span>
+<span class="pc bpc" id="L506" title="1 of 2 branches missed.">            for (; count &gt; 0; count--) {</span>
+<span class="fc" id="L507">                List&lt;AbstractGoods&gt; req = unit.getGoodsDifference(role, count);</span>
+                try {
+<span class="fc" id="L509">                    int price = ((UnitLocation)loc).priceGoods(req);</span>
+<span class="pc bpc" id="L510" title="1 of 2 branches missed.">                    if (player.checkGold(price)) break;</span>
+<span class="nc" id="L511">                } catch (FreeColException fce) {</span>
+<span class="nc" id="L512">                    continue;</span>
+<span class="nc" id="L513">                }</span>
+            }
+<span class="pc bpc" id="L515" title="1 of 2 branches missed.">            if (count &lt;= 0) return false;</span>
+        }
+<span class="pc bpc" id="L517" title="1 of 2 branches missed.">        return AIMessage.askEquipForRole(this, role, count)</span>
+<span class="pc bpc" id="L518" title="1 of 2 branches missed.">            &amp;&amp; unit.getRole() == role</span>
+<span class="pc bpc" id="L519" title="1 of 2 branches missed.">            &amp;&amp; unit.getRoleCount() == count;</span>
+    }
+
+    /**
+     * Score this AI unit with its suitability for building.
+     *
+     * Favour unequipped freeColonists, and other unskilled over experts.
+     * Also slightly favour units on the map.
+     *
+     * @return An integer score.
+     */
+    public int getBuilderScore() {
+<span class="nc" id="L531">        final Unit unit = getUnit();</span>
+<span class="nc bnc" id="L532" title="All 4 branches missed.">        if (unit == null || BuildColonyMission.invalidMissionReason(this) != null)</span>
+<span class="nc" id="L533">            return -1000;</span>
+<span class="nc bnc" id="L534" title="All 2 branches missed.">        int ret = (!unit.hasDefaultRole()) ? 0</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">            : (unit.getSkillLevel() &gt; 0) ? 100</span>
+<span class="nc" id="L536">            : 500 + 100 * unit.getSkillLevel();</span>
+<span class="nc bnc" id="L537" title="All 2 branches missed.">        if (unit.hasTile()) ret += 50;</span>
+<span class="nc" id="L538">        return ret;</span>
+    }        
+
+    /**
+     * Score this AI unit with its suitability for pioneering.
+     *
+     * @return An integer score.
+     */
+    public int getPioneerScore() {
+<span class="nc" id="L547">        final Unit unit = getUnit();</span>
+<span class="nc bnc" id="L548" title="All 2 branches missed.">        return (unit == null) ? -1000 : unit.getPioneerScore();</span>
+    }
+
+    /**
+     * Score this AI unit with its suitability for scouting.
+     *
+     * @return An integer score.
+     */
+    public int getScoutScore() {
+<span class="nc" id="L557">        final Unit unit = getUnit();</span>
+<span class="nc bnc" id="L558" title="All 2 branches missed.">        return (unit == null) ? -1000 : unit.getScoutScore();</span>
+    }
+
+    
+    // Implement TransportableAIObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getTransportPriority() {
+<span class="pc bpc" id="L569" title="1 of 2 branches missed.">        return (hasMission()) ? super.getTransportPriority() : 0;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Locatable getTransportLocatable() {
+<span class="fc" id="L577">        return getUnit();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTransportSource() {
+<span class="fc" id="L585">        final Unit unit = getUnit();</span>
+<span class="pc bpc" id="L586" title="2 of 4 branches missed.">        return (unit == null || unit.isDisposed()) ? null</span>
+<span class="fc" id="L587">            : unit.getLocation();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTransportDestination() {
+<span class="fc" id="L595">        final Unit unit = getUnit();</span>
+<span class="pc bpc" id="L596" title="3 of 6 branches missed.">        return (unit == null || unit.isDisposed() || !hasMission())</span>
+<span class="nc" id="L597">            ? null</span>
+<span class="fc" id="L598">            : this.mission.getTransportDestination();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public PathNode getDeliveryPath(Unit carrier, Location dst) {
+<span class="pc bpc" id="L606" title="1 of 2 branches missed.">        if (dst == null) {</span>
+<span class="nc" id="L607">            dst = getTransportDestination();</span>
+<span class="nc bnc" id="L608" title="All 2 branches missed.">            if (dst == null) return null;</span>
+        }
+<span class="fc" id="L610">        dst = Location.upLoc(dst);</span>
+
+        PathNode path;
+<span class="fc" id="L613">        final Unit unit = getUnit();</span>
+<span class="pc bpc" id="L614" title="1 of 2 branches missed.">        if (unit.getLocation() == carrier) {</span>
+<span class="nc" id="L615">            path = unit.findPath(carrier.getLocation(), dst, carrier);</span>
+<span class="nc bnc" id="L616" title="All 4 branches missed.">            if (path == null &amp;&amp; dst.getTile() != null) {</span>
+<span class="nc" id="L617">                path = unit.findPathToNeighbour(carrier.getLocation(),</span>
+<span class="nc" id="L618">                    dst.getTile(), carrier, null);</span>
+            }
+<span class="pc bpc" id="L620" title="1 of 2 branches missed.">        } else if (unit.getLocation() instanceof Unit) {</span>
+<span class="nc" id="L621">            return null;</span>
+        } else {
+<span class="fc" id="L623">            path = unit.findPath(unit.getLocation(), dst, carrier);</span>
+<span class="pc bpc" id="L624" title="3 of 4 branches missed.">            if (path == null &amp;&amp; dst.getTile() != null) {</span>
+<span class="nc" id="L625">                path = unit.findPathToNeighbour(unit.getLocation(),</span>
+<span class="nc" id="L626">                    dst.getTile(), carrier, null);</span>
+            }
+        }
+<span class="pc bpc" id="L629" title="1 of 2 branches missed.">        if (path != null) path.ensureDisembark();</span>
+<span class="fc" id="L630">        return path;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public PathNode getIntermediatePath(Unit carrier, Location dst) {
+<span class="nc" id="L638">        return null; // NYI</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setTransportDestination(Location destination) {
+<span class="nc" id="L646">        throw new RuntimeException(&quot;AI unit transport destination set by mission:&quot; + destination);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean carriableBy(Unit carrier) {
+<span class="fc" id="L654">        return carrier.couldCarry(getUnit());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canMove() {
+<span class="nc bnc" id="L662" title="All 2 branches missed.">        return getUnit().getMovesLeft() &gt; 0;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean leaveTransport() {
+<span class="nc" id="L670">        final Unit unit = getUnit();</span>
+<span class="nc bnc" id="L671" title="All 2 branches missed.">        if (!unit.isOnCarrier()) return true; // Harmless error</span>
+
+        // Just leave at once if in Europe
+<span class="nc bnc" id="L674" title="All 2 branches missed.">        if (unit.isInEurope()) return leaveTransport(null);</span>
+
+        // Otherwise if not on the map, do nothing.
+<span class="nc" id="L677">        final Tile tile = unit.getTile();</span>
+<span class="nc bnc" id="L678" title="All 2 branches missed.">        if (tile == null) return false;</span>
+
+        // Try to go to the target location.
+<span class="nc" id="L681">        final Mission mission = getMission();</span>
+<span class="nc bnc" id="L682" title="All 4 branches missed.">        final Location target = (mission == null || !mission.isValid()) ? null</span>
+<span class="nc" id="L683">            : mission.getTarget();</span>
+        Direction direction;
+<span class="nc bnc" id="L685" title="All 2 branches missed.">        if (target != null) {</span>
+<span class="nc bnc" id="L686" title="All 2 branches missed.">            if (Map.isSameLocation(target, tile)) return leaveTransport(null);</span>
+<span class="nc bnc" id="L687" title="All 2 branches missed.">            if (target.getTile() != null</span>
+<span class="nc bnc" id="L688" title="All 2 branches missed.">                &amp;&amp; (direction = tile.getDirection(target.getTile())) != null) {</span>
+<span class="nc" id="L689">                return leaveTransport(direction);</span>
+            }
+<span class="nc" id="L691">            PathNode path = unit.findPath(target); // Not using carrier!</span>
+<span class="nc bnc" id="L692" title="All 2 branches missed.">            if (path != null</span>
+<span class="nc bnc" id="L693" title="All 2 branches missed.">                &amp;&amp; (direction = tile.getDirection(path.next.getTile())) != null) {</span>
+                try {
+<span class="nc" id="L695">                    return leaveTransport(direction);</span>
+<span class="nc" id="L696">                } catch (Exception e) {</span>
+<span class="nc" id="L697">                    logger.log(Level.WARNING, &quot;Leave transport crash for &quot;</span>
+<span class="nc" id="L698">                        + this + &quot;/&quot; + unit.getMovesLeft(), e);</span>
+                }
+            }
+        }
+
+        // Just get off here if possible.
+<span class="nc bnc" id="L704" title="All 2 branches missed.">        if (tile.isLand()) return leaveTransport(null);</span>
+
+        // Collect neighbouring land tiles, get off if one has our settlement
+<span class="nc" id="L707">        List&lt;Tile&gt; tiles = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L708" title="All 2 branches missed.">        for (Tile t : tile.getSurroundingTiles(1)) {</span>
+<span class="nc bnc" id="L709" title="All 2 branches missed.">            if (!t.isBlocked(unit)) {</span>
+<span class="nc bnc" id="L710" title="All 2 branches missed.">                if (t.getSettlement() != null) {</span>
+<span class="nc" id="L711">                    return leaveTransport(tile.getDirection(t));</span>
+                }
+<span class="nc" id="L713">                tiles.add(t);</span>
+            }
+<span class="nc" id="L715">        }</span>
+
+        // No adjacent unblocked tile, fail.
+<span class="nc bnc" id="L718" title="All 2 branches missed.">        if (tiles.isEmpty()) return false;</span>
+
+        // Pick the available tile with the shortest path to one of our
+        // settlements, or the tile with the highest defence value.
+<span class="nc" id="L722">        final Player player = getOwner();</span>
+<span class="nc" id="L723">        Tile safe = tiles.get(0);</span>
+<span class="nc" id="L724">        Tile best = null;</span>
+<span class="nc" id="L725">        int bestTurns = Unit.MANY_TURNS;</span>
+<span class="nc" id="L726">        Settlement settlement = null;</span>
+<span class="nc bnc" id="L727" title="All 2 branches missed.">        for (Tile t : tiles) {</span>
+<span class="nc bnc" id="L728" title="All 4 branches missed.">            if (settlement == null || t.isConnectedTo(settlement.getTile())) {</span>
+<span class="nc" id="L729">                settlement = t.getNearestSettlement(player, 10, true);</span>
+            }
+<span class="nc bnc" id="L731" title="All 2 branches missed.">            if (settlement != null) {</span>
+<span class="nc" id="L732">                int turns = unit.getTurnsToReach(t, settlement);</span>
+<span class="nc bnc" id="L733" title="All 2 branches missed.">                if (bestTurns &gt; turns) {</span>
+<span class="nc" id="L734">                    bestTurns = turns;</span>
+<span class="nc" id="L735">                    best = t;</span>
+                }
+            }
+<span class="nc bnc" id="L738" title="All 2 branches missed.">            if (safe.getDefenceValue() &lt; t.getDefenceValue()) {</span>
+<span class="nc" id="L739">                safe = t;</span>
+            }
+<span class="nc" id="L741">        }</span>
+<span class="nc bnc" id="L742" title="All 2 branches missed.">        return leaveTransport(tile.getDirection((best != null) ? best : safe));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean leaveTransport(Direction direction) {
+<span class="nc" id="L750">        final Unit unit = getUnit();</span>
+<span class="nc bnc" id="L751" title="All 2 branches missed.">        if (!unit.isOnCarrier()) return false;</span>
+<span class="nc" id="L752">        final Unit carrier = unit.getCarrier();</span>
+<span class="nc bnc" id="L753" title="All 2 branches missed.">        boolean result = (direction == null)</span>
+<span class="nc bnc" id="L754" title="All 2 branches missed.">            ? (AIMessage.askDisembark(this)</span>
+<span class="nc bnc" id="L755" title="All 2 branches missed.">                &amp;&amp; unit.getLocation() == carrier.getLocation())</span>
+<span class="nc" id="L756">            : move(direction);</span>
+<span class="nc bnc" id="L757" title="All 2 branches missed.">        if (result) {</span>
+<span class="nc" id="L758">            requestLocalRearrange();</span>
+<span class="nc" id="L759">            dropTransport();</span>
+        }
+<span class="nc" id="L761">        return result;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean joinTransport(Unit carrier, Direction direction) {
+<span class="nc" id="L769">        AIUnit aiCarrier = getAIMain().getAIUnit(carrier);</span>
+<span class="nc bnc" id="L770" title="All 2 branches missed.">        if (aiCarrier == null) return false;</span>
+<span class="nc" id="L771">        final Unit unit = getUnit();</span>
+<span class="nc bnc" id="L772" title="All 2 branches missed.">        boolean result = AIMessage.askEmbark(aiCarrier, unit, direction)</span>
+<span class="nc bnc" id="L773" title="All 2 branches missed.">            &amp;&amp; unit.getLocation() == carrier;</span>
+
+<span class="nc bnc" id="L775" title="All 2 branches missed.">        if (result) {</span>
+<span class="nc" id="L776">            requestLocalRearrange();</span>
+<span class="nc" id="L777">            takeTransport();</span>
+        }
+<span class="nc" id="L779">        return result;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String invalidReason() {
+<span class="nc" id="L787">        String reason = Mission.invalidTransportableReason(this);</span>
+<span class="nc bnc" id="L788" title="All 2 branches missed.">        return (reason != null) ? reason</span>
+<span class="nc bnc" id="L789" title="All 2 branches missed.">            : (hasMission()) ? getMission().invalidReason()</span>
+<span class="nc" id="L790">            : null;</span>
+    }
+
+
+    // Override AIObject
+
+    /**
+     * Disposes this object and any attached mission.
+     */
+    @Override
+    public void dispose() {
+<span class="fc" id="L801">        dropTransport();</span>
+<span class="fc" id="L802">        AIPlayer aiOwner = getAIOwner();</span>
+        // Might not be owned by an AI
+<span class="pc bpc" id="L804" title="1 of 2 branches missed.">        if (aiOwner != null) aiOwner.removeAIObject(this);</span>
+
+<span class="pc bpc" id="L806" title="1 of 2 branches missed.">        if (this.mission != null) {</span>
+<span class="nc" id="L807">            this.mission.dispose();</span>
+<span class="nc" id="L808">            this.mission = null;</span>
+        }
+<span class="fc" id="L810">        super.dispose();</span>
+<span class="fc" id="L811">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IntegrityType checkIntegrity(boolean fix, LogBuilder lb) {
+<span class="fc" id="L818">        IntegrityType result = super.checkIntegrity(fix, lb);</span>
+<span class="fc" id="L819">        final Unit unit = getUnit();</span>
+<span class="pc bpc" id="L820" title="1 of 2 branches missed.">        if (unit == null) {</span>
+<span class="nc" id="L821">            lb.add(&quot;\n  AIUnit with null unit: &quot;, getId());</span>
+<span class="nc" id="L822">            result = result.fail();</span>
+<span class="pc bpc" id="L823" title="1 of 2 branches missed.">        } else if (unit.isDisposed()) {</span>
+<span class="nc" id="L824">            lb.add(&quot;\n  AIUnit with disposed unit: &quot;, getId());</span>
+<span class="nc" id="L825">            result = result.fail();</span>
+        }
+<span class="fc" id="L827">        return result;</span>
+    }
+
+
+    // Serialization
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L839">        super.writeChildren(xw);</span>
+
+<span class="pc bpc" id="L841" title="5 of 6 branches missed.">        if (mission != null &amp;&amp; !mission.isOneTime() &amp;&amp; mission.isValid()) {</span>
+<span class="nc" id="L842">            mission.toXML(xw);</span>
+        }
+<span class="fc" id="L844">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L851">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L853">        final AIMain aiMain = getAIMain();</span>
+
+<span class="fc" id="L855">        Unit u = xr.findFreeColGameObject(aiMain.getGame(), ID_ATTRIBUTE_TAG,</span>
+                                          Unit.class, (Unit)null, true);
+<span class="pc bpc" id="L857" title="1 of 2 branches missed.">        if (u.isInitialized()) {</span>
+<span class="fc" id="L858">            setUnit(u);</span>
+        } else {
+<span class="nc" id="L860">            xr.nextTag(); // Move off the opening &lt;AIUnit&gt; tag</span>
+<span class="nc" id="L861">            throw new XMLStreamException(&quot;AIUnit for uninitialized Unit: &quot;</span>
+<span class="nc" id="L862">                + u.getId());</span>
+        }
+<span class="fc" id="L864">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L871">        final AIMain aiMain = getAIMain();</span>
+<span class="nc" id="L872">        final String tag = xr.getLocalName();</span>
+
+<span class="nc" id="L874">        mission = null;</span>
+<span class="nc bnc" id="L875" title="All 2 branches missed.">        if (BuildColonyMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L876">            mission = new BuildColonyMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L878" title="All 2 branches missed.">        } else if (CashInTreasureTrainMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L879">            mission = new CashInTreasureTrainMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L881" title="All 2 branches missed.">        } else if (DefendSettlementMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L882">            mission = new DefendSettlementMission(aiMain, this, xr);</span>
+            
+<span class="nc bnc" id="L884" title="All 2 branches missed.">        } else if (EscortUnitMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L885">            mission = new EscortUnitMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L887" title="All 2 branches missed.">        } else if (IdleAtSettlementMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L888">            mission = new IdleAtSettlementMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L890" title="All 2 branches missed.">        } else if (IndianBringGiftMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L891">            mission = new IndianBringGiftMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L893" title="All 2 branches missed.">        } else if (IndianDemandMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L894">            mission = new IndianDemandMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L896" title="All 2 branches missed.">        } else if (MissionaryMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L897">            mission = new MissionaryMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L899" title="All 2 branches missed.">        } else if (PioneeringMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L900">            mission = new PioneeringMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L902" title="All 2 branches missed.">        } else if (PrivateerMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L903">            mission = new PrivateerMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L905" title="All 2 branches missed.">        } else if (ScoutingMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L906">            mission = new ScoutingMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L908" title="All 2 branches missed.">        } else if (TransportMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L909">            mission = new TransportMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L911" title="All 2 branches missed.">        } else if (UnitSeekAndDestroyMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L912">            mission = new UnitSeekAndDestroyMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L914" title="All 2 branches missed.">        } else if (UnitWanderHostileMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L915">            mission = new UnitWanderHostileMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L917" title="All 2 branches missed.">        } else if (UnitWanderMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L918">            mission = new UnitWanderMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L920" title="All 2 branches missed.">        } else if (WishRealizationMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L921">            mission = new WishRealizationMission(aiMain, this, xr);</span>
+
+<span class="nc bnc" id="L923" title="All 2 branches missed.">        } else if (WorkInsideColonyMission.TAG.equals(tag)) {</span>
+<span class="nc" id="L924">            mission = new WorkInsideColonyMission(aiMain, this, xr);</span>
+
+        } else {
+<span class="nc" id="L927">            super.readChild(xr);</span>
+        }
+<span class="nc" id="L929">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="fc" id="L935">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="pc bpc" id="L945" title="1 of 2 branches missed.">        if (!(o instanceof AIUnit)) return false;</span>
+<span class="fc" id="L946">        AIUnit other = (AIUnit)o;</span>
+<span class="fc bfc" id="L947" title="All 2 branches covered.">        return Utils.equals(this.unit, other.unit)</span>
+<span class="pc bpc" id="L948" title="1 of 2 branches missed.">            &amp;&amp; Utils.equals(this.mission, other.mission)</span>
+<span class="pc bpc" id="L949" title="1 of 2 branches missed.">            &amp;&amp; super.equals(other);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L957">        int hash = super.hashCode();</span>
+<span class="fc" id="L958">        hash = 37 * hash + Utils.hashCode(this.unit);</span>
+<span class="fc" id="L959">        return 37 * hash + Utils.hashCode(this.mission);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="pc bpc" id="L967" title="1 of 2 branches missed.">        return (this.unit == null) ? &quot;AIUnit-null&quot;</span>
+<span class="fc" id="L968">            : this.unit.toString(&quot;AIUnit &quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

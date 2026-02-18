@@ -1,0 +1,693 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AIPlayer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai</a> &gt; <span class="el_source">AIPlayer.java</span></div><h1>AIPlayer.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai;
+
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.sort;
+import static net.sf.freecol.common.util.CollectionUtils.toListNoNulls;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Constants.IndianDemandAction;
+import net.sf.freecol.common.model.Constants.IntegrityType;
+import net.sf.freecol.common.model.DiplomaticTrade;
+import net.sf.freecol.common.model.DiplomaticTrade.TradeStatus;
+import net.sf.freecol.common.model.FoundingFather;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Market;
+import net.sf.freecol.common.model.Monarch.MonarchAction;
+import net.sf.freecol.common.model.NationSummary;
+import net.sf.freecol.common.model.NativeTrade;
+import net.sf.freecol.common.model.NativeTrade.NativeTradeAction;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Region;
+import net.sf.freecol.common.model.Stance;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.networking.Connection;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.common.util.Utils;
+import net.sf.freecol.server.model.ServerPlayer;
+import net.sf.freecol.server.networking.DummyConnection;
+
+
+/**
+ * Objects of this class contains AI-information for a single {@link
+ * Player} and is used for controlling this player.
+ *
+ * The method {@link #startWorking} gets called by the
+ * {@link AIInGameInputHandler} when it is this player's turn.
+ */
+public abstract class AIPlayer extends AIObject {
+
+<span class="fc" id="L75">    private static final Logger logger = Logger.getLogger(AIPlayer.class.getName());</span>
+
+    public static final String TAG = &quot;aiPlayer&quot;;
+
+    /** The FreeColGameObject this AIObject contains AI-information for. */
+    private Player player;
+
+    /** The PRNG to use for this AI player. */
+    private Random aiRandom;
+
+    /** The wrapper for the server. */
+    private AIServerAPI serverAPI;
+
+    
+    /**
+     * Creates a new AI player.
+     *
+     * @param aiMain The {@code AIMain} the player exists within.
+     * @param player The {@code Player} to associate this AI player with.
+     */
+    protected AIPlayer(AIMain aiMain, Player player) {
+<span class="fc" id="L96">        super(aiMain, player.getId());</span>
+
+<span class="fc" id="L98">        this.player = player;</span>
+<span class="fc" id="L99">        this.aiRandom = new Random(aiMain.getRandomSeed(&quot;Seed for &quot; + getId()));</span>
+<span class="fc" id="L100">        this.serverAPI = new AIServerAPI(this);</span>
+<span class="fc" id="L101">        setInitialized();</span>
+<span class="fc" id="L102">    }</span>
+
+    /**
+     * Creates a new {@code AIPlayer} from the given
+     * XML-representation.
+     *
+     * @param aiMain The main AI-object.
+     * @param xr The input stream containing the XML.
+     * @exception XMLStreamException if a problem was encountered
+     *     during parsing.
+     */
+    public AIPlayer(AIMain aiMain,
+                    FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L115">        super(aiMain, xr);</span>
+        
+<span class="fc" id="L117">        this.serverAPI = new AIServerAPI(this);</span>
+<span class="fc" id="L118">        setInitialized();</span>
+<span class="fc" id="L119">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    public final void setInitialized() {
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">        this.initialized = getPlayer() != null;</span>
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * Gets the {@code Player} this {@code AIPlayer} is
+     * controlling.
+     *
+     * @return The {@code Player}.
+     */
+    public Player getPlayer() {
+<span class="fc" id="L136">        return player;</span>
+    }
+
+    /**
+     * Gets the PRNG to use for this player.
+     *
+     * @return A {@code Random} to use for this player.
+     */
+    public Random getAIRandom() {
+<span class="fc" id="L145">        return aiRandom;</span>
+    }
+
+    /**
+     * Gets the advantage of this AI player from the nation type.
+     *
+     * @return A short string stating the national advantage.
+     */
+    protected String getAIAdvantage() {
+<span class="fc" id="L154">        final String prefix = &quot;model.nationType.&quot;;</span>
+<span class="pc bpc" id="L155" title="2 of 4 branches missed.">        String id = (player == null || player.getNationType() == null) ? &quot;&quot;</span>
+<span class="fc" id="L156">            : player.getNationType().getId();</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">        return (id.startsWith(prefix)) ? id.substring(prefix.length())</span>
+<span class="nc" id="L158">            : &quot;&quot;;</span>
+    }
+
+    /**
+     * Gets the connection to the server.
+     *
+     * @return The connection that can be used when communication with the
+     *     server.
+     */
+    public Connection getConnection() {
+<span class="fc" id="L168">        return ((DummyConnection)this.player.getConnection())</span>
+<span class="fc" id="L169">            .getOtherConnection();</span>
+    }
+
+    /**
+     * Meaningfully named access to the server API.
+     *
+     * @return The {@code AIServerAPI} wrapper.
+     */
+    public AIServerAPI askServer() {
+<span class="fc" id="L178">        return this.serverAPI;</span>
+    }
+
+    /**
+     * Remove one of our owned objects.
+     *
+     * Subclasses to override.
+     *
+     * @param ao The {@code AIObject} to remove.
+     */
+<span class="nc" id="L188">    public void removeAIObject(AIObject ao) {}</span>
+
+    /**
+     * Gets the AI colony corresponding to a given colony, if any.
+     *
+     * @param colony The {@code Colony} to look up.
+     * @return The corresponding AI colony or null if not found.
+     */
+    public AIColony getAIColony(Colony colony) {
+<span class="fc" id="L197">        return getAIMain().getAIColony(colony);</span>
+    }
+
+    /**
+     * Gets a list of the players AI colonies.
+     *
+     * @return A list of AI colonies.
+     */
+    public List&lt;AIColony&gt; getAIColonies() {
+<span class="fc" id="L206">        final AIMain aiMain = getAIMain();</span>
+<span class="fc" id="L207">        return transform(getPlayer().getColonies(), alwaysTrue(),</span>
+<span class="fc" id="L208">                         c -&gt; aiMain.getAIColony(c), toListNoNulls());</span>
+    }
+
+    /**
+     * Gets the AI unit corresponding to a given unit, if any.
+     *
+     * @param unit The {@code Unit} to look up.
+     * @return The corresponding AI unit or null if not found.
+     */
+    protected AIUnit getAIUnit(Unit unit) {
+<span class="fc" id="L218">        return getAIMain().getAIUnit(unit);</span>
+    }
+
+    /**
+     * Gets a list of AIUnits for the player.
+     *
+     * @return A list of AIUnits.
+     */
+    protected List&lt;AIUnit&gt; getAIUnits() {
+<span class="fc" id="L227">        List&lt;AIUnit&gt; aiUnits = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        for (Unit u : getPlayer().getUnitSet()) {</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">            if (u.isDisposed()) {</span>
+<span class="nc" id="L230">                logger.warning(&quot;getAIUnits ignoring: &quot; + u.getId());</span>
+<span class="nc" id="L231">                continue;</span>
+            }
+<span class="fc" id="L233">            AIUnit a = getAIUnit(u);</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">            if (a != null) {</span>
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">                if (a.getUnit() != u) {</span>
+<span class="nc" id="L236">                    throw new IllegalStateException(&quot;getAIUnits fail: &quot; + u</span>
+                                                    + &quot;/&quot; + a);
+                }
+<span class="fc" id="L239">                aiUnits.add(a);</span>
+            } else {
+<span class="nc" id="L241">                logger.warning(&quot;Could not find the AIUnit for: &quot;</span>
+<span class="nc" id="L242">                               + u + &quot; (&quot; + u.getId() + &quot;)&quot;);</span>
+            }
+<span class="fc" id="L244">        }</span>
+<span class="fc" id="L245">        return aiUnits;</span>
+    }
+
+    /**
+     * Standard stance change determination.
+     *
+     * @param other The {@code Player} wrt consider stance.
+     * @return The new {@code Stance}.
+     */
+    protected Stance determineStance(Player other) {
+<span class="fc" id="L255">        return player.getStance(other)</span>
+<span class="fc" id="L256">            .getStanceFromTension(player.getTension(other));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IntegrityType checkIntegrity(boolean fix, LogBuilder lb) {
+<span class="fc" id="L264">        IntegrityType result = super.checkIntegrity(fix, lb);</span>
+<span class="pc bpc" id="L265" title="2 of 4 branches missed.">        if (player == null || player.isDisposed()) {</span>
+<span class="nc" id="L266">            lb.add(&quot;\n  AIPlayer without underlying player: &quot;, getId());</span>
+<span class="nc" id="L267">            result = result.fail();</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">        } else if (!player.isAI()) {</span>
+<span class="nc" id="L269">            lb.add(&quot;\n  AIPlayer that is not an AI: &quot;, getId());</span>
+<span class="nc" id="L270">            result = result.fail();</span>
+        }
+<span class="fc" id="L272">        return result;</span>
+    }
+
+    /**
+     * Do some work in a subthread.
+     *
+     * @param runnable The {@code Runnable} work to do.
+     */
+    protected void invoke(final Runnable runnable) {
+<span class="fc" id="L281">        Thread thread = new Thread(runnable,</span>
+<span class="fc" id="L282">            FreeCol.SERVER_THREAD + &quot;AIPlayer(&quot; + getPlayer().getName() + &quot;)&quot;);</span>
+<span class="fc" id="L283">        thread.start();</span>
+<span class="fc" id="L284">        logger.finest(&quot;Started &quot; + thread);</span>
+<span class="fc" id="L285">    }</span>
+
+    // Message.aiHandler support
+
+    /**
+     * Choose a founding father.
+     *
+     * @param fathers A list of {@code FoundingFather}s to choose from.
+     */
+    public void chooseFoundingFatherHandler(List&lt;FoundingFather&gt; fathers) {
+<span class="nc" id="L295">        FoundingFather ff = selectFoundingFather(fathers);</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">        if (ff == null) return;</span>
+<span class="nc" id="L297">        logger.finest(getId() + &quot; chose founding father: &quot; + ff);</span>
+<span class="nc" id="L298">        invoke(() -&gt; {</span>
+<span class="nc" id="L299">                AIMessage.askChooseFoundingFather(this, fathers, ff);</span>
+<span class="nc" id="L300">            });</span>
+<span class="nc" id="L301">    }</span>
+
+    /**
+     * Handle a diplomacy message.
+     *
+     * @param our Our {@code FreeColGameObject}.
+     * @param other Their {@code FreeColGameObject}.
+     * @param agreement The {@code DiplomaticTrade} being negotiated.
+     */
+    public void diplomacyHandler(FreeColGameObject our,
+                                 FreeColGameObject other,
+                                 DiplomaticTrade agreement) {
+<span class="nc" id="L313">        StringBuilder sb = new StringBuilder(256);</span>
+<span class="nc" id="L314">        sb.append(&quot;AI Diplomacy: &quot;).append(agreement);</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">        switch (agreement.getStatus()) {</span>
+        case PROPOSE_TRADE:
+<span class="nc" id="L317">            agreement.setStatus(this.acceptDiplomaticTrade(agreement));</span>
+<span class="nc" id="L318">            sb.append(&quot; -&gt; &quot;).append(agreement);</span>
+<span class="nc" id="L319">            logger.fine(sb.toString());</span>
+<span class="nc" id="L320">            break;</span>
+        default: // Do not need to respond to others
+<span class="nc" id="L322">            sb.append(&quot; -&gt; ignoring &quot;).append(agreement.getStatus());</span>
+<span class="nc" id="L323">            logger.fine(sb.toString());</span>
+<span class="nc" id="L324">            return;</span>
+        }
+
+<span class="nc" id="L327">        invoke(() -&gt; {</span>
+                // Note: transposing {our,other} here, the message is
+                // in sender sense.
+<span class="nc" id="L330">                AIMessage.askDiplomacy(this, our, other, agreement);</span>
+<span class="nc" id="L331">            });</span>
+<span class="nc" id="L332">    }</span>
+
+    /**
+     * Handle a first contact.
+     *
+     * @param contactor The contacting {@code Player}.
+     * @param contactee The contacted {@code Player}.
+     * @param tile The {@code Tile} where contact occurs.
+     */
+    public void firstContactHandler(Player contactor, Player contactee,
+                                    Tile tile) {
+<span class="fc" id="L343">        invoke(() -&gt; {</span>
+<span class="fc" id="L344">                AIMessage.askFirstContact(this, contactor, contactee, tile, true);</span>
+<span class="fc" id="L345">            });</span>
+<span class="fc" id="L346">    }</span>
+
+    /**
+     * Handle a fountain of youth.
+     *
+     * @param n The number of emigrating units.
+     */
+    public void fountainOfYouthHandler(int n) {
+<span class="nc" id="L354">        invoke(() -&gt; {</span>
+<span class="nc bnc" id="L355" title="All 2 branches missed.">                for (int i = 0; i &lt; n; i++) AIMessage.askEmigrate(this, 0);</span>
+<span class="nc" id="L356">            });</span>
+<span class="nc" id="L357">    }</span>
+
+    /**
+     * Handle a native demand.
+     *
+     * @param unit The {@code Unit} making demands.
+     * @param colony The {@code Colony} where demands are being made.
+     * @param type The {@code GoodsType} demanded.
+     * @param amount The amount of gold demanded.
+     * @param initial The acceptance state of the demand.
+     */
+    public void indianDemandHandler(Unit unit, Colony colony, GoodsType type,
+                                    int amount, IndianDemandAction initial) {
+<span class="nc" id="L370">        IndianDemandAction result</span>
+<span class="nc" id="L371">            = indianDemand(unit, colony, type, amount, initial);</span>
+<span class="nc" id="L372">        logger.finest(&quot;AI handling native demand by &quot; + unit</span>
+            + &quot; at &quot; + colony + &quot; result: &quot; + initial + &quot; -&gt; &quot; + result);
+<span class="nc bnc" id="L374" title="All 2 branches missed.">        if (result != IndianDemandAction.INDIAN_DEMAND_DONE) {</span>
+<span class="nc" id="L375">            invoke(() -&gt; {</span>
+<span class="nc" id="L376">                    AIMessage.askIndianDemand(this, unit, colony, type,</span>
+                                              amount, result);
+<span class="nc" id="L378">                });</span>
+        }
+<span class="nc" id="L380">    }</span>
+
+    /**
+     * Handle a looting.
+     *
+     * @param unit The looting {@code Unit}.
+     * @param initialGoods A list of {@code Goods} to choose from.
+     * @param defenderId The identifier for the defending unit (may be gone!).
+     */
+    public void lootCargoHandler(Unit unit, List&lt;Goods&gt; initialGoods,
+                                 String defenderId) {
+<span class="fc" id="L391">        final Market market = getPlayer().getMarket();</span>
+<span class="fc" id="L392">        List&lt;Goods&gt; goods = sort(initialGoods,</span>
+<span class="fc" id="L393">                                 market.getSalePriceComparator());</span>
+<span class="fc" id="L394">        List&lt;Goods&gt; loot = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L395">        int space = unit.getSpaceLeft();</span>
+<span class="pc bpc" id="L396" title="1 of 4 branches missed.">        while (space &gt; 0 &amp;&amp; !goods.isEmpty()) {</span>
+<span class="fc" id="L397">            Goods g = goods.remove(0);</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">            if (g.getSpaceTaken() &gt; space) continue; // Approximate</span>
+<span class="fc" id="L399">            loot.add(g);</span>
+<span class="fc" id="L400">            space -= g.getSpaceTaken();</span>
+<span class="fc" id="L401">        }</span>
+
+<span class="fc" id="L403">        invoke(() -&gt; {</span>
+<span class="fc" id="L404">                AIMessage.askLoot(getAIUnit(unit), defenderId, loot);</span>
+<span class="fc" id="L405">            });</span>
+<span class="fc" id="L406">    }</span>
+
+    /**
+     * Handle the monarch.
+     *
+     * @param action The {@code MonarchAction} to respond to.
+     * @param tax The tax change if any.
+     */
+    public void monarchActionHandler(MonarchAction action, int tax) {
+        boolean accept;
+<span class="nc bnc" id="L416" title="All 3 branches missed.">        switch (action) {</span>
+        case RAISE_TAX_WAR: case RAISE_TAX_ACT:
+<span class="nc" id="L418">            accept = acceptTax(tax);</span>
+<span class="nc" id="L419">            break;</span>
+
+        case MONARCH_MERCENARIES: case HESSIAN_MERCENARIES:
+<span class="nc" id="L422">            accept = acceptMercenaries();</span>
+<span class="nc" id="L423">            break;</span>
+
+        default:
+<span class="nc" id="L426">            logger.finest(&quot;AI player ignoring monarch action &quot; + action);</span>
+<span class="nc" id="L427">            return;</span>
+        }
+<span class="nc" id="L429">        logger.finest(&quot;AI player monarch action &quot; + action + &quot; = &quot; + accept);</span>
+
+<span class="nc" id="L431">        invoke(() -&gt; {</span>
+<span class="nc" id="L432">                AIMessage.askMonarchAction(this, action, accept);</span>
+<span class="nc" id="L433">            });</span>
+<span class="nc" id="L434">    }</span>
+
+    /**
+     * Handle an incoming nation summary.
+     *
+     * @param other The {@code Player} the summary applies to.
+     * @param ns The {@code NationSummary} itself.
+     */
+    public void nationSummaryHandler(Player other, NationSummary ns) {
+<span class="fc" id="L443">        getPlayer().putNationSummary(other, ns);</span>
+<span class="fc" id="L444">        logger.info(&quot;Updated nation summary of &quot; + other.getSuffix()</span>
+<span class="fc" id="L445">            + &quot; for AI &quot; + player.getSuffix());</span>
+<span class="fc" id="L446">    }</span>
+
+    /**
+     * Handle a native trade.
+     *
+     * @param action The {@code NativeTradeAction} to perform.
+     * @param nt The {@code NativeTrade} itself.
+     */
+    public void nativeTradeHandler(NativeTradeAction action, NativeTrade nt) {
+<span class="nc" id="L455">        invoke(() -&gt; {</span>
+<span class="nc" id="L456">                NativeTradeAction result = handleTrade(action, nt);</span>
+<span class="nc" id="L457">                AIMessage.askNativeTrade(this, result, nt);</span>
+<span class="nc" id="L458">            });</span>
+<span class="nc" id="L459">    }</span>
+
+    /**
+     * Handle a new land name.
+     *
+     * @param unit The {@code Unit} discovering the new world.
+     * @param name The default name.
+     */
+    public void newLandNameHandler(Unit unit, String name) {
+<span class="nc" id="L468">        invoke(() -&gt; {</span>
+<span class="nc" id="L469">                AIMessage.askNewLandName(this, unit, name);</span>
+<span class="nc" id="L470">            });</span>
+<span class="nc" id="L471">    }</span>
+
+    /**
+     * Handle a new region naming.
+     *
+     * @param region The {@code Region} to name.
+     * @param tile The {@code Tile} the tile where the region was found.
+     * @param unit The {@code Unit} that discovers the region.
+     * @param name The default name.
+     */
+    public void newRegionNameHandler(Region region, Tile tile, Unit unit,
+                                     String name) {
+<span class="nc" id="L483">        invoke(() -&gt; {</span>
+<span class="nc" id="L484">                AIMessage.askNewRegionName(this, region, tile, unit, name);</span>
+<span class="nc" id="L485">            });</span>
+<span class="nc" id="L486">    }    </span>
+
+    /**
+     * Handle reconnect.
+     */
+    public void reconnectHandler() {
+<span class="nc" id="L492">        logger.warning(&quot;Reconnect&quot;);</span>
+<span class="nc" id="L493">    }</span>
+
+    /**
+     * Handle setting the AI state of a player.
+     *
+     * @param player The {@code Player} to set.
+     * @param ai The new AI state.
+     */
+    public void setAIHandler(Player player, boolean ai) {
+<span class="nc" id="L502">        player.setAI(ai);</span>
+<span class="nc" id="L503">    }</span>
+
+    /**
+     * Handle a current player setting.
+     *
+     * @param currentPlayer The new current {@code Player}.
+     */
+    public void setCurrentPlayerHandler(Player currentPlayer) {
+<span class="nc bnc" id="L511" title="All 2 branches missed.">        if (getPlayer().getId().equals(currentPlayer.getId())) {</span>
+<span class="nc" id="L512">            invoke(() -&gt; {</span>
+                    try {
+<span class="nc" id="L514">                        startWorking();</span>
+<span class="nc" id="L515">                    } catch (Exception e) {</span>
+<span class="nc" id="L516">                        logger.log(Level.SEVERE, &quot;Unhandled exception from the AI. The AI's turn has been ended prematurely.&quot;, e);</span>
+<span class="nc" id="L517">                        askServer().chat(currentPlayer, Messages.message(&quot;ai.chat.stoppedWorking&quot;));</span>
+<span class="nc" id="L518">                    }</span>
+<span class="nc" id="L519">                    AIMessage.askEndTurn(this);</span>
+<span class="nc" id="L520">                });</span>
+        }
+<span class="nc" id="L522">    }</span>
+
+
+    // AI behaviour interface to be implemented by subclasses
+
+    /**
+     * Tells this {@code AIPlayer} to make decisions. The
+     * {@code AIPlayer} is done doing work this turn when this method
+     * returns.
+     */
+    public abstract void startWorking();
+
+    /**
+     * Decide whether to accept an Indian demand, or not.  Or for native
+     * players, return the result of the demand.
+     *
+     * @param unit The {@code Unit} making demands.
+     * @param colony The {@code Colony} where demands are being made.
+     * @param type The {@code GoodsType} demanded.
+     * @param amount The amount of gold demanded.
+     * @param accept The acceptance state of the demand.
+     * @return The result of the demand.
+     */
+    public IndianDemandAction indianDemand(Unit unit, Colony colony,
+                                           GoodsType type, int amount,
+                                           IndianDemandAction accept) {
+<span class="nc" id="L548">        return IndianDemandAction.INDIAN_DEMAND_REJECT;</span>
+    }
+
+    /**
+     * Resolves a diplomatic trade offer.
+     *
+     * @param agreement The proposed {@code DiplomaticTrade}.
+     * @return The {@code TradeStatus} to apply to the agreement.
+     *
+     */
+    public TradeStatus acceptDiplomaticTrade(DiplomaticTrade agreement) {
+<span class="nc" id="L559">        return TradeStatus.REJECT_TRADE;</span>
+    }
+
+    /**
+     * Handle a native trade request.
+     *
+     * @param action The {@code NativeTradeAction} to perform.
+     * @param nt The {@code NativeTrade} to handle.
+     * @return The action in response.
+     */
+    public abstract NativeTradeAction handleTrade(NativeTradeAction action,
+                                                  NativeTrade nt);
+    
+    /**
+     * Decides to accept a tax raise or not.
+     * Overridden by the European player.
+     *
+     * @param tax The tax raise.
+     * @return True if the raise is accepted.
+     */
+    public boolean acceptTax(int tax) {
+<span class="nc" id="L580">        return false;</span>
+    }
+
+    /**
+     * Decides to accept an offer of mercenaries or not.
+     * Overridden by the European player.
+     *
+     * @return True if the mercenaries are accepted.
+     */
+    public boolean acceptMercenaries() {
+<span class="nc" id="L590">        return false;</span>
+    }
+
+    /**
+     * Selects the most useful founding father offered.
+     * Overridden by EuropeanAIPlayers.
+     *
+     * @param ffs The founding fathers on offer.
+     * @return The founding father selected.
+     */
+    public FoundingFather selectFoundingFather(List&lt;FoundingFather&gt; ffs) {
+<span class="nc" id="L601">        return null;</span>
+    }
+
+
+    // European players need to implement these for AIColony, other players
+    // can throw a can-not-happen error
+
+    /**
+     * Gets the needed wagons for a tile/contiguity.
+     *
+     * @param tile The {@code Tile} to derive the contiguity from.
+     * @return The number of wagons needed.
+     */
+    public abstract int getNeededWagons(Tile tile);
+
+    /**
+     * How many pioneers should we have?
+     *
+     * This is the desired total number, not the actual number which would
+     * take into account the number of existing PioneeringMissions.
+     *
+     * @return The desired number of pioneers for this player.
+     */
+    public abstract int pioneersNeeded();
+
+    /**
+     * How many scouts should we have?
+     *
+     * This is the desired total number, not the actual number which would
+     * take into account the number of existing ScoutingMissions.
+     *
+     * Current scheme for European AIs is to use up to three scouts in
+     * the early part of the game, then one.
+     *
+     * @return The desired number of scouts for this player.
+     */
+    public abstract int scoutsNeeded();
+
+    /**
+     * Notify that a wish has been completed.  Called from AIColony.
+     *
+     * @param w The {@code Wish} to complete.
+     */
+    public abstract void completeWish(Wish w);
+
+
+    // Serialization
+
+    private static final String RANDOM_STATE_TAG = &quot;randomState&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw)
+        throws XMLStreamException {
+<span class="fc" id="L658">        super.writeAttributes(xw);</span>
+
+        String rs;
+        try {
+<span class="fc" id="L662">            rs = Utils.getRandomState(aiRandom);</span>
+<span class="nc" id="L663">        } catch (IOException ioe) {</span>
+<span class="nc" id="L664">            logger.log(Level.WARNING, &quot;Could not get random state&quot;, ioe);</span>
+<span class="nc" id="L665">            return;</span>
+<span class="fc" id="L666">        }</span>
+<span class="fc" id="L667">        xw.writeAttribute(RANDOM_STATE_TAG, rs);</span>
+<span class="fc" id="L668">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L675">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L677">        final AIMain aiMain = getAIMain();</span>
+
+<span class="fc" id="L679">        player = xr.findFreeColGameObject(aiMain.getGame(), ID_ATTRIBUTE_TAG,</span>
+            ServerPlayer.class, (ServerPlayer)null, true);
+
+<span class="fc" id="L682">        Random rnd = Utils.restoreRandomState(xr.getAttribute(RANDOM_STATE_TAG,</span>
+                                                              (String)null));
+<span class="pc bpc" id="L684" title="1 of 2 branches missed.">        aiRandom = (rnd != null) ? rnd</span>
+<span class="pc" id="L685">            : new Random(aiMain.getRandomSeed(&quot;Seed for &quot; + getId()));</span>
+<span class="fc" id="L686">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L691">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

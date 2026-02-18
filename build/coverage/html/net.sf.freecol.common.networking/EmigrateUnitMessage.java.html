@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EmigrateUnitMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">EmigrateUnitMessage.java</span></div><h1>EmigrateUnitMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.Europe;
+import net.sf.freecol.common.model.Europe.MigrationType;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent when a unit is to emigrate.
+ */
+public class EmigrateUnitMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;emigrateUnit&quot;;
+    private static final String SLOT_TAG = &quot;slot&quot;;
+
+
+    /**
+     * Create a new {@code EmigrateUnitMessage} with the supplied slot.
+     *
+     * @param slot The slot to select the migrant from.
+     */
+    public EmigrateUnitMessage(int slot) {
+<span class="nc" id="L48">        super(TAG, SLOT_TAG, String.valueOf(slot));</span>
+<span class="nc" id="L49">    }</span>
+
+    /**
+     * Create a new {@code EmigrateUnitMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public EmigrateUnitMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L60">        super(TAG, xr, SLOT_TAG);</span>
+<span class="nc" id="L61">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean currentPlayerMessage() {
+<span class="nc" id="L69">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public MessagePriority getPriority() {
+<span class="nc" id="L76">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc" id="L85">        final String slotString = getStringAttribute(SLOT_TAG);</span>
+
+<span class="nc" id="L87">        Europe europe = serverPlayer.getEurope();</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        if (europe == null) {</span>
+<span class="nc" id="L89">            return serverPlayer.clientError(&quot;No Europe to migrate from.&quot;);</span>
+        }
+        int slot;
+        try {
+<span class="nc" id="L93">            slot = Integer.parseInt(slotString);</span>
+<span class="nc" id="L94">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L95">            return serverPlayer.clientError(&quot;Bad slot: &quot; + slotString);</span>
+<span class="nc" id="L96">        }</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        if (!MigrationType.validMigrantSlot(slot)) {</span>
+<span class="nc" id="L98">            return serverPlayer.clientError(&quot;Invalid slot for recruitment: &quot;</span>
+                + slot);
+        }
+            
+        MigrationType type;
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (serverPlayer.getRemainingEmigrants() &gt; 0) {</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">            if (MigrationType.unspecificMigrantSlot(slot)) {</span>
+<span class="nc" id="L105">                return serverPlayer.clientError(&quot;Specific slot expected for FoY migration&quot;);</span>
+            }
+<span class="nc" id="L107">            type = MigrationType.FOUNTAIN;</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        } else if (serverPlayer.checkEmigrate()) {</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">            if (MigrationType.specificMigrantSlot(slot)</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                &amp;&amp; !serverPlayer.hasAbility(Ability.SELECT_RECRUIT)) {</span>
+<span class="nc" id="L111">                return serverPlayer.clientError(&quot;selectRecruit ability absent&quot;);</span>
+            }
+<span class="nc" id="L113">            type = MigrationType.NORMAL;</span>
+        } else {
+<span class="nc" id="L115">            int cost = europe.getCurrentRecruitPrice();</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            if (!serverPlayer.checkGold(cost)) {</span>
+<span class="nc" id="L117">                return serverPlayer.clientError(&quot;No migrants available at cost &quot;</span>
+                    + cost + &quot; for player with &quot;
+<span class="nc" id="L119">                    + serverPlayer.getGold() + &quot; gold&quot;);</span>
+            }
+<span class="nc" id="L121">            type = MigrationType.RECRUIT;</span>
+        }
+
+        // Proceed to emigrate.
+<span class="nc" id="L125">        return igc(freeColServer)</span>
+<span class="nc" id="L126">            .emigrate(serverPlayer, slot, type);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

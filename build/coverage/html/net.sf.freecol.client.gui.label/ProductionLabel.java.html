@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProductionLabel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.label</a> &gt; <span class="el_source">ProductionLabel.java</span></div><h1>ProductionLabel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.label;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import java.util.logging.Logger;
+
+import javax.swing.ImageIcon;
+
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.GoodsType;
+
+
+/**
+ * The ProductionLabel represents Goods that are produced in a
+ * WorkLocation or Settlement. It is similar to the GoodsLabel.
+ */
+public final class ProductionLabel extends AbstractGoodsLabel {
+
+<span class="nc" id="L47">    private static final Logger logger = Logger.getLogger(ProductionLabel.class.getName());</span>
+
+    /** The maximum number of goodsIcons to display. */
+<span class="nc" id="L50">    private int maxIcons = 7;</span>
+
+    /** Whether to display positive integers with a &quot;+&quot; sign. */
+    private boolean drawPlus;
+
+    /** The goodsIcon for this type of production. */
+    private final ImageIcon goodsIcon;
+
+    /** The image to display. */
+    private transient Image stringImage;
+
+
+    /**
+     * Creates a new production label.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param ag The {@code AbstractGoods} to create a label for.
+     */
+    public ProductionLabel(FreeColClient freeColClient, AbstractGoods ag) {
+<span class="nc" id="L69">        this(freeColClient, ag, -1);</span>
+<span class="nc" id="L70">    }</span>
+
+
+    /**
+     * Creates a new production label.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param ag The {@code AbstractGoods} to create a label for.
+     * @param maximumProduction The maximum production.
+     */
+    public ProductionLabel(FreeColClient freeColClient, AbstractGoods ag,
+            int maximumProduction) {
+<span class="nc" id="L82">        this(freeColClient, ag, maximumProduction, 0, false);</span>
+<span class="nc" id="L83">    }</span>
+
+    /**
+     * Creates a new production label.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param ag The {@code AbstractGoods} to create a label for.
+     * @param maximumProduction The maximum production.
+     * @param stockNumber The lower bound on number of items to display.
+     * @param showStockAmount Should the stockNumber be part of the label
+     */
+    public ProductionLabel(FreeColClient freeColClient, AbstractGoods ag,
+            int maximumProduction, int stockNumber, boolean showStockAmount) {
+<span class="nc" id="L96">        super(freeColClient, ag);</span>
+
+<span class="nc" id="L98">        final ImageLibrary lib = getImageLibrary();</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        if (getType() == null) {</span>
+<span class="nc" id="L100">            FreeCol.trace(logger, &quot;Bad production label (no type)&quot;);</span>
+<span class="nc bnc" id="L101" title="All 4 branches missed.">        } else if (stockNumber &lt; 0 &amp;&amp; getAmount() == 0) {</span>
+<span class="nc" id="L102">            FreeCol.trace(logger, &quot;Bad production label: &quot; + ag</span>
+                + &quot; stock=&quot; + stockNumber);
+        }
+
+<span class="nc" id="L106">        final ClientOptions options = freeColClient.getClientOptions();</span>
+        // Horses stack poorly, only show one icon
+        // TODO: make this highly specific hack more generic
+<span class="nc" id="L109">        final GoodsType horses = freeColClient.getGame().getSpecification()</span>
+<span class="nc" id="L110">                                              .getGoodsType(&quot;model.goods.horses&quot;);</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        this.maxIcons = (ag.getType() == horses) ? 1</span>
+<span class="nc" id="L112">            : options.getInteger(ClientOptions.MAX_NUMBER_OF_GOODS_IMAGES);</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        this.goodsIcon = (ag.getType() == null) ? null</span>
+<span class="nc" id="L114">            : new ImageIcon(lib.getScaledGoodsTypeImage(ag.getType()));</span>
+
+<span class="nc" id="L116">        setFont(lib.getScaledFont(&quot;simple-bold-tiny&quot;, null));</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        setForeground((getAmount() &lt; 0) ? Color.RED : Color.WHITE);</span>
+<span class="nc bnc" id="L118" title="All 4 branches missed.">        setToolTipText((getType() == null || getAmount() == 0) ? null</span>
+<span class="nc" id="L119">            : Messages.message(getAbstractGoods().getLabel()));</span>
+
+<span class="nc" id="L121">        final int amount = getAmount();</span>
+<span class="nc" id="L122">        final int displayNumber = options</span>
+<span class="nc" id="L123">            .getInteger(ClientOptions.MIN_NUMBER_FOR_DISPLAYING_GOODS_COUNT);</span>
+<span class="nc bnc" id="L124" title="All 4 branches missed.">        boolean showMax = amount &gt; 0 &amp;&amp; maximumProduction &gt; amount;</span>
+<span class="nc bnc" id="L125" title="All 10 branches missed.">        if (amount &lt; 0 || amount &gt;= displayNumber || amount &gt; maxIcons</span>
+                || stockNumber &gt; 0 || showMax) {
+<span class="nc" id="L127">            String number = &quot;&quot;;</span>
+<span class="nc bnc" id="L128" title="All 4 branches missed.">            if (showStockAmount &amp;&amp; stockNumber &gt;= 0) { // Show stored items in</span>
+                                                       // ReportColonyPanel
+<span class="nc" id="L130">                number = String.valueOf(stockNumber);</span>
+<span class="nc" id="L131">                drawPlus = true;</span>
+            }
+<span class="nc bnc" id="L133" title="All 4 branches missed.">            if (amount &gt;= 0 &amp;&amp; drawPlus) number += &quot;+&quot;;</span>
+<span class="nc" id="L134">            number += String.valueOf(amount);</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (showMax) {</span>
+<span class="nc" id="L136">                number += &quot;/&quot; + maximumProduction;</span>
+            }
+
+<span class="nc" id="L139">            BufferedImage dummy = new BufferedImage(1, 1,</span>
+                BufferedImage.TYPE_INT_ARGB);
+<span class="nc" id="L141">            Graphics2D g = dummy.createGraphics();</span>
+<span class="nc" id="L142">            this.stringImage = lib.getStringImage(g, number,</span>
+<span class="nc" id="L143">                                                  getForeground(), getFont());</span>
+<span class="nc" id="L144">            g.dispose();</span>
+<span class="nc" id="L145">        } else {</span>
+<span class="nc" id="L146">            this.stringImage = null;</span>
+        }
+        
+<span class="nc" id="L149">        setSize(getPreferredSize());</span>
+<span class="nc" id="L150">    }</span>
+
+
+    // Override JComponent
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void paintComponent(Graphics g) {
+<span class="nc" id="L160">        final int actualWidth = getWidth();</span>
+
+        // Draws the goods icons:
+<span class="nc" id="L163">        final int drawImageCount = numberOfGoodsIconsToDisplay();</span>
+<span class="nc" id="L164">        final int pixelsPerIcon = determinePixelsPerIcon();</span>
+<span class="nc" id="L165">        final int goodsImagesWidth = pixelsPerIcon * (drawImageCount - 1) + this.goodsIcon.getIconWidth();</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        final int leftOffset = (goodsImagesWidth &lt; actualWidth) ? (actualWidth - goodsImagesWidth) / 2 : 0;</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        for (int i = 0; i &lt; drawImageCount; i++) {</span>
+<span class="nc" id="L168">            this.goodsIcon.paintIcon(null, g, leftOffset + i*pixelsPerIcon, 0);</span>
+        }
+
+        // Draws the production number:
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (this.stringImage != null) {</span>
+<span class="nc" id="L173">            final int textOffsetX = (actualWidth - getProductionStringWidth()) / 2;</span>
+<span class="nc" id="L174">            g.drawImage(stringImage,</span>
+                    textOffsetX,
+<span class="nc" id="L176">                    (goodsIcon.getIconHeight() - stringImage.getHeight(null)) / 2,</span>
+                    null);
+        }
+<span class="nc" id="L179">    }</span>
+    
+    public int determinePixelsPerIcon() {
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (goodsIcon == null) {</span>
+<span class="nc" id="L183">            return 0;</span>
+        }
+        
+<span class="nc" id="L186">        final int amount = Math.max(1, Math.abs(getAmount()));</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">        if (amount &lt;= maxIcons) {</span>
+<span class="nc" id="L188">            return goodsIcon.getIconWidth() / amount;</span>
+        } else {
+<span class="nc" id="L190">            return this.goodsIcon.getIconWidth() / 16;</span>
+        }
+    }
+
+    // Override Component
+
+    @Override
+    public Dimension getMinimumSize() {
+<span class="nc" id="L198">        return getPreferredSize();</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Dimension getPreferredSize() {
+<span class="nc" id="L206">        final int drawImageCount = numberOfGoodsIconsToDisplay();</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">        final int iconWidth = (goodsIcon) != null ? goodsIcon.getIconWidth() : 0;</span>
+<span class="nc" id="L208">        final int pixelsPerIcon = determinePixelsPerIcon();</span>
+                
+<span class="nc" id="L210">        final int width = Math.max(getProductionStringWidth(), pixelsPerIcon * (drawImageCount - 1) + iconWidth);</span>
+<span class="nc" id="L211">        final int height = this.goodsIcon.getImage().getHeight(null);</span>
+        
+<span class="nc" id="L213">        return new Dimension(width, height);</span>
+    }
+
+    private int numberOfGoodsIconsToDisplay() {
+<span class="nc" id="L217">        return Math.max(1, Math.min(Math.abs(getAmount()), maxIcons));</span>
+    }
+    
+    private int getProductionStringWidth() {
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        return (this.stringImage == null) ? 0 : stringImage.getWidth(null);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

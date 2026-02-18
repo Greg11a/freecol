@@ -1,0 +1,1809 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MapViewer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.mapviewer</a> &gt; <span class="el_source">MapViewer.java</span></div><h1>MapViewer.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.mapviewer;
+
+import static net.sf.freecol.common.util.Utils.now;
+
+import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Composite;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.event.ActionListener;
+import java.awt.font.TextLayout;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.GeneralPath;
+import java.awt.geom.Point2D.Float;
+import java.awt.geom.Rectangle2D;
+import java.awt.geom.RoundRectangle2D;
+import java.awt.image.BufferedImage;
+import java.awt.image.RescaleOp;
+import java.awt.image.VolatileImage;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import javax.swing.JLabel;
+import javax.swing.SwingUtilities;
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.control.FreeColClientHolder;
+import net.sf.freecol.client.control.MapEditorController;
+import net.sf.freecol.client.gui.Canvas;
+import net.sf.freecol.client.gui.GUI;
+import net.sf.freecol.client.gui.GUI.ViewMode;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.SwingGUI;
+import net.sf.freecol.common.debug.FreeColDebugger;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.Area;
+import net.sf.freecol.common.model.BuildableType;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Map;
+import net.sf.freecol.common.model.PathNode;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Region;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Turn;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.option.GameOptions;
+import net.sf.freecol.common.util.ImageUtils;
+import net.sf.freecol.server.ai.AIObject;
+import net.sf.freecol.server.ai.EuropeanAIPlayer;
+import net.sf.freecol.server.ai.military.DefensiveMap;
+import net.sf.freecol.server.ai.military.DefensiveZone;
+
+
+/**
+ * MapViewer is a private helper class of Canvas and SwingGUI.
+ * 
+ * This class is used by {@link CanvasMapViewer} for drawing the map on the {@link Canvas}.
+ * 
+ * The method {@link #displayMap(Graphics2D, Dimension)} renders the entire map, or just parts
+ * of it depending on clip bounds and the dirty state controlled by
+ * {@link MapViewerRepaintManager}.
+ *    
+ * Unit animations are still handled {@link UnitAnimator separately}, but will probably be moved
+ * into {@code displayMap} in the future.
+ * 
+ * @see MapViewerBounds
+ */
+public final class MapViewer extends FreeColClientHolder {
+
+<span class="nc" id="L108">    private static final Logger logger = Logger.getLogger(MapViewer.class.getName());</span>
+
+<span class="nc" id="L110">    private static enum BorderType { COUNTRY, REGION }</span>
+
+    /**
+     * Calculates what part of the {@link Map} is visible on screen. This includes handling
+     * the size, scaling and focus of the map.
+     * 
+     * Please note that when repainting the Map, it is only necessary to paint the
+     * requested area given by {@link Graphics2D#getClipBounds}. Translating the
+     * the clip bounds into tiles is performed by {@link TileClippingBounds}.
+     */
+<span class="nc" id="L120">    private final MapViewerBounds mapViewerBounds = new MapViewerBounds();</span>
+    
+    /**
+     * Holds state that is not part of the Game/Map state, but is still used when drawing
+     * the map. For example the current active unit.
+     */
+    private final MapViewerState mapViewerState;
+    
+    /**
+     * The internal scaled tile viewer to use.
+     */
+    private final TileViewer tv;
+    
+    /**
+     * Holds buffers and determines the dirty state when drawing.
+     */
+    private final MapViewerRepaintManager rpm;
+    
+    /**
+     * Utility functions that considers the current map size and scale. 
+     */
+    private final MapViewerScaledUtils mapViewerScaledUtils;
+    
+    /**
+     * Scaled image library to use only for map operations.
+     */
+    private final ImageLibrary lib;
+    
+    /**
+     * Bounds of the tiles to be rendered. These bounds are scaled according to the
+     * zoom level of the map.
+     */
+<span class="nc" id="L152">    private TileBounds tileBounds = new TileBounds(new Dimension(0, 0), 1f);</span>
+    
+<span class="nc" id="L154">    private List&lt;Rectangle&gt; fullyRepaintedAreas = new ArrayList&lt;&gt;();</span>
+    
+    /**
+     * An asynchronous painter. If enabled (not null), then the {@code asyncPainter} will be
+     * used when painting this {@code MapViewer}.
+     */
+<span class="nc" id="L160">    private MapAsyncPainter asyncPainter = null;</span>
+    
+
+    /**
+     * The constructor to use.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param lib An {@code ImageLibrary} to use for drawing to the map
+     *     (and this is subject to the map scaling).
+     * @param al An {@code ActionListener} for the cursor.
+     */
+    public MapViewer(FreeColClient freeColClient, ImageLibrary lib, ActionListener al) {
+<span class="nc" id="L172">        super(freeColClient);</span>
+        
+<span class="nc" id="L174">        this.lib = lib;</span>
+<span class="nc" id="L175">        this.tv = new TileViewer(freeColClient, lib);</span>
+        
+<span class="nc" id="L177">        final ChatDisplay chatDisplay = new ChatDisplay(freeColClient);</span>
+<span class="nc" id="L178">        final UnitAnimator unitAnimator = new UnitAnimator(freeColClient, this, lib);</span>
+<span class="nc" id="L179">        this.mapViewerState = new MapViewerState(chatDisplay, unitAnimator, al);</span>
+<span class="nc" id="L180">        this.mapViewerScaledUtils = new MapViewerScaledUtils();</span>
+<span class="nc" id="L181">        this.rpm = new MapViewerRepaintManager();</span>
+
+<span class="nc" id="L183">        updateScaledVariables();</span>
+<span class="nc" id="L184">    }</span>
+    
+    
+    // Public API
+
+    /**
+     * Change the scale of the map.
+     *
+     * @param newScale The new map scale.
+     */
+    public void changeScale(float newScale) {
+<span class="nc" id="L195">        this.lib.changeScaleFactor(newScale);</span>
+<span class="nc" id="L196">        this.tv.updateScaledVariables();</span>
+<span class="nc" id="L197">        updateScaledVariables();</span>
+<span class="nc" id="L198">        mapViewerBounds.positionMap();</span>
+<span class="nc" id="L199">        rpm.markAsDirty();</span>
+<span class="nc" id="L200">    }</span>
+    
+    /**
+     * Update the variables that depend on the image library scale.
+     */
+    private void updateScaledVariables() {
+        // ATTENTION: we assume that all base tiles have the same size
+<span class="nc" id="L207">        this.tileBounds = new TileBounds(lib.getTileSize(), lib.getScaleFactor());</span>
+        
+<span class="nc" id="L209">        mapViewerBounds.updateSizeVariables(tileBounds);</span>
+<span class="nc" id="L210">        mapViewerScaledUtils.updateScaledVariables(lib);</span>
+<span class="nc" id="L211">    }</span>
+
+    /**
+     * Change the displayed map size.
+     *
+     * @param size The new map size.
+     */
+    public void changeSize(Dimension size) {
+<span class="nc" id="L219">        this.tileBounds = new TileBounds(this.lib.getTileSize(), this.lib.getScaleFactor());</span>
+<span class="nc" id="L220">        mapViewerBounds.changeSize(size, this.tileBounds);</span>
+<span class="nc" id="L221">        rpm.markAsDirty();</span>
+<span class="nc" id="L222">    }</span>
+
+    /**
+     * Converts the given screen coordinates to Map coordinates.
+     * It checks to see to which Tile the given pixel 'belongs'.
+     *
+     * @param x The x-coordinate in pixels.
+     * @param y The y-coordinate in pixels.
+     * @return The {@code Tile} that is located at the given position
+     *     on the screen.
+     */
+    public Tile convertToMapTile(int x, int y) {
+<span class="nc" id="L234">        return mapViewerBounds.convertToMapTile(getMap(), x, y);</span>
+    }
+
+    /**
+     * This method should only be called using {@link GUI#useMapAsyncPainter()}.
+     */
+    public MapAsyncPainter useMapAsyncPainter() {
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc bnc" id="L243" title="All 4 branches missed.">        if (asyncPainter != null &amp;&amp; !asyncPainter.isStopped()) {</span>
+<span class="nc" id="L244">            return asyncPainter;</span>
+        }
+        
+<span class="nc" id="L247">        asyncPainter = new MapAsyncPainter(this);</span>
+        
+<span class="nc" id="L249">        return asyncPainter;</span>
+    }
+    
+    /**
+     * This method should only be called using {@link GUI#stopMapAsyncPainter()}.
+     */
+    public void stopMapAsyncPainter() {
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc" id="L258">        final MapAsyncPainter theAsyncPainter = asyncPainter;</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">        if (theAsyncPainter != null) {</span>
+<span class="nc" id="L260">            theAsyncPainter.stop();</span>
+        }
+<span class="nc" id="L262">        asyncPainter = null;</span>
+<span class="nc" id="L263">    }</span>
+    
+    /**
+     * Displays the Map.
+     *
+     * @param g2d The {@code Graphics2D} object on which to draw the Map.
+     * @param size The size of the map.
+     * @return {@code true} if the entire map has been repainted.
+     */
+    @SuppressFBWarnings(value=&quot;NP_LOAD_OF_KNOWN_NULL_VALUE&quot;,
+                        justification=&quot;lazy load of extra tiles&quot;)
+    public boolean displayMap(Graphics2D g2d, Dimension size) {
+<span class="nc" id="L275">        final MapAsyncPainter thePainter = asyncPainter;</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        if (thePainter != null) {</span>
+<span class="nc" id="L277">            final BufferedImage backBufferImage = thePainter.getBackBufferImage();</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            if (backBufferImage == null) {</span>
+<span class="nc" id="L279">                rpm.markAsDirty();</span>
+<span class="nc" id="L280">                return paintMap(g2d, size, mapViewerBounds, true);</span>
+            }
+            
+<span class="nc" id="L283">            g2d.setColor(Color.BLACK);</span>
+<span class="nc" id="L284">            g2d.drawImage(backBufferImage, 0, 0, null);</span>
+            
+<span class="nc" id="L286">            mapViewerState.getChatDisplay().display(g2d, mapViewerBounds.getSize());</span>
+            
+<span class="nc" id="L288">            return false;</span>
+        }
+
+<span class="nc bnc" id="L291" title="All 2 branches missed.">        if (rpm.isRepaintsBlocked(size)) {</span>
+<span class="nc" id="L292">            final VolatileImage backBufferImage = rpm.getBackBufferImage();</span>
+<span class="nc" id="L293">            g2d.setColor(Color.black);</span>
+<span class="nc" id="L294">            g2d.fillRect(0, 0, size.width, size.height);</span>
+<span class="nc" id="L295">            g2d.drawImage(backBufferImage, 0, 0, null);</span>
+            
+<span class="nc" id="L297">            mapViewerState.getChatDisplay().display(g2d, mapViewerBounds.getSize());</span>
+            
+<span class="nc" id="L299">            return false;</span>
+        }
+
+<span class="nc" id="L302">        return paintMap(g2d, size, mapViewerBounds, true);</span>
+    }
+    
+    /**
+     * Displays the Map.
+     *
+     * @param g2d The {@code Graphics2D} object on which to draw the Map.
+     * @param size The size of the map.
+     * @param mapViewerBounds The bounds to be used when drawing the map. This can be
+     *      a different object than {@link #getMapViewerBounds()} when painting to
+     *      buffers etc.
+     * 
+     * @return {@code true} if the entire map has been repainted.
+     */
+    @SuppressFBWarnings(value=&quot;NP_LOAD_OF_KNOWN_NULL_VALUE&quot;,
+                        justification=&quot;lazy load of extra tiles&quot;)
+    public boolean paintMap(Graphics2D g2d, Dimension size, MapViewerBounds mapViewerBounds) {
+<span class="nc" id="L319">        return paintMap(g2d, size, mapViewerBounds, false);</span>
+    }
+    
+    private boolean paintMap(Graphics2D g2d, Dimension size, MapViewerBounds mapViewerBounds, boolean useBuffers) {
+<span class="nc" id="L323">        final long startMs = now();</span>
+        
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        final Rectangle clipBounds = (useBuffers) ? g2d.getClipBounds() : new Rectangle(0, 0, size.width, size.height);</span>
+<span class="nc bnc" id="L326" title="All 2 branches missed.">        if (mapViewerBounds.getFocus() == null) {</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">            if (g2d != null) {</span>
+<span class="nc" id="L328">                paintBlackBackground(g2d, clipBounds);</span>
+            }
+<span class="nc" id="L330">            return false;</span>
+        }
+        final Rectangle dirtyClipBounds;
+        boolean fullMapRenderedWithoutUsingBackBuffer;
+<span class="nc bnc" id="L334" title="All 2 branches missed.">        if (useBuffers) {</span>
+<span class="nc" id="L335">            fullMapRenderedWithoutUsingBackBuffer = rpm.prepareBuffers(mapViewerBounds, mapViewerBounds.getFocus());</span>
+<span class="nc" id="L336">            dirtyClipBounds = rpm.getDirtyClipBounds();</span>
+<span class="nc bnc" id="L337" title="All 2 branches missed.">            if (rpm.isAllDirty()) {</span>
+<span class="nc" id="L338">                fullMapRenderedWithoutUsingBackBuffer = true;</span>
+            }
+        } else {
+<span class="nc" id="L341">            dirtyClipBounds = clipBounds;</span>
+<span class="nc" id="L342">            fullMapRenderedWithoutUsingBackBuffer = true;</span>
+        }
+        
+        final VolatileImage backBufferImage;
+        final BufferedImage nonAnimationBufferImage;
+        final Graphics2D backBufferG2d;
+        final Graphics2D nonAnimationG2d;
+<span class="nc bnc" id="L349" title="All 2 branches missed.">        if (useBuffers) {</span>
+<span class="nc" id="L350">            backBufferImage = rpm.getBackBufferImage();</span>
+<span class="nc" id="L351">            nonAnimationBufferImage = rpm.getNonAnimationBufferImage();</span>
+<span class="nc" id="L352">            backBufferG2d = backBufferImage.createGraphics();</span>
+<span class="nc" id="L353">            nonAnimationG2d = nonAnimationBufferImage.createGraphics();</span>
+        } else {
+<span class="nc" id="L355">            backBufferImage = null;</span>
+<span class="nc" id="L356">            nonAnimationBufferImage = null;</span>
+<span class="nc" id="L357">            backBufferG2d = g2d;</span>
+<span class="nc" id="L358">            nonAnimationG2d = g2d;</span>
+        }
+        
+<span class="nc" id="L361">        applyRenderingHints(g2d);</span>
+<span class="nc" id="L362">        applyRenderingHints(backBufferG2d);</span>
+<span class="nc" id="L363">        applyRenderingHints(nonAnimationG2d);</span>
+        
+<span class="nc" id="L365">        final AffineTransform backBufferOriginTransform = backBufferG2d.getTransform();</span>
+
+<span class="nc" id="L367">        final Map map = getMap();</span>
+
+        Rectangle allRenderingClipBounds;
+<span class="nc bnc" id="L370" title="All 2 branches missed.">        if (dirtyClipBounds.isEmpty()) {</span>
+<span class="nc" id="L371">            allRenderingClipBounds = clipBounds;</span>
+        } else {
+<span class="nc" id="L373">            allRenderingClipBounds = clipBounds.union(dirtyClipBounds);</span>
+        }
+        
+<span class="nc bnc" id="L376" title="All 2 branches missed.">        if (!getClientOptions().isTerrainAnimationsEnabled()) {</span>
+<span class="nc" id="L377">            allRenderingClipBounds = dirtyClipBounds;</span>
+        }
+        
+<span class="nc" id="L380">        paintBlackBackground(backBufferG2d, allRenderingClipBounds);</span>
+        
+        // Display the animated base tiles:
+<span class="nc" id="L383">        final TileClippingBounds animatedBaseTileTcb = new TileClippingBounds(mapViewerBounds, map, allRenderingClipBounds);</span>
+<span class="nc" id="L384">        final long initMs = now();</span>
+<span class="nc bnc" id="L385" title="All 2 branches missed.">        if (useBuffers) {</span>
+<span class="nc" id="L386">            backBufferG2d.setClip(allRenderingClipBounds);</span>
+        }
+<span class="nc" id="L388">        backBufferG2d.translate(animatedBaseTileTcb.clipLeftX, animatedBaseTileTcb.clipTopY);</span>
+<span class="nc" id="L389">        paintEachTile(backBufferG2d, animatedBaseTileTcb, (tileG2d, tile) -&gt; this.tv.displayAnimatedBaseTiles(tileG2d, tile, false));</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">        if (!useBuffers) {</span>
+<span class="nc" id="L391">            backBufferG2d.translate(-animatedBaseTileTcb.clipLeftX, -animatedBaseTileTcb.clipTopY);</span>
+        }
+               
+        // Display everything else:
+<span class="nc" id="L395">        final long animatedBaseMs = now();</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">        if (!dirtyClipBounds.isEmpty()) {</span>
+<span class="nc" id="L397">            displayToNonAnimationBufferImage(mapViewerBounds, dirtyClipBounds, nonAnimationG2d, map, useBuffers);</span>
+        }
+        
+<span class="nc bnc" id="L400" title="All 2 branches missed.">        if (useBuffers) {</span>
+<span class="nc" id="L401">            nonAnimationG2d.dispose();</span>
+        }
+        
+<span class="nc" id="L404">        final long nonAnimatedMs = now();</span>
+<span class="nc bnc" id="L405" title="All 2 branches missed.">        if (useBuffers) {</span>
+<span class="nc" id="L406">            backBufferG2d.setTransform(backBufferOriginTransform);</span>
+<span class="nc" id="L407">            backBufferG2d.setClip(allRenderingClipBounds);</span>
+<span class="nc" id="L408">            backBufferG2d.drawImage(nonAnimationBufferImage, 0, 0, null);</span>
+<span class="nc" id="L409">            backBufferG2d.dispose();</span>
+<span class="nc" id="L410">            g2d.drawImage(backBufferImage, 0, 0, null);</span>
+        }
+        
+<span class="nc" id="L413">        final long useBuffersMs = now();</span>
+        
+        // Display cursor for selected tile or active unit
+<span class="nc" id="L416">        final Tile cursorTile = getVisibleCursorTile(mapViewerBounds);</span>
+<span class="nc bnc" id="L417" title="All 6 branches missed.">        if (cursorTile != null &amp;&amp; mapViewerState.getCursor().isActive() &amp;&amp; !mapViewerState.getUnitAnimator().isUnitsOutForAnimation()) {</span>
+            /*
+             * The cursor is hidden when units are animated. 
+             */
+<span class="nc" id="L421">            final Point p = mapViewerBounds.calculateTilePosition(cursorTile, false);</span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">            final String key = mapViewerState.getViewMode() == ViewMode.MOVE_UNITS ? ImageLibrary.UNIT_SELECT : ImageLibrary.TILE_SELECT;</span>
+<span class="nc" id="L423">            final BufferedImage image = this.lib.getScaledImage(key);</span>
+<span class="nc" id="L424">            g2d.drawImage(image, p.x - (image.getWidth() - tileBounds.getWidth() ) / 2, p.y - (image.getHeight() - tileBounds.getHeight()) / 2, null);</span>
+        }
+<span class="nc" id="L426">        final long cursorTileMs = now();</span>
+        
+        // Display goto path
+<span class="nc bnc" id="L429" title="All 2 branches missed.">        if (mapViewerState.getGotoPath() != null) {</span>
+<span class="nc" id="L430">            displayPath(g2d, mapViewerState.getGotoPath(), mapViewerBounds);</span>
+<span class="nc bnc" id="L431" title="All 2 branches missed.">        } else if (mapViewerState.getUnitPath() != null) {</span>
+<span class="nc" id="L432">            displayPath(g2d, mapViewerState.getUnitPath(), mapViewerBounds);</span>
+        }
+<span class="nc" id="L434">        final long gotoPathMs = now();</span>
+
+<span class="nc bnc" id="L436" title="All 2 branches missed.">        if (mapViewerState.isRangedAttackMode()</span>
+<span class="nc bnc" id="L437" title="All 2 branches missed.">                &amp;&amp; mapViewerState.getActiveUnit() != null</span>
+<span class="nc bnc" id="L438" title="All 2 branches missed.">                &amp;&amp; mapViewerState.getActiveUnit().getTile() != null) {</span>
+<span class="nc" id="L439">            final BufferedImage rangedTarget = lib.getRangedTargetCrosshair();</span>
+<span class="nc" id="L440">            final Iterable&lt;Tile&gt; possibleTargets = map.getCircleTiles(mapViewerState.getActiveUnit().getTile(),</span>
+                    true,
+<span class="nc" id="L442">                    mapViewerState.getActiveUnit().getType().getAttackRange());</span>
+<span class="nc bnc" id="L443" title="All 2 branches missed.">            for (Tile t : possibleTargets) {</span>
+<span class="nc bnc" id="L444" title="All 2 branches missed.">                if (mapViewerState.getActiveUnit().canAttackRanged(t)) {</span>
+<span class="nc" id="L445">                    final Point point = mapViewerBounds.calculateTilePosition(t, false);</span>
+<span class="nc bnc" id="L446" title="All 2 branches missed.">                    if (point == null) {</span>
+<span class="nc" id="L447">                        continue;</span>
+                    }
+<span class="nc" id="L449">                    g2d.drawImage(rangedTarget,</span>
+<span class="nc" id="L450">                            point.x + (tileBounds.getWidth() - rangedTarget.getWidth()) / 2,</span>
+<span class="nc" id="L451">                            point.y + (tileBounds.getHeight() - rangedTarget.getHeight()) / 2,</span>
+                            null);
+                }
+<span class="nc" id="L454">            }</span>
+        }
+        
+        // Draw the chat
+<span class="nc" id="L458">        mapViewerState.getChatDisplay().display(g2d, mapViewerBounds.getSize());</span>
+<span class="nc" id="L459">        final long chatMs = now();</span>
+
+<span class="nc bnc" id="L461" title="All 2 branches missed.">        if (FreeColDebugger.debugRendering()) {</span>
+<span class="nc" id="L462">            fullyRepaintedAreas.add(dirtyClipBounds);</span>
+<span class="nc" id="L463">            g2d.setColor(new Color(255, 0, 0, 100));</span>
+<span class="nc bnc" id="L464" title="All 2 branches missed.">            for (Rectangle r : fullyRepaintedAreas) {</span>
+<span class="nc" id="L465">                g2d.fill(r);</span>
+<span class="nc" id="L466">            }</span>
+<span class="nc" id="L467">            fullyRepaintedAreas.clear();</span>
+        }
+        
+<span class="nc bnc" id="L470" title="All 2 branches missed.">        if (useBuffers) {</span>
+<span class="nc" id="L471">            verifyAndMarkAsClean(size, clipBounds);</span>
+        }
+        
+        /*
+         * Remove the check for &quot;fullMapRenderedWithoutUsingBackBuffer&quot; to get every repaint
+         * logged: This includes several animations per second.
+         */
+<span class="nc bnc" id="L478" title="All 4 branches missed.">        if (fullMapRenderedWithoutUsingBackBuffer &amp;&amp; logger.isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L479">            final long endMs = now();</span>
+<span class="nc" id="L480">            final long gap = endMs - startMs;</span>
+<span class="nc" id="L481">            final StringBuilder sb = new StringBuilder(128);</span>
+<span class="nc" id="L482">            sb.append(&quot;displayMap fullRendering=&quot;).append(fullMapRenderedWithoutUsingBackBuffer)</span>
+<span class="nc" id="L483">                .append(&quot; time= &quot;).append(gap)</span>
+<span class="nc" id="L484">                .append(&quot; init=&quot;).append(initMs - startMs)</span>
+<span class="nc" id="L485">                .append(&quot; animated=&quot;).append(animatedBaseMs - initMs)</span>
+<span class="nc" id="L486">                .append(&quot; displayNonAnimationImages=&quot;).append(nonAnimatedMs - animatedBaseMs)</span>
+<span class="nc" id="L487">                .append(&quot; buffers=&quot;).append(useBuffersMs - nonAnimatedMs)</span>
+<span class="nc" id="L488">                .append(&quot; cursorTile=&quot;).append(cursorTileMs - useBuffersMs)</span>
+<span class="nc" id="L489">                .append(&quot; goto=&quot;).append(gotoPathMs - cursorTileMs)</span>
+<span class="nc" id="L490">                .append(&quot; chat=&quot;).append(chatMs - gotoPathMs)</span>
+<span class="nc" id="L491">                .append(&quot; finish=&quot;).append(endMs - chatMs)</span>
+                ;
+<span class="nc" id="L493">            logger.finest(sb.toString());</span>
+        }
+                
+<span class="nc" id="L496">        return fullMapRenderedWithoutUsingBackBuffer;</span>
+    }
+
+    private void applyRenderingHints(Graphics2D g2d) {
+<span class="nc bnc" id="L500" title="All 2 branches missed.">        if (getClientOptions().getRange(ClientOptions.GRAPHICS_QUALITY) == ClientOptions.GRAPHICS_QUALITY_LOWEST) {</span>
+<span class="nc" id="L501">            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);</span>
+<span class="nc" id="L502">            g2d.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_SPEED);</span>
+<span class="nc" id="L503">            g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_SPEED);</span>
+<span class="nc" id="L504">            g2d.setRenderingHint(RenderingHints.KEY_DITHERING, RenderingHints.VALUE_DITHER_DISABLE);</span>
+<span class="nc" id="L505">            g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_OFF);</span>
+<span class="nc" id="L506">            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);</span>
+<span class="nc" id="L507">            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);</span>
+<span class="nc" id="L508">            g2d.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_DEFAULT);</span>
+<span class="nc" id="L509">            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);</span>
+        }
+<span class="nc" id="L511">    }</span>
+
+
+    /**
+     * Paints the dirty tiles to the buffers. The screen will
+     * be updated the next time {@link #displayMap(Graphics2D, Dimension)}
+     * gets called.
+     * 
+     * This is used for handling several small dirty areas that would otherwise
+     * force a full repaint since the bounding box covers the entire screen.
+     * An example of this is diagonal scrolling.
+     */
+    public void paintImmediatelyToBuffersOnly() {
+<span class="nc bnc" id="L524" title="All 2 branches missed.">        if (mapViewerBounds.getFocus() == null</span>
+<span class="nc bnc" id="L525" title="All 2 branches missed.">                || rpm.isRepaintsBlocked(mapViewerBounds.getSize())) {</span>
+<span class="nc" id="L526">            return;</span>
+        }
+        
+<span class="nc" id="L529">        rpm.prepareBuffers(mapViewerBounds, mapViewerBounds.getFocus());</span>
+<span class="nc" id="L530">        final Rectangle dirtyClipBounds = rpm.getDirtyClipBounds();</span>
+        
+<span class="nc bnc" id="L532" title="All 2 branches missed.">        if (dirtyClipBounds.isEmpty()) {</span>
+<span class="nc" id="L533">            return;</span>
+        }
+        
+<span class="nc" id="L536">        final BufferedImage nonAnimationBufferImage = rpm.getNonAnimationBufferImage();</span>
+<span class="nc" id="L537">        final Map map = getMap();</span>
+<span class="nc" id="L538">        final Graphics2D nonAnimationG2d = nonAnimationBufferImage.createGraphics();</span>
+<span class="nc" id="L539">        displayToNonAnimationBufferImage(mapViewerBounds, dirtyClipBounds, nonAnimationG2d, map, true);</span>
+<span class="nc" id="L540">        nonAnimationG2d.dispose();</span>
+<span class="nc bnc" id="L541" title="All 2 branches missed.">        if (FreeColDebugger.debugRendering()) {</span>
+<span class="nc" id="L542">            fullyRepaintedAreas.add(dirtyClipBounds);</span>
+        }
+<span class="nc" id="L544">        rpm.markAsClean();</span>
+<span class="nc" id="L545">    }</span>
+
+    private void displayToNonAnimationBufferImage(MapViewerBounds mapViewerBounds, Rectangle dirtyClipBounds, Graphics2D nonAnimationG2d, Map map, boolean useBuffers) {
+<span class="nc" id="L548">        final TileClippingBounds tcb = new TileClippingBounds(mapViewerBounds, map, dirtyClipBounds);</span>
+<span class="nc" id="L549">        displayNonAnimationImages(nonAnimationG2d, dirtyClipBounds, tcb, useBuffers);</span>
+<span class="nc" id="L550">    }</span>
+
+    private void displayNonAnimationImages(Graphics2D nonAnimationG2d,
+            Rectangle clipBounds,
+            TileClippingBounds tcb,
+            boolean useBuffers) {
+        
+<span class="nc" id="L557">        long startMs = now();</span>
+<span class="nc" id="L558">        final Player player = getMyPlayer(); // Check, can be null in map editor</span>
+<span class="nc" id="L559">        final ClientOptions options = getClientOptions();</span>
+        
+        /* For settlement names and territorial borders 1 extra row needs
+        to be drawn in north to prevent missing parts on partial redraws,
+        as they can reach below their tiles, see BR#2580 */
+        
+<span class="nc bnc" id="L565" title="All 2 branches missed.">        if (useBuffers) {</span>
+<span class="nc" id="L566">            nonAnimationG2d.setComposite(AlphaComposite.Clear);</span>
+<span class="nc" id="L567">            nonAnimationG2d.fill(clipBounds);</span>
+<span class="nc" id="L568">            nonAnimationG2d.setComposite(AlphaComposite.SrcOver);</span>
+<span class="nc" id="L569">            nonAnimationG2d.setClip(clipBounds);</span>
+        }
+<span class="nc" id="L571">        nonAnimationG2d.translate(tcb.clipLeftX, tcb.clipTopY);</span>
+        
+<span class="nc" id="L573">        long initMs = now();</span>
+        
+<span class="nc" id="L575">        paintEachTile(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; this.tv.displayTileWithBeach(tileG2d, tile));</span>
+        
+<span class="nc" id="L577">        nonAnimationG2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING,</span>
+                RenderingHints.VALUE_ANTIALIAS_ON);
+        
+        // Display the borders
+<span class="nc" id="L581">        long baseTileMs = now();</span>
+<span class="nc" id="L582">        paintEachTile(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; {</span>
+<span class="nc bnc" id="L583" title="All 2 branches missed.">            if (getClientOptions().isRiverAnimationEnabled()</span>
+<span class="nc bnc" id="L584" title="All 4 branches missed.">                    &amp;&amp; (tile.hasRiver() || tv.hasRiverDelta(tile))) {</span>
+<span class="nc" id="L585">                return;</span>
+            }
+<span class="nc" id="L587">            this.tv.drawBaseTileTransitions(tileG2d, tile);</span>
+<span class="nc" id="L588">        });</span>
+
+        // Draw the grid, if needed
+<span class="nc" id="L591">        long tileTransitionsMs = now();</span>
+<span class="nc" id="L592">        displayGrid(nonAnimationG2d, options, tcb);</span>
+        
+        // Paint full region borders
+<span class="nc bnc" id="L595" title="All 2 branches missed.">        if (options.getInteger(ClientOptions.DISPLAY_TILE_TEXT) == ClientOptions.DISPLAY_TILE_TEXT_REGIONS) {</span>
+<span class="nc" id="L596">            paintEachTileWithExtendedImageSize(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; displayTerritorialBorders(tileG2d, tile, BorderType.REGION, true));</span>
+        }
+
+        // Paint full country borders
+<span class="nc bnc" id="L600" title="All 2 branches missed.">        if (options.getBoolean(ClientOptions.DISPLAY_BORDERS)) {</span>
+<span class="nc" id="L601">            paintEachTileWithExtendedImageSize(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; displayTerritorialBorders(tileG2d, tile, BorderType.COUNTRY, true));</span>
+        }
+
+        // Apply fog of war to flat parts of all tiles
+<span class="nc" id="L605">        long gridAndBordersMs = now();</span>
+<span class="nc" id="L606">        nonAnimationG2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING,</span>
+                             RenderingHints.VALUE_ANTIALIAS_OFF);
+        final RescaleOp fow;
+<span class="nc bnc" id="L609" title="All 2 branches missed.">        if (shouldFogOfWarBeDisplayed(player, options)) {</span>
+            // Knowing that we have FOW, prepare a rescaling for the
+            // overlay step below.
+<span class="nc" id="L612">            fow = new RescaleOp(new float[] { 0.8f, 0.8f, 0.8f, 1f },</span>
+                                new float[] { 0, 0, 0, 0 },
+                                null);
+
+<span class="nc" id="L616">            final Composite oldComposite = nonAnimationG2d.getComposite();</span>
+<span class="nc" id="L617">            nonAnimationG2d.setColor(Color.BLACK);</span>
+<span class="nc" id="L618">            nonAnimationG2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,</span>
+                                                        0.2f));
+            
+<span class="nc" id="L621">            paintEachTile(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; {</span>
+<span class="nc bnc" id="L622" title="All 4 branches missed.">                if (!tile.isExplored() || player.canSee(tile)) {</span>
+<span class="nc" id="L623">                    return;</span>
+                }
+<span class="nc" id="L625">                tileG2d.fill(mapViewerScaledUtils.getFog());</span>
+<span class="nc" id="L626">            });</span>
+<span class="nc" id="L627">            nonAnimationG2d.setComposite(oldComposite);</span>
+<span class="nc" id="L628">        } else {</span>
+<span class="nc" id="L629">            fow = null;</span>
+        }
+        
+        // Display unknown tile borders:
+<span class="nc" id="L633">        long fogOfWarMs = now();</span>
+<span class="nc" id="L634">        paintEachTile(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; this.tv.displayUnknownTileBorder(tileG2d, tile));</span>
+
+        // Display the Tile overlays
+<span class="nc" id="L637">        long nonExplored = now();</span>
+<span class="nc" id="L638">        final int colonyLabels = options.getInteger(ClientOptions.DISPLAY_COLONY_LABELS);</span>
+<span class="nc bnc" id="L639" title="All 2 branches missed.">        boolean withNumbers = (colonyLabels == ClientOptions.COLONY_LABELS_CLASSIC);</span>
+<span class="nc" id="L640">        paintEachTileWithExtendedImageSize(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; {</span>
+<span class="nc bnc" id="L641" title="All 2 branches missed.">            if (!tile.isExplored()) {</span>
+<span class="nc" id="L642">                return;</span>
+            }
+<span class="nc" id="L644">            BufferedImage overlayImage = this.lib.getScaledOverlayImage(tile);</span>
+<span class="nc bnc" id="L645" title="All 4 branches missed.">            RescaleOp rop = (player == null || player.canSee(tile)) ? null : fow;</span>
+<span class="nc" id="L646">            this.tv.displayTileItems(tileG2d, tile, rop, overlayImage);</span>
+<span class="nc" id="L647">            this.tv.displaySettlementWithChipsOrPopulationNumber(tileG2d, tile,</span>
+                withNumbers, rop);
+<span class="nc" id="L649">            this.tv.displayOptionalTileText(tileG2d, tile);</span>
+<span class="nc" id="L650">        });</span>
+        
+        // Paint transparent region borders
+<span class="nc" id="L653">        long tileOverlaysMs = now();</span>
+<span class="nc" id="L654">        nonAnimationG2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING,</span>
+                             RenderingHints.VALUE_ANTIALIAS_ON);
+<span class="nc bnc" id="L656" title="All 2 branches missed.">        if (options.getInteger(ClientOptions.DISPLAY_TILE_TEXT) == ClientOptions.DISPLAY_TILE_TEXT_REGIONS) {</span>
+<span class="nc" id="L657">            paintEachTileWithExtendedImageSize(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; displayTerritorialBorders(tileG2d, tile, BorderType.REGION, false));</span>
+        }
+
+        // Paint transparent country borders
+<span class="nc bnc" id="L661" title="All 2 branches missed.">        if (options.getBoolean(ClientOptions.DISPLAY_BORDERS)) {</span>
+<span class="nc" id="L662">            paintEachTileWithExtendedImageSize(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; displayTerritorialBorders(tileG2d, tile, BorderType.COUNTRY, false));</span>
+        }
+
+        // Display units
+<span class="nc" id="L666">        long transparentBordersMs = now();</span>
+<span class="nc" id="L667">        nonAnimationG2d.setColor(Color.BLACK);</span>
+<span class="nc" id="L668">        final boolean revengeMode = getGame().isInRevengeMode();</span>
+<span class="nc bnc" id="L669" title="All 2 branches missed.">        if (!revengeMode) {</span>
+<span class="nc" id="L670">            paintEachTile(nonAnimationG2d, tcb.getTopLeftDirtyTile(), tcb.getUnitTiles(), (tileG2d, tile) -&gt; {</span>
+<span class="nc" id="L671">                final Unit unit = mapViewerState.findUnitInFront(tile);</span>
+<span class="nc bnc" id="L672" title="All 4 branches missed.">                if (unit == null || mapViewerState.getUnitAnimator().isOutForAnimation(unit)) {</span>
+<span class="nc" id="L673">                    return;</span>
+                }
+<span class="nc" id="L675">                displayUnit(tileG2d, unit);</span>
+<span class="nc" id="L676">            });</span>
+        } else {
+<span class="nc" id="L678">            final BufferedImage darkness = this.lib.getScaledImage(ImageLibrary.DARKNESS);</span>
+<span class="nc" id="L679">            paintEachTileWithSuperExtendedImageSize(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; {</span>
+<span class="nc" id="L680">                final Unit unit = mapViewerState.findUnitInFront(tile);</span>
+<span class="nc bnc" id="L681" title="All 4 branches missed.">                if (unit == null || mapViewerState.getUnitAnimator().isOutForAnimation(unit)) {</span>
+<span class="nc" id="L682">                    return;</span>
+                }
+                
+<span class="nc bnc" id="L685" title="All 2 branches missed.">                if (unit.isUndead()) {</span>
+<span class="nc" id="L686">                    this.tv.displayCenteredImage(tileG2d, darkness);</span>
+                }
+<span class="nc" id="L688">                displayUnit(tileG2d, unit);</span>
+
+<span class="nc" id="L690">            });</span>
+        }
+        
+<span class="nc" id="L693">        long unitsMs = now();</span>
+<span class="nc" id="L694">        paintEachTileWithExtendedImageSize(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; {</span>
+<span class="nc bnc" id="L695" title="All 2 branches missed.">            if (!tile.isExplored()) {</span>
+<span class="nc" id="L696">                return;</span>
+            }
+<span class="nc" id="L698">            BufferedImage overlayImage = this.lib.getScaledAboveTileImage(tile);</span>
+<span class="nc bnc" id="L699" title="All 2 branches missed.">            if (overlayImage != null) {</span>
+<span class="nc" id="L700">            	tileG2d.drawImage(overlayImage,</span>
+<span class="nc" id="L701">            			(tileBounds.getWidth() - overlayImage.getWidth()) / 2,</span>
+<span class="nc" id="L702">            			(tileBounds.getHeight() - overlayImage.getHeight()) / 2,</span>
+            			null);
+            }
+<span class="nc" id="L705">        });</span>
+        
+<span class="nc" id="L707">        displayDebugAiDefensiveMap(nonAnimationG2d, tcb);</span>
+        
+<span class="nc" id="L709">        displayAreasInMapEditor(nonAnimationG2d, tcb);</span>
+
+        // Display the colony names, if needed
+<span class="nc" id="L712">        long aboveAndCloudsMs = now();</span>
+<span class="nc bnc" id="L713" title="All 2 branches missed.">        if (colonyLabels != ClientOptions.COLONY_LABELS_NONE) {</span>
+<span class="nc" id="L714">            paintEachTileWithExtendedImageSize(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; {</span>
+<span class="nc" id="L715">                final Settlement settlement = tile.getSettlement();</span>
+<span class="nc bnc" id="L716" title="All 2 branches missed.">                if (settlement == null) {</span>
+<span class="nc" id="L717">                    return;</span>
+                }
+<span class="nc bnc" id="L719" title="All 4 branches missed.">                final RescaleOp rop = (player == null || player.canSee(tile)) ? null : fow;</span>
+<span class="nc" id="L720">                displaySettlementLabels(tileG2d, settlement, player, colonyLabels, rop);</span>
+<span class="nc" id="L721">            });</span>
+        }
+        
+<span class="nc" id="L724">        long colonyNamesMs = now();</span>
+        
+<span class="nc bnc" id="L726" title="All 2 branches missed.">        if (!useBuffers) {</span>
+<span class="nc" id="L727">            nonAnimationG2d.translate(-tcb.clipLeftX, -tcb.clipTopY);</span>
+        }
+        
+<span class="nc bnc" id="L730" title="All 2 branches missed.">        if (logger.isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L731">            final long gap = now() - startMs;</span>
+<span class="nc" id="L732">            final Map.Position bottomRight = tcb.getBottomRightDirtyTile();</span>
+<span class="nc" id="L733">            final Map.Position topLeft = tcb.getTopLeftDirtyTile();</span>
+<span class="nc" id="L734">            final double avg = ((double)gap)</span>
+<span class="nc" id="L735">                    / ((bottomRight.getX() - topLeft.getX())</span>
+<span class="nc" id="L736">                        * (bottomRight.getY() - topLeft.getY()));</span>
+<span class="nc" id="L737">            final StringBuilder sb = new StringBuilder(128);</span>
+<span class="nc" id="L738">            sb.append(&quot;displayNonAnimationImages time = &quot;).append(gap)</span>
+<span class="nc" id="L739">            .append(&quot; for &quot;).append(tcb.getTopLeftDirtyTile())</span>
+<span class="nc" id="L740">            .append(&quot; to &quot;).append(tcb.getBottomRightDirtyTile())</span>
+<span class="nc" id="L741">                .append(&quot; average &quot;).append(avg)</span>
+<span class="nc" id="L742">                .append(&quot; init=&quot;).append(initMs - startMs)</span>
+<span class="nc" id="L743">                .append(&quot; baseTile=&quot;).append(baseTileMs - initMs)</span>
+<span class="nc" id="L744">                .append(&quot; tileTransitions=&quot;).append(tileTransitionsMs - baseTileMs)</span>
+<span class="nc" id="L745">                .append(&quot; gridAndBorders=&quot;).append(gridAndBordersMs - tileTransitionsMs)</span>
+<span class="nc" id="L746">                .append(&quot; fogOfWar=&quot;).append(fogOfWarMs - gridAndBordersMs)</span>
+<span class="nc" id="L747">                .append(&quot; nonExplored=&quot;).append(nonExplored - fogOfWarMs)</span>
+<span class="nc" id="L748">                .append(&quot; tileOverlays=&quot;).append(tileOverlaysMs - nonExplored)</span>
+<span class="nc" id="L749">                .append(&quot; transparentBorders=&quot;).append(transparentBordersMs - tileOverlaysMs)</span>
+<span class="nc" id="L750">                .append(&quot; units=&quot;).append(unitsMs - transparentBordersMs)</span>
+<span class="nc" id="L751">                .append(&quot; aboveAndClouds=&quot;).append(aboveAndCloudsMs - unitsMs)</span>
+<span class="nc" id="L752">                .append(&quot; colonyNames=&quot;).append(colonyNamesMs - aboveAndCloudsMs)</span>
+                ;
+<span class="nc" id="L754">            logger.finest(sb.toString());</span>
+        }
+<span class="nc" id="L756">    }</span>
+
+
+    private void displayAreasInMapEditor(Graphics2D nonAnimationG2d, TileClippingBounds tcb) {
+<span class="nc bnc" id="L760" title="All 2 branches missed.">        if (!getFreeColClient().isMapEditor()) {</span>
+<span class="nc" id="L761">            return;</span>
+        }
+<span class="nc" id="L763">        final MapEditorController mec = getFreeColClient().getMapEditorController();</span>
+<span class="nc bnc" id="L764" title="All 2 branches missed.">        if (!mec.isDisplayAreas()) {</span>
+<span class="nc" id="L765">            return;</span>
+        }
+        
+<span class="nc" id="L768">        final Object oldAntialiasingHint = nonAnimationG2d.getRenderingHint(RenderingHints.KEY_ANTIALIASING);</span>
+<span class="nc" id="L769">        nonAnimationG2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);</span>
+
+<span class="nc" id="L771">        final Composite oldComposite = nonAnimationG2d.getComposite();</span>
+<span class="nc" id="L772">        nonAnimationG2d.setColor(Color.BLACK);</span>
+<span class="nc" id="L773">        nonAnimationG2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));</span>
+         
+<span class="nc" id="L775">        final Color oldColor = nonAnimationG2d.getColor();</span>
+        
+<span class="nc" id="L777">        final GeneralPath baseTileOutline = mapViewerScaledUtils.getBaseTileOutline();</span>
+<span class="nc" id="L778">        paintEachTile(nonAnimationG2d, tcb, (tileG2d, tile) -&gt; {</span>
+            // This can easily be optimized if slow on some systems.
+<span class="nc" id="L780">            final List&lt;Area&gt; areas = getGame().getAreas().stream()</span>
+<span class="nc" id="L781">                    .filter(a -&gt; a.containsTile(tile))</span>
+<span class="nc" id="L782">                    .filter(a -&gt; mec.isAreaVisible(a))</span>
+<span class="nc" id="L783">                    .collect(Collectors.toList());</span>
+<span class="nc bnc" id="L784" title="All 2 branches missed.">            if (areas.isEmpty()) {</span>
+<span class="nc" id="L785">                return;</span>
+            }
+<span class="nc bnc" id="L787" title="All 2 branches missed.">            if (areas.size() == 1) {</span>
+<span class="nc" id="L788">                final Area area = areas.get(0);</span>
+<span class="nc" id="L789">                tileG2d.setColor(area.getColor());</span>
+<span class="nc" id="L790">                tileG2d.fill(baseTileOutline);</span>
+<span class="nc" id="L791">                return;</span>
+            }
+            
+<span class="nc" id="L794">            final Shape oldClip = tileG2d.getClip();</span>
+<span class="nc" id="L795">            final Stroke oldStroke = tileG2d.getStroke();</span>
+<span class="nc" id="L796">            tileG2d.setClip(baseTileOutline);</span>
+            
+<span class="nc" id="L798">            final int stepSize = lib.scaleInt(4);</span>
+<span class="nc" id="L799">            tileG2d.setStroke(new BasicStroke(stepSize));</span>
+            
+<span class="nc" id="L801">            int step = 0;</span>
+<span class="nc" id="L802">            int index = 0;</span>
+<span class="nc bnc" id="L803" title="All 2 branches missed.">            while (step * stepSize &lt; tileBounds.getHeight()) {</span>
+<span class="nc" id="L804">                final Area area = areas.get(index);</span>
+<span class="nc" id="L805">                tileG2d.setColor(area.getColor());</span>
+<span class="nc" id="L806">                tileG2d.drawLine(0, step*stepSize, tileBounds.getWidth(), step*stepSize);</span>
+                
+<span class="nc" id="L808">                step++;</span>
+<span class="nc" id="L809">                index++;</span>
+<span class="nc bnc" id="L810" title="All 2 branches missed.">                if (index == areas.size()) {</span>
+<span class="nc" id="L811">                    index = 0;</span>
+                }
+<span class="nc" id="L813">            }</span>
+            
+<span class="nc" id="L815">            tileG2d.setClip(oldClip);</span>
+<span class="nc" id="L816">            tileG2d.setStroke(oldStroke);</span>
+<span class="nc" id="L817">        });</span>
+<span class="nc" id="L818">        nonAnimationG2d.setColor(oldColor);</span>
+<span class="nc" id="L819">        nonAnimationG2d.setComposite(oldComposite);</span>
+<span class="nc" id="L820">        nonAnimationG2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAntialiasingHint);</span>
+<span class="nc" id="L821">    }</span>
+
+    private void displayDebugAiDefensiveMap(Graphics2D nonAnimationG2d, TileClippingBounds tcb) {
+<span class="nc bnc" id="L824" title="All 2 branches missed.">        if (FreeColDebugger.debugShowDefenceMapForPlayer() != null</span>
+<span class="nc bnc" id="L825" title="All 2 branches missed.">                &amp;&amp; getFreeColServer() != null</span>
+<span class="nc bnc" id="L826" title="All 2 branches missed.">                &amp;&amp; getFreeColServer().getAIMain() != null) {</span>
+<span class="nc" id="L827">            final AIObject aiObject = getFreeColServer().getAIMain().getAIObject(FreeColDebugger.debugShowDefenceMapForPlayer().getId());</span>
+<span class="nc bnc" id="L828" title="All 4 branches missed.">            if (aiObject != null &amp;&amp; aiObject instanceof EuropeanAIPlayer) {</span>
+<span class="nc" id="L829">                final EuropeanAIPlayer eap = (EuropeanAIPlayer) aiObject;</span>
+<span class="nc" id="L830">                final DefensiveMap defensiveMap = DefensiveMap.createDefensiveMap(eap);</span>
+<span class="nc" id="L831">                paintEachTile(nonAnimationG2d, tcb.getTopLeftDirtyTile(), tcb.getBaseTiles(), (tileG2d, tile) -&gt; {</span>
+<span class="nc" id="L832">                    final DefensiveZone defensiveZone = defensiveMap.getDefensiveZone(tile);</span>
+<span class="nc bnc" id="L833" title="All 2 branches missed.">                    if (defensiveZone == null) {</span>
+<span class="nc" id="L834">                        return;</span>
+                    }
+<span class="nc bnc" id="L836" title="All 2 branches missed.">                    if (defensiveZone.getNumberOfMilitaryEnemies() &gt; 0) {</span>
+<span class="nc" id="L837">                        tileG2d.setColor(new Color(255, 0, 0, 150));</span>
+<span class="nc bnc" id="L838" title="All 2 branches missed.">                    } else if (defensiveZone.isEnemiesInNeighbour()) {</span>
+<span class="nc" id="L839">                        tileG2d.setColor(new Color(255, 100, 100, 150));</span>
+<span class="nc bnc" id="L840" title="All 2 branches missed.">                    } else if (defensiveZone.isExposed()) {</span>
+<span class="nc" id="L841">                        tileG2d.setColor(new Color(255, 255, 0, 150));</span>
+                    } else {
+<span class="nc" id="L843">                        tileG2d.setColor(new Color(0, 255, 0, 150));</span>
+                    }
+<span class="nc" id="L845">                    tileG2d.fill(mapViewerScaledUtils.getFog());</span>
+<span class="nc" id="L846">                });</span>
+            }
+        }
+<span class="nc" id="L849">    }</span>
+
+    private boolean shouldFogOfWarBeDisplayed(final Player player, final ClientOptions options) {
+<span class="nc bnc" id="L852" title="All 6 branches missed.">        return player != null &amp;&amp; getSpecification().getBoolean(GameOptions.FOG_OF_WAR) &amp;&amp; options.getBoolean(ClientOptions.DISPLAY_FOG_OF_WAR);</span>
+    }
+
+    private void displayGrid(Graphics2D g2d, final ClientOptions options, final TileClippingBounds tcb) {
+<span class="nc bnc" id="L856" title="All 2 branches missed.">        if (options.getBoolean(ClientOptions.DISPLAY_GRID)) {</span>
+            // Generate a zigzag GeneralPath
+<span class="nc" id="L858">            final AffineTransform baseTransform = g2d.getTransform();</span>
+<span class="nc" id="L859">            GeneralPath gridPath = new GeneralPath();</span>
+<span class="nc" id="L860">            gridPath.moveTo(0, 0);</span>
+<span class="nc" id="L861">            int nextX = tileBounds.getHalfWidth();</span>
+<span class="nc" id="L862">            int nextY = -tileBounds.getHalfHeight();</span>
+<span class="nc bnc" id="L863" title="All 2 branches missed.">            for (int i = 0; i &lt;= ((tcb.getBottomRightDirtyTile().getX() - tcb.getTopLeftDirtyTile().getX()) * 2 + 1); i++) {</span>
+<span class="nc" id="L864">                gridPath.lineTo(nextX, nextY);</span>
+<span class="nc" id="L865">                nextX += tileBounds.getHalfWidth();</span>
+<span class="nc bnc" id="L866" title="All 2 branches missed.">                nextY = (nextY == 0) ? -tileBounds.getHalfHeight() : 0;</span>
+            }
+
+            // Display the grid
+<span class="nc" id="L870">            g2d.setStroke(mapViewerScaledUtils.getGridStroke());</span>
+<span class="nc" id="L871">            g2d.setColor(Color.BLACK);</span>
+<span class="nc bnc" id="L872" title="All 2 branches missed.">            for (int row = tcb.getTopLeftDirtyTile().getY(); row &lt;= tcb.getBottomRightDirtyTile().getY(); row++) {</span>
+<span class="nc" id="L873">                g2d.translate(0, tileBounds.getHalfHeight());</span>
+<span class="nc" id="L874">                AffineTransform rowTransform = g2d.getTransform();</span>
+<span class="nc bnc" id="L875" title="All 2 branches missed.">                if ((row &amp; 1) == 1) {</span>
+<span class="nc" id="L876">                    g2d.translate(tileBounds.getHalfWidth(), 0);</span>
+                }
+<span class="nc" id="L878">                g2d.draw(gridPath);</span>
+<span class="nc" id="L879">                g2d.setTransform(rowTransform);</span>
+            }
+<span class="nc" id="L881">            g2d.setTransform(baseTransform);</span>
+        }
+<span class="nc" id="L883">    }</span>
+    
+    private void paintBlackBackground(Graphics2D g2d, final Rectangle rectangle) {
+<span class="nc" id="L886">        g2d.setColor(Color.black);</span>
+<span class="nc" id="L887">        g2d.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);</span>
+<span class="nc" id="L888">    }</span>
+
+    private void displaySettlementLabels(Graphics2D g2d, Settlement settlement,
+                                         Player player, int colonyLabels,
+                                         RescaleOp rop) {
+<span class="nc bnc" id="L893" title="All 2 branches missed.">        if (settlement.isDisposed()) {</span>
+<span class="nc" id="L894">            logger.warning(&quot;Settlement display race detected: &quot;</span>
+<span class="nc" id="L895">                           + settlement.getName());</span>
+<span class="nc" id="L896">            return;</span>
+        }
+<span class="nc" id="L898">        String name = Messages.message(settlement.getLocationLabelFor(player));</span>
+<span class="nc bnc" id="L899" title="All 2 branches missed.">        if (name == null) return;</span>
+
+<span class="nc" id="L901">        Color backgroundColor = settlement.getOwner().getNationColor();</span>
+<span class="nc bnc" id="L902" title="All 2 branches missed.">        if (backgroundColor == null) backgroundColor = Color.WHITE;</span>
+        // int yOffset = this.lib.getSettlementImage(settlement).getHeight() + 1;
+<span class="nc" id="L904">        int yOffset = tileBounds.getHeight();</span>
+<span class="nc bnc" id="L905" title="All 2 branches missed.">        switch (colonyLabels) {</span>
+        case ClientOptions.COLONY_LABELS_CLASSIC:
+<span class="nc" id="L907">            BufferedImage img = this.lib.getStringImage(g2d, name, backgroundColor,</span>
+<span class="nc" id="L908">                    mapViewerScaledUtils.getFontNormal());</span>
+<span class="nc" id="L909">            g2d.drawImage(img, rop, (tileBounds.getWidth() - img.getWidth())/2 + 1,</span>
+                          yOffset);
+<span class="nc" id="L911">            break;</span>
+
+        case ClientOptions.COLONY_LABELS_MODERN:
+        default:
+<span class="nc" id="L915">            backgroundColor = new Color(backgroundColor.getRed(),</span>
+<span class="nc" id="L916">                                        backgroundColor.getGreen(),</span>
+<span class="nc" id="L917">                                        backgroundColor.getBlue(), 128);</span>
+<span class="nc" id="L918">            TextSpecification[] specs = new TextSpecification[1];</span>
+<span class="nc bnc" id="L919" title="All 2 branches missed.">            if (settlement instanceof Colony</span>
+<span class="nc bnc" id="L920" title="All 2 branches missed.">                &amp;&amp; settlement.getOwner() == player) {</span>
+<span class="nc" id="L921">                Colony colony = (Colony) settlement;</span>
+<span class="nc" id="L922">                BuildableType buildable = colony.getCurrentlyBuilding();</span>
+<span class="nc bnc" id="L923" title="All 4 branches missed.">                if (buildable != null &amp;&amp; mapViewerScaledUtils.getFontProduction() != null) {</span>
+<span class="nc" id="L924">                    specs = new TextSpecification[2];</span>
+<span class="nc" id="L925">                    String t = Messages.getName(buildable) + &quot; &quot; +</span>
+<span class="nc" id="L926">                        Turn.getTurnsText(colony.getTurnsToComplete(buildable));</span>
+<span class="nc" id="L927">                    specs[1] = new TextSpecification(t, mapViewerScaledUtils.getFontProduction());</span>
+                }
+            }
+<span class="nc" id="L930">            specs[0] = new TextSpecification(name, mapViewerScaledUtils.getFontNormal());</span>
+
+<span class="nc" id="L932">            BufferedImage nameImage = createLabel(g2d, specs, backgroundColor);</span>
+<span class="nc" id="L933">            int spacing = this.lib.scaleInt(3);</span>
+<span class="nc" id="L934">            BufferedImage leftImage = null;</span>
+<span class="nc" id="L935">            BufferedImage rightImage = null;</span>
+<span class="nc bnc" id="L936" title="All 2 branches missed.">            if (settlement instanceof Colony) {</span>
+<span class="nc" id="L937">                Colony colony = (Colony)settlement;</span>
+<span class="nc" id="L938">                String string = Integer.toString(colony.getApparentUnitCount());</span>
+<span class="nc" id="L939">                leftImage = createLabel(g2d, string,</span>
+<span class="nc bnc" id="L940" title="All 2 branches missed.">                    ((colony.getPreferredSizeChange() &gt; 0)</span>
+<span class="nc" id="L941">                        ? mapViewerScaledUtils.getFontItalic() : mapViewerScaledUtils.getFontNormal()),</span>
+                    backgroundColor);
+<span class="nc bnc" id="L943" title="All 2 branches missed.">                if (player.owns(settlement)) {</span>
+<span class="nc" id="L944">                    int bonusProduction = colony.getProductionBonus();</span>
+<span class="nc bnc" id="L945" title="All 2 branches missed.">                    if (bonusProduction != 0) {</span>
+<span class="nc bnc" id="L946" title="All 2 branches missed.">                        String bonus = (bonusProduction &gt; 0)</span>
+<span class="nc" id="L947">                            ? &quot;+&quot; + bonusProduction</span>
+<span class="nc" id="L948">                            : Integer.toString(bonusProduction);</span>
+<span class="nc" id="L949">                        rightImage = createLabel(g2d, bonus, mapViewerScaledUtils.getFontNormal(),</span>
+                                                 backgroundColor);
+                    }
+                }
+<span class="nc bnc" id="L953" title="All 2 branches missed.">            } else if (settlement instanceof IndianSettlement) {</span>
+<span class="nc" id="L954">                IndianSettlement is = (IndianSettlement) settlement;</span>
+<span class="nc bnc" id="L955" title="All 2 branches missed.">                if (is.getType().isCapital()) {</span>
+<span class="nc" id="L956">                    leftImage = createCapitalLabel(nameImage.getHeight(),</span>
+                        5, backgroundColor);
+                }
+                
+<span class="nc" id="L960">                Unit missionary = is.getMissionary();</span>
+<span class="nc bnc" id="L961" title="All 2 branches missed.">                if (missionary != null) {</span>
+<span class="nc" id="L962">                    boolean expert = missionary.hasAbility(Ability.EXPERT_MISSIONARY);</span>
+<span class="nc" id="L963">                    backgroundColor = missionary.getOwner().getNationColor();</span>
+<span class="nc" id="L964">                    backgroundColor = new Color(backgroundColor.getRed(),</span>
+<span class="nc" id="L965">                                                backgroundColor.getGreen(),</span>
+<span class="nc" id="L966">                                                backgroundColor.getBlue(), 128);</span>
+<span class="nc" id="L967">                    rightImage = createReligiousMissionLabel(nameImage.getHeight(), 5,</span>
+                                                             backgroundColor, expert);
+                }
+            }
+            
+<span class="nc" id="L972">            int xOffset = tileBounds.getWidth() / 2 - nameImage.getWidth() / 2</span>
+<span class="nc bnc" id="L973" title="All 2 branches missed.">                    - ((leftImage == null) ? 0 : leftImage.getWidth() + spacing);</span>
+<span class="nc" id="L974">            yOffset -= nameImage.getHeight() / 2;</span>
+<span class="nc bnc" id="L975" title="All 2 branches missed.">            if (leftImage != null) {</span>
+<span class="nc" id="L976">                g2d.drawImage(leftImage, rop, xOffset, yOffset);</span>
+<span class="nc" id="L977">                xOffset += leftImage.getWidth() + spacing;</span>
+            }
+<span class="nc" id="L979">            g2d.drawImage(nameImage, rop, xOffset, yOffset);</span>
+<span class="nc bnc" id="L980" title="All 2 branches missed.">            if (rightImage != null) {</span>
+<span class="nc" id="L981">                xOffset += nameImage.getWidth() + spacing;</span>
+<span class="nc" id="L982">                g2d.drawImage(rightImage, rop, xOffset, yOffset);</span>
+            }
+            break;
+        }
+<span class="nc" id="L986">    }</span>
+
+    /**
+     * Draws the pentagram indicating a native capital.
+     *
+     * @param extent The nominal height of the image.
+     * @param padding Padding to add around the image.
+     * @param backgroundColor The image background color.
+     * @return A suitable {@code BufferedImage}.
+     */
+    private static BufferedImage createCapitalLabel(int extent, int padding,
+                                                    Color backgroundColor) {
+        // create path
+<span class="nc" id="L999">        double deg2rad = Math.PI/180.0;</span>
+<span class="nc" id="L1000">        double angle = -90.0 * deg2rad;</span>
+<span class="nc" id="L1001">        double offset = extent * 0.5;</span>
+<span class="nc" id="L1002">        double size1 = (extent - padding - padding) * 0.5;</span>
+
+<span class="nc" id="L1004">        GeneralPath path = new GeneralPath();</span>
+<span class="nc" id="L1005">        path.moveTo(Math.cos(angle) * size1 + offset, Math.sin(angle) * size1 + offset);</span>
+<span class="nc bnc" id="L1006" title="All 2 branches missed.">        for (int i = 0; i &lt; 4; i++) {</span>
+<span class="nc" id="L1007">            angle += 144 * deg2rad;</span>
+<span class="nc" id="L1008">            path.lineTo(Math.cos(angle) * size1 + offset, Math.sin(angle) * size1 + offset);</span>
+        }
+<span class="nc" id="L1010">        path.closePath();</span>
+
+        // draw everything
+<span class="nc" id="L1013">        BufferedImage bi = ImageUtils.createBufferedImage(extent, extent);</span>
+<span class="nc" id="L1014">        Graphics2D g2d = bi.createGraphics();</span>
+<span class="nc" id="L1015">        g2d.setRenderingHint(RenderingHints.KEY_RENDERING,</span>
+                             RenderingHints.VALUE_RENDER_QUALITY);
+<span class="nc" id="L1017">        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING,</span>
+                             RenderingHints.VALUE_ANTIALIAS_ON);
+<span class="nc" id="L1019">        g2d.setColor(backgroundColor);</span>
+<span class="nc" id="L1020">        g2d.fill(new RoundRectangle2D.Float(0, 0, extent, extent, padding, padding));</span>
+<span class="nc" id="L1021">        g2d.setColor(Color.BLACK);</span>
+<span class="nc" id="L1022">        g2d.setStroke(new BasicStroke(2.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));</span>
+<span class="nc" id="L1023">        g2d.draw(path);</span>
+<span class="nc" id="L1024">        g2d.setColor(Color.WHITE);</span>
+<span class="nc" id="L1025">        g2d.fill(path);</span>
+<span class="nc" id="L1026">        g2d.dispose();</span>
+<span class="nc" id="L1027">        return bi;</span>
+    }
+
+    /**
+     * Creates an BufferedImage that shows the given text centred on a
+     * translucent rounded rectangle with the given color.
+     *
+     * @param g2d a {@code Graphics2D}
+     * @param text a {@code String}
+     * @param font a {@code Font}
+     * @param backgroundColor a {@code Color}
+     * @return an {@code BufferedImage}
+     */
+    private static BufferedImage createLabel(Graphics2D g2d, String text,
+                                             Font font, Color backgroundColor) {
+<span class="nc" id="L1042">        TextSpecification[] specs = new TextSpecification[1];</span>
+<span class="nc" id="L1043">        specs[0] = new TextSpecification(text, font);</span>
+<span class="nc" id="L1044">        return createLabel(g2d, specs, backgroundColor);</span>
+    }
+
+    /**
+     * Creates an BufferedImage that shows the given text centred on a
+     * translucent rounded rectangle with the given color.
+     *
+     * @param g2d a {@code Graphics2D}
+     * @param textSpecs a {@code TextSpecification} array
+     * @param backgroundColor a {@code Color}
+     * @return a {@code BufferedImage}
+     */
+    private static BufferedImage createLabel(Graphics2D g2d,
+                                             TextSpecification[] textSpecs,
+                                             Color backgroundColor) {
+<span class="nc" id="L1059">        int hPadding = 15;</span>
+<span class="nc" id="L1060">        int vPadding = 10;</span>
+<span class="nc" id="L1061">        int linePadding = 5;</span>
+<span class="nc" id="L1062">        int width = 0;</span>
+<span class="nc" id="L1063">        int height = vPadding;</span>
+        int i;
+
+        TextSpecification spec;
+<span class="nc" id="L1067">        TextLayout[] labels = new TextLayout[textSpecs.length];</span>
+        TextLayout label;
+
+<span class="nc bnc" id="L1070" title="All 2 branches missed.">        for (i = 0; i &lt; textSpecs.length; i++) {</span>
+<span class="nc" id="L1071">            spec = textSpecs[i];</span>
+<span class="nc" id="L1072">            label = new TextLayout(spec.text, spec.font,</span>
+<span class="nc" id="L1073">                                   g2d.getFontRenderContext());</span>
+<span class="nc" id="L1074">            labels[i] = label;</span>
+<span class="nc" id="L1075">            Rectangle textRectangle = label.getPixelBounds(null, 0, 0);</span>
+<span class="nc" id="L1076">            width = Math.max(width, textRectangle.width + hPadding);</span>
+<span class="nc bnc" id="L1077" title="All 2 branches missed.">            if (i &gt; 0) height += linePadding;</span>
+<span class="nc" id="L1078">            height += (int) (label.getAscent() + label.getDescent());</span>
+        }
+
+<span class="nc" id="L1081">        int radius = Math.min(hPadding, vPadding);</span>
+
+<span class="nc" id="L1083">        BufferedImage bi = ImageUtils.createBufferedImage(width, height);</span>
+<span class="nc" id="L1084">        Graphics2D g2 = bi.createGraphics();</span>
+<span class="nc" id="L1085">        g2.setRenderingHint(RenderingHints.KEY_RENDERING,</span>
+                            RenderingHints.VALUE_RENDER_QUALITY);
+<span class="nc" id="L1087">        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,</span>
+                            RenderingHints.VALUE_ANTIALIAS_ON);
+<span class="nc" id="L1089">        g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS,</span>
+                            RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+<span class="nc" id="L1091">        g2.setColor(backgroundColor);</span>
+<span class="nc" id="L1092">        g2.fill(new RoundRectangle2D.Float(0, 0, width, height, radius, radius));</span>
+<span class="nc" id="L1093">        g2.setColor(ImageLibrary.makeForegroundColor(backgroundColor));</span>
+<span class="nc" id="L1094">        float y = vPadding / 2.0f;</span>
+<span class="nc bnc" id="L1095" title="All 2 branches missed.">        for (i = 0; i &lt; labels.length; i++) {</span>
+<span class="nc" id="L1096">            Rectangle textRectangle = labels[i].getPixelBounds(null, 0, 0);</span>
+<span class="nc" id="L1097">            float x = (width - textRectangle.width) / 2.0f;</span>
+<span class="nc" id="L1098">            y += labels[i].getAscent();</span>
+<span class="nc" id="L1099">            labels[i].draw(g2, x, y);</span>
+<span class="nc" id="L1100">            y += labels[i].getDescent() + linePadding;</span>
+        }
+<span class="nc" id="L1102">        g2.dispose();</span>
+<span class="nc" id="L1103">        return bi;</span>
+    }
+
+    /**
+     * Draws a cross indicating a religious mission is present in the
+     * native village.
+     *
+     * @param extent The nominal height of the image.
+     * @param padding Padding to add around the image.
+     * @param backgroundColor The image background color.
+     * @param expertMissionary True if the label should show expertise.
+     * @return A suitable {@code BufferedImage}.
+     */
+    private static BufferedImage createReligiousMissionLabel(int extent,
+            int padding, Color backgroundColor, boolean expertMissionary) {
+        // create path
+<span class="nc" id="L1119">        double offset = extent * 0.5;</span>
+<span class="nc" id="L1120">        double size1 = extent - padding - padding;</span>
+<span class="nc" id="L1121">        double bar = size1 / 3.0;</span>
+<span class="nc" id="L1122">        double inset = 0.0;</span>
+<span class="nc" id="L1123">        double kludge = 0.0;</span>
+
+<span class="nc" id="L1125">        GeneralPath circle = new GeneralPath();</span>
+<span class="nc" id="L1126">        GeneralPath cross = new GeneralPath();</span>
+<span class="nc bnc" id="L1127" title="All 2 branches missed.">        if (expertMissionary) {</span>
+            // this is meant to represent the eucharist (the -1, +1 thing is a nasty kludge)
+<span class="nc" id="L1129">            circle.append(new Ellipse2D.Double(padding-1, padding-1, size1+1, size1+1), false);</span>
+<span class="nc" id="L1130">            inset = 4.0;</span>
+<span class="nc" id="L1131">            bar = (size1 - inset - inset) / 3.0;</span>
+            // more nasty -1, +1 kludges
+<span class="nc" id="L1133">            kludge = 1.0;</span>
+        }
+<span class="nc" id="L1135">        offset -= 1.0;</span>
+<span class="nc" id="L1136">        cross.moveTo(offset, padding + inset - kludge);</span>
+<span class="nc" id="L1137">        cross.lineTo(offset, extent - padding - inset);</span>
+<span class="nc" id="L1138">        cross.moveTo(offset - bar, padding + bar + inset);</span>
+<span class="nc" id="L1139">        cross.lineTo(offset + bar + 1, padding + bar + inset);</span>
+
+        // draw everything
+<span class="nc" id="L1142">        BufferedImage bi = ImageUtils.createBufferedImage(extent, extent);</span>
+<span class="nc" id="L1143">        Graphics2D g2d = bi.createGraphics();</span>
+<span class="nc" id="L1144">        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);</span>
+<span class="nc" id="L1145">        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);</span>
+<span class="nc" id="L1146">        g2d.setColor(backgroundColor);</span>
+<span class="nc" id="L1147">        g2d.fill(new RoundRectangle2D.Float(0, 0, extent, extent, padding, padding));</span>
+<span class="nc" id="L1148">        g2d.setColor(ImageLibrary.makeForegroundColor(backgroundColor));</span>
+<span class="nc bnc" id="L1149" title="All 2 branches missed.">        if (expertMissionary) {</span>
+<span class="nc" id="L1150">            g2d.setStroke(new BasicStroke(2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));</span>
+<span class="nc" id="L1151">            g2d.draw(circle);</span>
+<span class="nc" id="L1152">            g2d.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));</span>
+        } else {
+<span class="nc" id="L1154">            g2d.setStroke(new BasicStroke(2.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));</span>
+        }
+<span class="nc" id="L1156">        g2d.draw(cross);</span>
+<span class="nc" id="L1157">        g2d.dispose();</span>
+<span class="nc" id="L1158">        return bi;</span>
+    }
+    
+    /**
+     * Display a path.
+     *
+     * @param g2d The {@code Graphics2D} to display on.
+     * @param path The {@code PathNode} to display.
+     */
+    private void displayPath(Graphics2D g2d, PathNode path, MapViewerBounds mapViewerBounds) {
+<span class="nc bnc" id="L1168" title="All 4 branches missed.">        if (path == null || path.next == null) {</span>
+<span class="nc" id="L1169">            return;</span>
+        }
+        
+<span class="nc" id="L1172">        final Stroke defaultStroke = g2d.getStroke();</span>
+<span class="nc" id="L1173">        final Color oldColor = g2d.getColor();</span>
+<span class="nc" id="L1174">        final Font oldFont = g2d.getFont();</span>
+<span class="nc" id="L1175">        g2d.setStroke(new BasicStroke(lib.scaleInt(5), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));</span>
+<span class="nc" id="L1176">        g2d.setFont(mapViewerScaledUtils.getFontNormal());</span>
+
+<span class="nc" id="L1178">        Point previousPoint = null;</span>
+<span class="nc bnc" id="L1179" title="All 2 branches missed.">        for (PathNode p = path; p != null; p = p.next) {</span>
+<span class="nc" id="L1180">            final Tile newTile = p.getTile();</span>
+<span class="nc bnc" id="L1181" title="All 2 branches missed.">            if (newTile == null) {</span>
+<span class="nc" id="L1182">                previousPoint = null;</span>
+<span class="nc" id="L1183">                continue;</span>
+            }
+            
+<span class="nc" id="L1186">            final Point nextPoint = mapViewerBounds.calculateCenterTilePosition(newTile);</span>
+<span class="nc bnc" id="L1187" title="All 2 branches missed.">            if (nextPoint == null) {</span>
+<span class="nc" id="L1188">                previousPoint = null;</span>
+<span class="nc" id="L1189">                continue;</span>
+            }
+            
+<span class="nc bnc" id="L1192" title="All 2 branches missed.">            final Color pathLineColor = (p.getTurns() &gt; 0) ? new Color(255, 255, 0, 128) : new Color(0, 255, 0, 128);</span>
+<span class="nc" id="L1193">            g2d.setColor(pathLineColor);</span>
+            
+<span class="nc bnc" id="L1195" title="All 2 branches missed.">            if (previousPoint != null) {</span>
+<span class="nc" id="L1196">                g2d.drawLine(previousPoint.x, previousPoint.y, nextPoint.x, nextPoint.y);</span>
+            }
+<span class="nc" id="L1198">            previousPoint = nextPoint;</span>
+
+        }
+        
+<span class="nc" id="L1202">        g2d.setStroke(new BasicStroke(lib.scaleInt(2)));</span>
+<span class="nc" id="L1203">        final FontMetrics fm = g2d.getFontMetrics();</span>
+<span class="nc" id="L1204">        final int fontCenterY = (fm.getAscent() - fm.getDescent() - fm.getLeading()) / 2;</span>
+<span class="nc bnc" id="L1205" title="All 2 branches missed.">        for (PathNode p = path; p != null; p = p.next) {</span>
+<span class="nc" id="L1206">            final Tile newTile = p.getTile();</span>
+<span class="nc bnc" id="L1207" title="All 2 branches missed.">            if (newTile == null) {</span>
+<span class="nc" id="L1208">                continue;</span>
+            }
+<span class="nc" id="L1210">            final Point newP = mapViewerBounds.calculateCenterTilePosition(newTile);</span>
+<span class="nc bnc" id="L1211" title="All 2 branches missed.">            if (newP == null) {</span>
+<span class="nc" id="L1212">                continue;</span>
+            }
+           
+<span class="nc" id="L1215">            final int r = lib.scaleInt(20);</span>
+<span class="nc bnc" id="L1216" title="All 2 branches missed.">            final Color pathBgColor = (p.getTurns() &gt; 0) ? new Color(255, 255, 0, 255) : new Color(0, 255, 0, 255);</span>
+<span class="nc" id="L1217">            g2d.setColor(pathBgColor);</span>
+<span class="nc" id="L1218">            g2d.fillOval(newP.x - r/2, newP.y - r/2, r, r);</span>
+<span class="nc" id="L1219">            g2d.setColor(new Color(0, 0, 0, 128));</span>
+<span class="nc" id="L1220">            g2d.drawOval(newP.x - r/2, newP.y - r/2, r, r);</span>
+            
+<span class="nc bnc" id="L1222" title="All 4 branches missed.">            if (mapViewerScaledUtils.getFontTiny() != null &amp;&amp; p.getTurns() &gt; 0) {</span>
+<span class="nc" id="L1223">                final String text = Integer.toString(p.getTurns());</span>
+<span class="nc" id="L1224">                final Rectangle2D bounds = fm.getStringBounds(text, g2d);</span>
+<span class="nc" id="L1225">                g2d.setColor(new Color(0, 0, 0));</span>
+<span class="nc" id="L1226">                g2d.drawString(text, newP.x - (int) bounds.getWidth() / 2, newP.y + fontCenterY);</span>
+            }
+        }
+<span class="nc" id="L1229">        g2d.setStroke(defaultStroke);</span>
+<span class="nc" id="L1230">        g2d.setColor(oldColor);</span>
+<span class="nc" id="L1231">        g2d.setFont(oldFont);</span>
+<span class="nc" id="L1232">    }</span>
+
+    /**
+     * Displays the given Unit onto the given Graphics2D object at the
+     * location specified by the coordinates.
+     *
+     * @param g2d The Graphics2D object on which to draw the Unit.
+     * @param unit The Unit to draw.
+     */
+    void displayUnit(Graphics2D g2d, Unit unit) {
+<span class="nc" id="L1242">        final Player player = getMyPlayer();</span>
+
+        // Draw the unit.
+        // If unit is sentry, draw in grayscale
+<span class="nc bnc" id="L1246" title="All 2 branches missed.">        boolean fade = (unit.getState() == Unit.UnitState.SENTRY)</span>
+<span class="nc bnc" id="L1247" title="All 4 branches missed.">            || (unit.hasTile()</span>
+<span class="nc bnc" id="L1248" title="All 2 branches missed.">                &amp;&amp; player != null &amp;&amp; !player.canSee(unit.getTile()));</span>
+<span class="nc" id="L1249">        BufferedImage image = this.lib.getScaledUnitImage(unit, fade);</span>
+<span class="nc" id="L1250">        Point p = calculateUnitImagePositionInTile(image);</span>
+<span class="nc" id="L1251">        g2d.drawImage(image, p.x, p.y, null);</span>
+
+        // Draw an occupation and nation indicator.
+<span class="nc" id="L1254">        String text = Messages.message(unit.getOccupationLabel(player, false));</span>
+<span class="nc" id="L1255">        g2d.drawImage(this.lib.getOccupationIndicatorChip(g2d, unit, text),</span>
+<span class="nc" id="L1256">                      this.lib.scaleInt(TileViewer.STATE_OFFSET_X), 0, null);</span>
+
+        // Draw one small line for each additional unit (like in civ3).
+<span class="nc" id="L1259">        int unitsOnTile = 0;</span>
+<span class="nc bnc" id="L1260" title="All 2 branches missed.">        if (unit.hasTile()) {</span>
+            // When a unit is moving from tile to tile, it is
+            // removed from the source tile.  So the unit stack
+            // indicator cannot be drawn during the movement see
+            // UnitMoveAnimation.animate() for details
+<span class="nc" id="L1265">            unitsOnTile = unit.getTile().getTotalUnitCount();</span>
+        }
+<span class="nc bnc" id="L1267" title="All 2 branches missed.">        if (unitsOnTile &gt; 1) {</span>
+<span class="nc" id="L1268">            g2d.setColor(Color.WHITE);</span>
+<span class="nc" id="L1269">            int unitLinesY = TileBounds.OTHER_UNITS_OFFSET_Y;</span>
+<span class="nc" id="L1270">            int x1 = this.lib.scaleInt(TileViewer.STATE_OFFSET_X</span>
+                + TileBounds.OTHER_UNITS_OFFSET_X);
+<span class="nc" id="L1272">            int x2 = this.lib.scaleInt(TileViewer.STATE_OFFSET_X</span>
+                + TileBounds.OTHER_UNITS_OFFSET_X + TileBounds.OTHER_UNITS_WIDTH);
+<span class="nc bnc" id="L1274" title="All 4 branches missed.">            for (int i = 0; i &lt; unitsOnTile &amp;&amp; i &lt; TileBounds.MAX_OTHER_UNITS; i++) {</span>
+<span class="nc" id="L1275">                g2d.drawLine(x1, unitLinesY, x2, unitLinesY);</span>
+<span class="nc" id="L1276">                unitLinesY += 2;</span>
+            }
+        }
+        
+<span class="nc bnc" id="L1280" title="All 4 branches missed.">        if (unit.getHitPoints() &gt;= 0 &amp;&amp; unit.getHitPoints() &lt; unit.getMaximumHitPoints()) {</span>
+<span class="nc" id="L1281">            final int offsetX = lib.scaleInt(8);</span>
+<span class="nc" id="L1282">            final int hitpointsBarWidth = lib.scaleInt(5);</span>
+<span class="nc" id="L1283">            final int hitpointsBarMargin = lib.scaleInt(5);</span>
+<span class="nc" id="L1284">            final int fullHeight = tileBounds.getHeight() - 2 * hitpointsBarMargin;</span>
+<span class="nc" id="L1285">            final int filledHeight = (int) (fullHeight * (((float) unit.getHitPoints()) / unit.getMaximumHitPoints()));</span>
+<span class="nc" id="L1286">            g2d.setColor(new Color(0, 255, 0, 255));</span>
+<span class="nc" id="L1287">            g2d.fillRect(hitpointsBarMargin + hitpointsBarWidth + offsetX,</span>
+<span class="nc" id="L1288">                    hitpointsBarMargin - this.lib.scaleInt(TileBounds.UNIT_OFFSET)</span>
+                    + fullHeight - filledHeight,
+                    hitpointsBarWidth,
+                    filledHeight);
+<span class="nc" id="L1292">            final Stroke defaultStroke = g2d.getStroke();</span>
+<span class="nc" id="L1293">            g2d.setStroke(new BasicStroke(lib.scaleInt(1)));</span>
+<span class="nc" id="L1294">            g2d.setColor(Color.BLACK);</span>
+<span class="nc" id="L1295">            g2d.drawRect(hitpointsBarMargin + hitpointsBarWidth + offsetX,</span>
+<span class="nc" id="L1296">                    hitpointsBarMargin - this.lib.scaleInt(TileBounds.UNIT_OFFSET),</span>
+                    hitpointsBarWidth,
+                    fullHeight);
+<span class="nc" id="L1299">            g2d.setStroke(defaultStroke);</span>
+        }
+
+        // FOR DEBUGGING
+        net.sf.freecol.server.ai.AIUnit au;
+<span class="nc bnc" id="L1304" title="All 4 branches missed.">        if (FreeColDebugger.isInDebugMode(FreeColDebugger.DebugMode.MENUS)</span>
+<span class="nc bnc" id="L1305" title="All 2 branches missed.">                &amp;&amp; player != null &amp;&amp; !player.owns(unit)</span>
+<span class="nc bnc" id="L1306" title="All 2 branches missed.">                &amp;&amp; unit.getOwner().isAI()</span>
+<span class="nc bnc" id="L1307" title="All 2 branches missed.">                &amp;&amp; getFreeColServer() != null</span>
+<span class="nc bnc" id="L1308" title="All 2 branches missed.">                &amp;&amp; getFreeColServer().getAIMain() != null</span>
+<span class="nc bnc" id="L1309" title="All 2 branches missed.">                &amp;&amp; (au = getFreeColServer().getAIMain().getAIUnit(unit)) != null) {</span>
+<span class="nc bnc" id="L1310" title="All 2 branches missed.">            if (FreeColDebugger.debugShowMission()) {</span>
+<span class="nc bnc" id="L1311" title="All 2 branches missed.">                String missionString = (!au.hasMission())</span>
+<span class="nc" id="L1312">                        ? &quot;No mission&quot;</span>
+<span class="nc" id="L1313">                        : au.getMission().getClass().getSimpleName().replaceAll(&quot;Mission$&quot;, &quot;&quot;);</span>
+<span class="nc" id="L1314">                final Font origFont = g2d.getFont();</span>
+<span class="nc bnc" id="L1315" title="All 4 branches missed.">                if (FreeColDebugger.debugShowMissionInfo() &amp;&amp; au.hasMission()) {</span>
+<span class="nc" id="L1316">                    missionString += &quot;\n&quot; + au.getMission().toStringForDebugExtraMissionInfo();</span>
+<span class="nc" id="L1317">                    g2d.setFont(origFont.deriveFont(origFont.getSize2D() * 2 / 3));</span>
+                }
+<span class="nc" id="L1319">                drawCenteredMultilineDebugText(g2d, missionString, 0, 0);</span>
+<span class="nc" id="L1320">                g2d.setFont(origFont);</span>
+            }
+        }
+<span class="nc" id="L1323">    }</span>
+    
+    private void drawCenteredMultilineDebugText(Graphics2D g2d, String text, int x, int y) {
+<span class="nc" id="L1326">        final FontMetrics fm = g2d.getFontMetrics();</span>
+<span class="nc" id="L1327">        final String[] lines = text.split(&quot;\n&quot;);</span>
+<span class="nc" id="L1328">        final Rectangle2D[] lineTextBoundingBoxes = new Rectangle2D[lines.length];</span>
+        
+<span class="nc" id="L1330">        Dimension allTextBoundingBox = new Dimension(0, 0);</span>
+<span class="nc" id="L1331">        int backgroundOffsetY = 0;</span>
+<span class="nc bnc" id="L1332" title="All 2 branches missed.">        for (int i=0; i&lt;lines.length; i++) {</span>
+<span class="nc" id="L1333">            Rectangle2D lineTextBoundingBox = fm.getStringBounds(lines[i], g2d);</span>
+<span class="nc" id="L1334">            lineTextBoundingBoxes[i] = lineTextBoundingBox;</span>
+<span class="nc" id="L1335">            allTextBoundingBox = new Dimension((int) Math.max(allTextBoundingBox.width, lineTextBoundingBox.getWidth()),</span>
+<span class="nc" id="L1336">                    (int) (allTextBoundingBox.height + lineTextBoundingBox.getHeight()));</span>
+<span class="nc bnc" id="L1337" title="All 2 branches missed.">            if ((int) lineTextBoundingBox.getY() &lt; backgroundOffsetY) {</span>
+<span class="nc" id="L1338">                backgroundOffsetY = (int) lineTextBoundingBox.getY(); </span>
+            }
+        }
+        
+<span class="nc" id="L1342">        final int tileCenterX = (tileBounds.getWidth() - allTextBoundingBox.width) / 2;</span>
+        
+<span class="nc" id="L1344">        g2d.setColor(new Color(0, 0, 0, 128));</span>
+<span class="nc" id="L1345">        g2d.fillRect(x + tileCenterX, y + backgroundOffsetY, allTextBoundingBox.width, allTextBoundingBox.height);</span>
+        
+<span class="nc" id="L1347">        int offsetY = 0;</span>
+<span class="nc bnc" id="L1348" title="All 2 branches missed.">        for (int i=0; i&lt;lines.length; i++) {</span>
+<span class="nc" id="L1349">            g2d.setColor(Color.WHITE);</span>
+<span class="nc" id="L1350">            final int centerX = (int) (allTextBoundingBox.getWidth() - lineTextBoundingBoxes[i].getWidth()) / 2;</span>
+<span class="nc" id="L1351">            g2d.drawString(lines[i], x + centerX + tileCenterX, y + offsetY);</span>
+<span class="nc" id="L1352">            offsetY += (int) lineTextBoundingBoxes[i].getHeight();</span>
+        }
+<span class="nc" id="L1354">    }</span>
+
+    /**
+     * Gets the coordinates to draw a unit in a given tile.
+     *
+     * @param unitImage The unit's image
+     * @return The coordinates where the unit should be drawn on screen
+     */
+    private Point calculateUnitImagePositionInTile(BufferedImage unitImage) {
+<span class="nc" id="L1363">        int unitX = (tileBounds.getWidth() - unitImage.getWidth()) / 2;</span>
+<span class="nc" id="L1364">        int unitY = (tileBounds.getHeight() - unitImage.getHeight()) / 2</span>
+<span class="nc" id="L1365">            - this.lib.scaleInt(TileBounds.UNIT_OFFSET);</span>
+<span class="nc" id="L1366">        return new Point(unitX, unitY);</span>
+    }
+    
+    /**
+     * Gets the position where a unitLabel located at tile should be drawn.
+     *
+     * @param unitLabel The unit label.
+     * @param tileP The position of the {@code Tile} on the screen.
+     * @return The position where to put the label, null if tileP is null.
+     */
+    public Point calculateUnitLabelPositionInTile(JLabel unitLabel, Point tileP) {
+<span class="nc bnc" id="L1377" title="All 2 branches missed.">        if (tileP == null) {</span>
+<span class="nc" id="L1378">            return null;</span>
+        }
+<span class="nc" id="L1380">        final int labelX = tileP.x + (tileBounds.getWidth() - unitLabel.getWidth()) / 2;</span>
+<span class="nc" id="L1381">        final int labelY = tileP.y + (tileBounds.getHeight() - unitLabel.getHeight()) / 2 - this.lib.scaleInt(TileBounds.UNIT_OFFSET);</span>
+        
+<span class="nc" id="L1383">        return new Point(labelX, labelY);</span>
+    }
+
+    /**
+     * Draws the borders of a territory on the given Tile. The
+     * territory is either a country or a region.
+     *
+     * @param g2d a {@code Graphics2D}
+     * @param tile a {@code Tile}
+     * @param type a {@code BorderType}
+     * @param opaque a {@code boolean}
+     */
+    private void displayTerritorialBorders(Graphics2D g2d, Tile tile,
+                                           BorderType type, boolean opaque) {
+<span class="nc" id="L1397">        Player owner = tile.getOwner();</span>
+<span class="nc" id="L1398">        Region region = tile.getRegion();</span>
+<span class="nc bnc" id="L1399" title="All 8 branches missed.">        if ((type == BorderType.COUNTRY &amp;&amp; owner != null)</span>
+            || (type == BorderType.REGION &amp;&amp; region != null)) {
+<span class="nc" id="L1401">            Stroke oldStroke = g2d.getStroke();</span>
+<span class="nc" id="L1402">            g2d.setStroke(mapViewerScaledUtils.getBorderStroke());</span>
+<span class="nc" id="L1403">            Color oldColor = g2d.getColor();</span>
+<span class="nc" id="L1404">            Color c = null;</span>
+<span class="nc bnc" id="L1405" title="All 2 branches missed.">            if (type == BorderType.COUNTRY)</span>
+<span class="nc" id="L1406">                c = owner.getNationColor();</span>
+<span class="nc bnc" id="L1407" title="All 2 branches missed.">            if (c == null)</span>
+<span class="nc" id="L1408">                c = Color.WHITE;</span>
+<span class="nc" id="L1409">            Color newColor = new Color(c.getRed(), c.getGreen(), c.getBlue(),</span>
+<span class="nc bnc" id="L1410" title="All 2 branches missed.">                                 (opaque) ? 255 : 100);</span>
+<span class="nc" id="L1411">            g2d.setColor(newColor);</span>
+<span class="nc" id="L1412">            GeneralPath path = new GeneralPath(GeneralPath.WIND_EVEN_ODD);</span>
+<span class="nc" id="L1413">            final EnumMap&lt;Direction, Float&gt; borderPoints = mapViewerScaledUtils.getBorderPoints();</span>
+<span class="nc" id="L1414">            EnumMap&lt;Direction, Float&gt; controlPoints = mapViewerScaledUtils.getControlPoints();</span>
+            
+<span class="nc" id="L1416">            path.moveTo(borderPoints.get(Direction.longSides.get(0)).x,</span>
+<span class="nc" id="L1417">                    borderPoints.get(Direction.longSides.get(0)).y);</span>
+<span class="nc bnc" id="L1418" title="All 2 branches missed.">            for (Direction d : Direction.longSides) {</span>
+<span class="nc" id="L1419">                Tile otherTile = tile.getNeighbourOrNull(d);</span>
+<span class="nc" id="L1420">                Direction next = d.getNextDirection();</span>
+<span class="nc" id="L1421">                Direction next2 = next.getNextDirection();</span>
+<span class="nc bnc" id="L1422" title="All 4 branches missed.">                if (otherTile == null</span>
+<span class="nc bnc" id="L1423" title="All 4 branches missed.">                    || (type == BorderType.COUNTRY &amp;&amp; !owner.owns(otherTile))</span>
+<span class="nc bnc" id="L1424" title="All 2 branches missed.">                    || (type == BorderType.REGION &amp;&amp; otherTile.getRegion() != region)) {</span>
+<span class="nc" id="L1425">                    Tile tile1 = tile.getNeighbourOrNull(next);</span>
+<span class="nc" id="L1426">                    Tile tile2 = tile.getNeighbourOrNull(next2);</span>
+<span class="nc bnc" id="L1427" title="All 4 branches missed.">                    if (tile2 == null</span>
+<span class="nc bnc" id="L1428" title="All 4 branches missed.">                        || (type == BorderType.COUNTRY &amp;&amp; !owner.owns(tile2))</span>
+<span class="nc bnc" id="L1429" title="All 2 branches missed.">                        || (type == BorderType.REGION &amp;&amp; tile2.getRegion() != region)) {</span>
+                        // small corner
+<span class="nc" id="L1431">                        path.lineTo(borderPoints.get(next).x,</span>
+<span class="nc" id="L1432">                                borderPoints.get(next).y);</span>
+<span class="nc" id="L1433">                        path.quadTo(controlPoints.get(next).x,</span>
+<span class="nc" id="L1434">                                controlPoints.get(next).y,</span>
+<span class="nc" id="L1435">                                borderPoints.get(next2).x,</span>
+<span class="nc" id="L1436">                                borderPoints.get(next2).y);</span>
+                    } else {
+<span class="nc" id="L1438">                        int dx = 0, dy = 0;</span>
+<span class="nc bnc" id="L1439" title="All 5 branches missed.">                        switch(d) {</span>
+<span class="nc" id="L1440">                        case NW: dx = tileBounds.getHalfWidth(); dy = -tileBounds.getHalfHeight(); break;</span>
+<span class="nc" id="L1441">                        case NE: dx = tileBounds.getHalfWidth(); dy = tileBounds.getHalfHeight(); break;</span>
+<span class="nc" id="L1442">                        case SE: dx = -tileBounds.getHalfWidth(); dy = tileBounds.getHalfHeight(); break;</span>
+<span class="nc" id="L1443">                        case SW: dx = -tileBounds.getHalfWidth(); dy = -tileBounds.getHalfHeight(); break;</span>
+                        default: break;
+                        }
+<span class="nc bnc" id="L1446" title="All 4 branches missed.">                        if (tile1 != null</span>
+<span class="nc bnc" id="L1447" title="All 4 branches missed.">                            &amp;&amp; ((type == BorderType.COUNTRY &amp;&amp; owner.owns(tile1))</span>
+<span class="nc bnc" id="L1448" title="All 2 branches missed.">                                || (type == BorderType.REGION &amp;&amp; tile1.getRegion() == region))) {</span>
+                            // short straight line
+<span class="nc" id="L1450">                            path.lineTo(borderPoints.get(next).x,</span>
+<span class="nc" id="L1451">                                    borderPoints.get(next).y);</span>
+                            // big corner
+<span class="nc" id="L1453">                            Direction previous = d.getPreviousDirection();</span>
+<span class="nc" id="L1454">                            Direction previous2 = previous.getPreviousDirection();</span>
+<span class="nc" id="L1455">                            int ddx = 0, ddy = 0;</span>
+<span class="nc bnc" id="L1456" title="All 5 branches missed.">                            switch(d) {</span>
+<span class="nc" id="L1457">                            case NW: ddy = -tileBounds.getHeight(); break;</span>
+<span class="nc" id="L1458">                            case NE: ddx = tileBounds.getWidth(); break;</span>
+<span class="nc" id="L1459">                            case SE: ddy = tileBounds.getHeight(); break;</span>
+<span class="nc" id="L1460">                            case SW: ddx = -tileBounds.getWidth(); break;</span>
+                            default: break;
+                            }
+<span class="nc" id="L1463">                            path.quadTo(controlPoints.get(previous).x + dx,</span>
+<span class="nc" id="L1464">                                        controlPoints.get(previous).y + dy,</span>
+<span class="nc" id="L1465">                                        borderPoints.get(previous2).x + ddx,</span>
+<span class="nc" id="L1466">                                        borderPoints.get(previous2).y + ddy);</span>
+<span class="nc" id="L1467">                        } else {</span>
+                            // straight line
+<span class="nc" id="L1469">                            path.lineTo(borderPoints.get(d).x + dx,</span>
+<span class="nc" id="L1470">                                    borderPoints.get(d).y + dy);</span>
+                        }
+                    }
+<span class="nc" id="L1473">                } else {</span>
+<span class="nc" id="L1474">                    path.moveTo(borderPoints.get(next2).x,</span>
+<span class="nc" id="L1475">                            borderPoints.get(next2).y);</span>
+                }
+<span class="nc" id="L1477">            }</span>
+<span class="nc" id="L1478">            g2d.draw(path);</span>
+<span class="nc" id="L1479">            g2d.setColor(oldColor);</span>
+<span class="nc" id="L1480">            g2d.setStroke(oldStroke);</span>
+        }
+<span class="nc" id="L1482">    }</span>
+    
+    private void verifyAndMarkAsClean(Dimension size, final Rectangle clipBounds) {
+<span class="nc" id="L1485">        final Rectangle entireScreen = new Rectangle(0, 0, size.width, size.height);</span>
+<span class="nc" id="L1486">        final Rectangle relevantDirtyClipBounds = rpm.getDirtyClipBounds().intersection(entireScreen);</span>
+
+<span class="nc bnc" id="L1488" title="All 4 branches missed.">        if (relevantDirtyClipBounds.isEmpty() || clipBounds.contains(relevantDirtyClipBounds)) {</span>
+<span class="nc" id="L1489">            rpm.markAsClean();</span>
+        } else {
+<span class="nc" id="L1491">            logger.info(&quot;Repaint has been called for a smaller area than what is dirty. &quot;</span>
+                    + &quot;Have you forgotten to call repaint() after marking stuff as dirty? &quot;
+                    + &quot;The only known OK instance of this happening is when the GUI is &quot;
+                    + &quot;starting up. Bounds: &quot;
+                    + clipBounds
+                    + &quot; ==&gt; &quot;
+                    + relevantDirtyClipBounds);
+        }
+<span class="nc" id="L1499">    }</span>
+    
+    /**
+     * Get either the tile with the active unit or the selected tile,
+     * but only if it is visible.
+     *
+     * Used to determine where to display the cursor, for displayMap and
+     * and the cursor action listener.
+     *
+     * @return The {@code Tile} found or null.
+     */
+    private Tile getVisibleCursorTile(MapViewerBounds mapViewerBounds) {
+<span class="nc" id="L1511">        Tile ret = mapViewerState.getCursorTile();</span>
+<span class="nc bnc" id="L1512" title="All 2 branches missed.">        return (mapViewerBounds.isTileVisible(ret)) ? ret : null;</span>
+    }
+
+    /**
+     * Internal class for the {@link MapViewer} that handles what part of the
+     * {@link Map} is visible on screen
+     * 
+     * Methods in this class should only be used by {@link SwingGUI},
+     * {@link Canvas} or {@link MapViewer}.
+     *
+     * @return The visible map bounds.
+     */
+    public MapViewerBounds getMapViewerBounds() {
+<span class="nc" id="L1525">        return mapViewerBounds;</span>
+    }
+    
+    /**
+     * Bounds of the tiles to be rendered. These bounds are scaled
+     * according to the zoom level of the map.
+     *
+     * @return The tile bounds.
+     */
+    public TileBounds getTileBounds() {
+<span class="nc" id="L1535">        return tileBounds;</span>
+    }
+    
+    /**
+     * Internal state for the {@link MapViewer}.
+     * 
+     * Methods in this class should only be used by {@link SwingGUI},
+     * {@link Canvas} or {@link MapViewer}.
+     *
+     * @return The {@code MapViewerState}.
+     */
+    public MapViewerState getMapViewerState() {
+<span class="nc" id="L1547">        return mapViewerState;</span>
+    }
+    
+    /**
+     * Gets the internal class that handles buffers and dirty state of
+     * {@link MapViewer}.
+     * 
+     * Methods in this class should only be used by {@link SwingGUI},
+     * {@link Canvas} or {@link MapViewer}
+     *
+     * @return The repaint manager.
+     */
+    public MapViewerRepaintManager getMapViewerRepaintManager() {
+<span class="nc" id="L1560">        return rpm;</span>
+    }
+
+    /**
+     * Paints a single tile using the provided callback.
+     * 
+     * @param g2d The {@code Graphics2D} that is used for rendering.
+     * @param tcb The bounds used for clipping the area to be rendered.
+     * @param tile The {@code Tile} to be rendered.
+     * @param c A callback that should render the tile. The coordinates for the
+     *      {@code Graphics2D}, that's provided by the, callback will be
+     *      translated so that position (0, 0) is the upper left corner of the
+     *      tile image (that is, outside of the tile diamond itself).
+     */
+    @SuppressWarnings(&quot;unused&quot;)
+    private void paintSingleTile(Graphics2D g2d, TileClippingBounds tcb,
+                                 Tile tile, TileRenderingCallback c) {
+<span class="nc" id="L1577">        paintEachTile(g2d, tcb.getTopLeftDirtyTile(), List.of(tile), c);</span>
+<span class="nc" id="L1578">    }</span>
+    
+    /**
+     * Paints all &quot;dirty&quot; tiles.
+     * 
+     * @param g2d The {@code Graphics2D} that is used for rendering.
+     * @param tcb The bounds used for clipping the area to be rendered.
+     * @param c A callback that should render the tile. The coordinates for the
+     *      {@code Graphics2D}, that's provided by the, callback will be
+     *      translated so that position (0, 0) is the upper left corner of the
+     *      tile image (that is, outside of the tile diamond itself).
+     */
+    private void paintEachTile(Graphics2D g2d, TileClippingBounds tcb, TileRenderingCallback c) {
+<span class="nc" id="L1591">        paintEachTile(g2d, tcb.getTopLeftDirtyTile(), tcb.getBaseTiles(), c);</span>
+<span class="nc" id="L1592">    }</span>
+    
+    /**
+     * Paints all &quot;dirty&quot; tiles and includes
+     * {@link TileClippingBounds#getExtendedTiles() extra tiles} to be rendered.
+     * 
+     * This method should only be used if the rendered graphics can go beyond
+     * the tile size.
+     * 
+     * @param g2d The {@code Graphics2D} that is used for rendering.
+     * @param tcb The bounds used for clipping the area to be rendered.
+     * @param c A callback that should render the tile. The coordinates for the
+     *      {@code Graphics2D}, that's provided by the, callback will be
+     *      translated so that position (0, 0) is the upper left corner of the
+     *      tile image (that is, outside of the tile diamond itself).
+     */
+    private void paintEachTileWithExtendedImageSize(Graphics2D g2d, TileClippingBounds tcb, TileRenderingCallback c) {
+<span class="nc" id="L1609">        paintEachTile(g2d, tcb.getTopLeftDirtyTile(), tcb.getExtendedTiles(), c);</span>
+<span class="nc" id="L1610">    }</span>
+    
+    /**
+     * Paints all &quot;dirty&quot; tiles and includes
+     * {@link TileClippingBounds#getSuperExtendedTiles() many extra tiles} to be rendered.
+     * 
+     * This method should only be used if the rendered graphics can go way
+     * beyond the tile size.
+     * 
+     * @param g2d The {@code Graphics2D} that is used for rendering.
+     * @param tcb The bounds used for clipping the area to be rendered.
+     * @param c A callback that should render the tile. The coordinates for the
+     *      {@code Graphics2D}, that's provided by the, callback will be
+     *      translated so that position (0, 0) is the upper left corner of the
+     *      tile image (that is, outside of the tile diamond itself).
+     */
+    private void paintEachTileWithSuperExtendedImageSize(Graphics2D g2d, TileClippingBounds tcb, TileRenderingCallback c) {
+<span class="nc" id="L1627">        paintEachTile(g2d, tcb.getTopLeftDirtyTile(), tcb.getSuperExtendedTiles(), c);</span>
+<span class="nc" id="L1628">    }</span>
+    
+    private void paintEachTile(Graphics2D g2d, Map.Position firstTile, List&lt;Tile&gt; tiles, TileRenderingCallback c) {
+<span class="nc bnc" id="L1631" title="All 2 branches missed.">        if (tiles.isEmpty()) {</span>
+<span class="nc" id="L1632">            return;</span>
+        }
+        
+<span class="nc" id="L1635">        final int x0 = firstTile.getX();</span>
+<span class="nc" id="L1636">        final int y0 = firstTile.getY();</span>
+        
+<span class="nc" id="L1638">        int xt0 = 0, yt0 = 0;</span>
+<span class="nc bnc" id="L1639" title="All 2 branches missed.">        for (Tile t : tiles) {</span>
+<span class="nc" id="L1640">            final int x = t.getX();</span>
+<span class="nc" id="L1641">            final int y = t.getY();</span>
+<span class="nc" id="L1642">            final int xt = (x-x0) * tileBounds.getWidth()</span>
+<span class="nc" id="L1643">                + (y&amp;1) * tileBounds.getHalfWidth();</span>
+<span class="nc" id="L1644">            final int yt = (y-y0) * tileBounds.getHalfHeight();</span>
+<span class="nc" id="L1645">            g2d.translate(xt - xt0, yt - yt0);</span>
+<span class="nc" id="L1646">            xt0 = xt; yt0 = yt;</span>
+
+<span class="nc" id="L1648">            c.render(g2d, t);</span>
+<span class="nc" id="L1649">        }</span>
+<span class="nc" id="L1650">        g2d.translate(-xt0, -yt0);</span>
+<span class="nc" id="L1651">    }</span>
+    
+    /**
+     * Calculates the tile clipping bounds from a Graphics' clipBounds.
+     * 
+     * The tiles to be redrawn is the area defined by the {@code topLeftDirtyTile}
+     * (the upper left corner of the area to be repainted)
+     * and {@code bottomRightDirtyTile}
+     * (the lower right corner of the area to be repainted).
+     * 
+     * The list of tiles to be repainted depends on the possible image sizes
+     * that can be drawn on a tile: {@link #getBaseTiles() baseTiles},
+     * {@link #getExtendedTiles() extendedTiles} and
+     * {@link #getSuperExtendedTiles() superExtendedTiles}.
+     */
+    private static final class TileClippingBounds {
+        private final Map.Position topLeftDirtyTile;
+        private final Map.Position bottomRightDirtyTile;
+        private final int clipLeftX;
+        private final int clipTopY;
+        
+        private final List&lt;Tile&gt; baseTiles;
+        private final List&lt;Tile&gt; unitTiles;
+        private final List&lt;Tile&gt; extendedTiles;
+        private final List&lt;Tile&gt; superExtendedTiles;
+        
+<span class="nc" id="L1677">        private TileClippingBounds(MapViewerBounds mapViewerBounds, Map map, Rectangle clipBounds) {</span>
+<span class="nc" id="L1678">            final TileBounds tileBounds = mapViewerBounds.getTileBounds();</span>
+<span class="nc" id="L1679">            final int firstRowTiles = (clipBounds.y - mapViewerBounds.getTopLeftVisibleTilePoint().y) / tileBounds.getHalfHeight() - 1;</span>
+<span class="nc" id="L1680">            this.clipTopY = mapViewerBounds.getTopLeftVisibleTilePoint().y + firstRowTiles * tileBounds.getHalfHeight();</span>
+<span class="nc" id="L1681">            final int firstRow = mapViewerBounds.getTopLeftVisibleTile().getY() + firstRowTiles;</span>
+            
+<span class="nc" id="L1683">            final int firstColumnTiles = (clipBounds.x - mapViewerBounds.getTopLeftVisibleTilePoint().x) / tileBounds.getWidth() - 1;</span>
+<span class="nc" id="L1684">            this.clipLeftX = mapViewerBounds.getTopLeftVisibleTilePoint().x + firstColumnTiles * tileBounds.getWidth();</span>
+<span class="nc" id="L1685">            final int firstColumn = mapViewerBounds.getTopLeftVisibleTile().getX() + firstColumnTiles;</span>
+            
+<span class="nc" id="L1687">            final int lastRowTiles = (clipBounds.y + clipBounds.height - mapViewerBounds.getTopLeftVisibleTilePoint().y) / tileBounds.getHalfHeight();</span>
+<span class="nc" id="L1688">            final int lastRow = mapViewerBounds.getTopLeftVisibleTile().getY() + lastRowTiles;</span>
+<span class="nc" id="L1689">            final int lastColumnTiles = (clipBounds.x + clipBounds.width - mapViewerBounds.getTopLeftVisibleTilePoint().x) / tileBounds.getWidth();</span>
+<span class="nc" id="L1690">            final int lastColumn = mapViewerBounds.getTopLeftVisibleTile().getX() + lastColumnTiles;</span>
+
+<span class="nc" id="L1692">            this.topLeftDirtyTile = new Map.Position(firstColumn, firstRow);</span>
+<span class="nc" id="L1693">            this.bottomRightDirtyTile = new Map.Position(lastColumn, lastRow);</span>
+          
+            /* For testing MapViewerBounds -- just ignore the logic above, and do:
+            this.topLeftDirtyTile = mapViewerBounds.getTopLeftVisibleTile();
+            //this.bottomRightDirtyTile = new Map.Position(mapViewerBounds.getTopLeftVisibleTile().x + 50, mapViewerBounds.getTopLeftVisibleTile().y + 50);
+            this.bottomRightDirtyTile = mapViewerBounds.getBottomRightVisibleTile();
+            this.clipLeftX = mapViewerBounds.getTopLeftVisibleTilePoint().x;
+            this.clipTopY = mapViewerBounds.getTopLeftVisibleTilePoint().y;
+            */
+            
+<span class="nc" id="L1703">            final int subMapWidth = bottomRightDirtyTile.getX() - topLeftDirtyTile.getX() + 1;</span>
+<span class="nc" id="L1704">            final int subMapHeight = bottomRightDirtyTile.getY() - topLeftDirtyTile.getY() + 1;</span>
+            
+<span class="nc" id="L1706">            baseTiles = map.subMap(</span>
+<span class="nc" id="L1707">                    topLeftDirtyTile.getX(),</span>
+<span class="nc" id="L1708">                    topLeftDirtyTile.getY(),</span>
+                    subMapWidth,
+                    subMapHeight);
+            
+<span class="nc" id="L1712">            unitTiles = map.subMap(</span>
+<span class="nc" id="L1713">                    topLeftDirtyTile.getX(),</span>
+<span class="nc" id="L1714">                    topLeftDirtyTile.getY(),</span>
+                    subMapWidth,
+                    subMapHeight + 1);
+            
+<span class="nc" id="L1718">            extendedTiles = map.subMap(</span>
+<span class="nc" id="L1719">                    topLeftDirtyTile.getX(),</span>
+<span class="nc" id="L1720">                    topLeftDirtyTile.getY() - 1,</span>
+                    subMapWidth,
+                    subMapHeight + 2);
+            
+<span class="nc" id="L1724">            superExtendedTiles = map.subMap(</span>
+<span class="nc" id="L1725">                    topLeftDirtyTile.getX() - 2,</span>
+<span class="nc" id="L1726">                    topLeftDirtyTile.getY() - 4,</span>
+                    subMapWidth + 4,
+                    subMapHeight + 8);
+<span class="nc" id="L1729">        }</span>
+
+        public Map.Position getTopLeftDirtyTile() {
+<span class="nc" id="L1732">            return topLeftDirtyTile;</span>
+        }
+        
+        public Map.Position getBottomRightDirtyTile() {
+<span class="nc" id="L1736">            return bottomRightDirtyTile;</span>
+        }
+        
+        /**
+         * The tiles to be repainted for graphics that does not extend
+         * beyond the tile size.
+         *
+         * @return The list of tiles to repaint.
+         */
+        public List&lt;Tile&gt; getBaseTiles() {
+<span class="nc" id="L1746">            return baseTiles;</span>
+        }
+        
+        /**
+         * The tiles to be repainted for unit graphics that might extend
+         * up to half a tile in height above the base tile.
+         *
+         * @return The list of tiles to repaint.
+         */
+        public List&lt;Tile&gt; getUnitTiles() {
+<span class="nc" id="L1756">            return unitTiles;</span>
+        }
+        
+        /**
+         * The tiles to be repainted for graphics that might have
+         * double height compared to the tile size.
+         *
+         * @return The list of potential double height tiles.
+         */
+        public List&lt;Tile&gt; getExtendedTiles() {
+<span class="nc" id="L1766">            return extendedTiles;</span>
+        }
+        
+        /**
+         * The tiles to be repainted for graphics that might extend
+         * far into other tiles in every direction (typically halos,
+         * like in revenge mode).
+         *
+         * @return The list of potentially haloed tiles.
+         */
+        public List&lt;Tile&gt; getSuperExtendedTiles() {
+<span class="nc" id="L1777">            return superExtendedTiles;</span>
+        }
+    }
+    
+    /**
+     * A callback for rendering a single tile.
+     */
+    private interface TileRenderingCallback {
+        
+        /**
+         * Should render a single tile.
+         * 
+         * @param tileG2d The {@code Graphics2D} that should be used when drawing
+         *      the tile. The coordinates for the {@code Graphics2D} will be
+         *      translated so that position (0, 0) is the upper left corner of
+         *      the tile image (that is, outside of the tile diamond itself).
+         * @param tile The {@code Tile} to be rendered. 
+         */
+        void render(Graphics2D tileG2d, Tile tile);
+    }
+    
+    private static class TextSpecification {
+
+        public final String text;
+        public final Font font;
+
+<span class="nc" id="L1803">        public TextSpecification(String newText, Font newFont) {</span>
+<span class="nc" id="L1804">            this.text = newText;</span>
+<span class="nc" id="L1805">            this.font = newFont;</span>
+<span class="nc" id="L1806">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

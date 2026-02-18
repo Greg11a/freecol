@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UpdateMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">UpdateMessage.java</span></div><h1>UpdateMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.FreeColObject;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+
+
+/**
+ * The message sent to update game objects.
+ */
+public class UpdateMessage extends ObjectMessage {
+
+    public static final String TAG = &quot;update&quot;;
+
+    /** The player to specialize the objects for. */
+    private final Player destination;
+
+
+    /**
+     * Create a new {@code UpdateMessage}.
+     *
+     * @param destination The destination {@code Player}.
+     */
+    private UpdateMessage(Player destination) {
+<span class="fc" id="L55">        super(TAG);</span>
+
+<span class="fc" id="L57">        this.destination = destination;</span>
+<span class="fc" id="L58">    }</span>
+    
+    /**
+     * Create a new {@code UpdateMessage}.
+     *
+     * @param destination The destination {@code Player}.
+     * @param fcgo A {@code FreeColGameObject}s to add.
+     */
+    public UpdateMessage(Player destination,
+                         FreeColGameObject fcgo) {
+<span class="nc" id="L68">        this(destination);</span>
+
+<span class="nc" id="L70">        appendChild(fcgo);</span>
+<span class="nc" id="L71">    }</span>
+
+    /**
+     * Create a new {@code UpdateMessage}.
+     *
+     * @param destination The destination {@code Player}.
+     * @param fcgos A list of {@code FreeColObject}s to add.
+     */
+    public UpdateMessage(Player destination,
+                         List&lt;FreeColGameObject&gt; fcgos) {
+<span class="fc" id="L81">        this(destination);</span>
+
+<span class="fc" id="L83">        appendChildren(fcgos);</span>
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * Create a new {@code UpdateMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public UpdateMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L95">        this((Player)null);</span>
+
+<span class="nc" id="L97">        FreeColXMLReader.ReadScope rs</span>
+<span class="nc" id="L98">            = xr.replaceScope(FreeColXMLReader.ReadScope.NOINTERN);</span>
+<span class="nc" id="L99">        List&lt;FreeColObject&gt; fcos = new ArrayList&lt;&gt;();</span>
+        try {
+<span class="nc bnc" id="L101" title="All 2 branches missed.">            while (xr.moreTags()) {</span>
+<span class="nc" id="L102">                String tag = xr.getLocalName();</span>
+<span class="nc" id="L103">                fcos.add(xr.readFreeColObject(game));</span>
+<span class="nc" id="L104">                xr.expectTag(tag);</span>
+<span class="nc" id="L105">            }</span>
+<span class="nc" id="L106">            xr.expectTag(TAG);</span>
+        } finally {
+<span class="nc" id="L108">            xr.replaceScope(rs);</span>
+        }
+<span class="nc" id="L110">        appendChildren(fcos);</span>
+<span class="nc" id="L111">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="fc" id="L119">        return Message.MessagePriority.UPDATE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean merge(Message message) {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (message instanceof UpdateMessage) {</span>
+<span class="fc" id="L128">            UpdateMessage other = (UpdateMessage)message;</span>
+<span class="fc" id="L129">            appendChildren(other.getChildren());</span>
+<span class="fc" id="L130">            return true;</span>
+        }
+<span class="fc" id="L132">        return false;</span>
+    }
+              
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void toXML(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L140">        FreeColXMLWriter.WriteScope ws = null;</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (this.destination != null) {</span>
+<span class="nc" id="L142">            ws = xw.replaceScope(FreeColXMLWriter.WriteScope</span>
+<span class="nc" id="L143">                .toClient(this.destination));</span>
+        }
+<span class="nc" id="L145">        super.toXML(xw);</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (this.destination != null) xw.replaceScope(ws);</span>
+<span class="nc" id="L147">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+        // Ignored
+<span class="fc" id="L155">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        if (freeColClient.isInGame()) {</span>
+<span class="nc" id="L163">            igc(freeColClient).updateHandler(getChildren());</span>
+<span class="nc" id="L164">            clientGeneric(freeColClient);</span>
+        } else {
+<span class="nc" id="L166">            pgc(freeColClient).updateHandler(getChildren());</span>
+        }
+<span class="nc" id="L168">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,1178 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FreeColXMLReader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.io</a> &gt; <span class="el_source">FreeColXMLReader.java</span></div><h1>FreeColXMLReader.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.io;
+
+import java.io.BufferedInputStream;
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.xml.stream.events.XMLEvent;
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+import javax.xml.stream.util.StreamReaderDelegate;
+
+import net.sf.freecol.common.model.FreeColObject;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.FreeColSpecObjectType;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Specification;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import static net.sf.freecol.common.util.StringUtils.*;
+import net.sf.freecol.server.ai.AIObject;
+import net.sf.freecol.server.ai.AIMain;
+
+
+/**
+ * A wrapper for {@code XMLStreamReader} and potentially an
+ * underlying stream.  Adds on many useful utilities for reading
+ * XML and FreeCol values.
+ */
+public class FreeColXMLReader extends StreamReaderDelegate
+    implements Closeable {
+
+<span class="fc" id="L66">    private static final Logger logger = Logger.getLogger(FreeColXMLReader.class.getName());</span>
+
+    /** Map for the XMLStreamConstants. */
+<span class="fc" id="L69">    private static final Map&lt;Integer, String&gt; tagStrings</span>
+<span class="fc" id="L70">        = makeUnmodifiableMap(new Integer[] {</span>
+<span class="fc" id="L71">                XMLStreamConstants.ATTRIBUTE,</span>
+<span class="fc" id="L72">                XMLStreamConstants.CDATA,</span>
+<span class="fc" id="L73">                XMLStreamConstants.CHARACTERS,</span>
+<span class="fc" id="L74">                XMLStreamConstants.COMMENT,</span>
+<span class="fc" id="L75">                XMLStreamConstants.DTD,</span>
+<span class="fc" id="L76">                XMLStreamConstants.END_DOCUMENT,</span>
+<span class="fc" id="L77">                XMLStreamConstants.END_ELEMENT,</span>
+<span class="fc" id="L78">                XMLStreamConstants.ENTITY_DECLARATION,</span>
+<span class="fc" id="L79">                XMLStreamConstants.ENTITY_REFERENCE,</span>
+<span class="fc" id="L80">                XMLStreamConstants.NAMESPACE,</span>
+<span class="fc" id="L81">                XMLStreamConstants.NOTATION_DECLARATION,</span>
+<span class="fc" id="L82">                XMLStreamConstants.PROCESSING_INSTRUCTION,</span>
+<span class="fc" id="L83">                XMLStreamConstants.SPACE,</span>
+<span class="fc" id="L84">                XMLStreamConstants.START_DOCUMENT,</span>
+<span class="fc" id="L85">                XMLStreamConstants.START_ELEMENT },</span>
+            new String[] {
+                &quot;Attribute&quot;, &quot;CData&quot;, &quot;Characters&quot;, &quot;Comment&quot;, &quot;DTD&quot;,
+                &quot;EndDocument&quot;, &quot;EndElement&quot;, &quot;EntityDeclaration&quot;,
+                &quot;EntityReference&quot;, &quot;Namespace&quot;, &quot;NotationDeclaration&quot;,
+                &quot;ProcessingInstruction&quot;, &quot;Space&quot;, &quot;StartDocument&quot;,
+                &quot;StartElement&quot; });
+
+<span class="fc" id="L93">    public static enum ReadScope {</span>
+<span class="fc" id="L94">        SERVER,     // Loading the game in the server</span>
+<span class="fc" id="L95">        NORMAL,     // Normal interning read</span>
+<span class="fc" id="L96">        NOINTERN,   // Do not intern any object that are read</span>
+    }
+
+    /** Trace all reads? */
+<span class="fc" id="L100">    private boolean tracing = false;</span>
+
+    /** The stream to read from. */
+<span class="fc" id="L103">    private InputStream inputStream = null;</span>
+
+    /** The read scope to apply. */
+    private ReadScope readScope;
+
+    /**
+     * A cache of uninterned objects.  Uninterned reads add to this list
+     * so that they can refer to sub-objects correctly.  However there is no
+     * obvious place to clear this cache, so we do that in replaceScope
+     * as you can not expect to reference the same object across scopes.
+     */
+<span class="fc" id="L114">    private Map&lt;String, FreeColObject&gt; uninterned</span>
+        = new HashMap&lt;String, FreeColObject&gt;();
+
+
+    /**
+     * Creates a new {@code FreeColXMLReader}.
+     *
+     * @param bis The {@code BufferedInputStream} to create
+     *     an {@code FreeColXMLReader} for.
+     * @exception XMLStreamException can be thrown while creating the reader.
+     */
+    public FreeColXMLReader(BufferedInputStream bis)
+        throws XMLStreamException {
+<span class="fc" id="L127">        super();</span>
+
+<span class="fc" id="L129">        XMLInputFactory xif = newXMLInputFactory();</span>
+        XMLStreamReader xsr;
+        try {
+<span class="fc" id="L132">            xsr = xif.createXMLStreamReader(bis, &quot;UTF-8&quot;);</span>
+<span class="fc" id="L133">            setParent(xsr);</span>
+<span class="nc" id="L134">        } catch (Exception ex) {</span>
+<span class="nc" id="L135">            throw new XMLStreamException(&quot;Stream reader fail&quot;, ex);</span>
+<span class="fc" id="L136">        }</span>
+<span class="fc" id="L137">        this.inputStream = bis;</span>
+<span class="fc" id="L138">        this.readScope = ReadScope.NORMAL;</span>
+<span class="fc" id="L139">        this.uninterned.clear();</span>
+<span class="fc" id="L140">    }</span>
+
+    /**
+     * Creates a new {@code FreeColXMLReader}.
+     *
+     * @param inputStream The {@code InputStream} to create
+     *     an {@code FreeColXMLReader} for.
+     * @exception XMLStreamException can be thrown while creating the reader.
+     */
+    public FreeColXMLReader(InputStream inputStream)
+        throws XMLStreamException {
+<span class="fc" id="L151">        this(new BufferedInputStream(inputStream));</span>
+<span class="fc" id="L152">    }</span>
+
+    /**
+     * Creates a new {@code FreeColXMLReader}.
+     *
+     * @param file The {@code File} to create an {@code FreeColXMLReader} for.
+     * @exception IOException if the file is missing.
+     * @exception XMLStreamException can be thrown while creating the reader.
+     */
+    public FreeColXMLReader(File file) throws IOException, XMLStreamException {
+<span class="fc" id="L162">        this(Files.newInputStream(file.toPath()));</span>
+<span class="fc" id="L163">    }</span>
+    
+    /**
+     * Creates a new {@code FreeColXMLReader}.
+     *
+     * @param reader A {@code Reader} to create
+     *     an {@code FreeColXMLReader} for.
+     * @exception XMLStreamException if thrown while creating the reader.
+     */
+    public FreeColXMLReader(Reader reader) throws XMLStreamException {
+<span class="fc" id="L173">        super();</span>
+
+<span class="fc" id="L175">        XMLInputFactory xif = newXMLInputFactory();</span>
+<span class="fc" id="L176">        XMLStreamReader xsr = xif.createXMLStreamReader(reader);</span>
+<span class="fc" id="L177">        setParent(xsr);</span>
+<span class="fc" id="L178">        this.inputStream = null;</span>
+<span class="fc" id="L179">        this.readScope = ReadScope.NORMAL;</span>
+<span class="fc" id="L180">        this.uninterned.clear();</span>
+<span class="fc" id="L181">    }</span>
+
+    /**
+     * Create a new XMLInputFactory.
+     *
+     * Respond to CVE 2018-1000825.
+     *
+     * @return A new &lt;code&gt;XMLInputFactory&lt;/code&gt;.
+     */
+    private static XMLInputFactory newXMLInputFactory() {
+<span class="fc" id="L191">        XMLInputFactory xif = XMLInputFactory.newInstance();</span>
+        // This disables DTDs entirely for that factory
+<span class="fc" id="L193">        xif.setProperty(XMLInputFactory.SUPPORT_DTD, false); </span>
+        // disable external entities
+<span class="fc" id="L195">        xif.setProperty(&quot;javax.xml.stream.isSupportingExternalEntities&quot;, false);</span>
+<span class="fc" id="L196">        return xif;</span>
+    }
+
+    /**
+     * Set the tracing state.
+     *
+     * @param tracing The new tracing state.
+     * @return This reader.
+     */
+    public FreeColXMLReader setTracing(boolean tracing) {
+<span class="nc" id="L206">        this.tracing = tracing;</span>
+<span class="nc" id="L207">        return this;</span>
+    }
+
+    /**
+     * Should reads from this stream intern their objects into the
+     * enclosing game?
+     *
+     * @return True if this is an interning stream.
+     */
+    public boolean shouldIntern() {
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        return this.readScope != ReadScope.NOINTERN;</span>
+    }
+
+    /**
+     * Get the read scope.
+     *
+     * @return The {@code ReadScope}.
+     */
+    public ReadScope getReadScope() {
+<span class="fc" id="L226">        return this.readScope;</span>
+    }
+
+    /**
+     * Set the read scope.
+     *
+     * @param readScope The new {@code ReadScope}.
+     * @return This reader.
+     */
+    public FreeColXMLReader setReadScope(ReadScope readScope) {
+<span class="fc" id="L236">        this.readScope = readScope;</span>
+<span class="fc" id="L237">        return this;</span>
+    }
+
+    /**
+     * Replace a the scope.
+     *
+     * @param newReadScope The {@code ReadScope} to push.
+     * @return The previous {@code ReadScope}.
+     */
+    public ReadScope replaceScope(ReadScope newReadScope) {
+<span class="nc" id="L247">        ReadScope ret = this.readScope;</span>
+        
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        if (this.readScope != newReadScope) {</span>
+            // Take the opportunity to clear the uninterned object cache
+            // as they can not be the same across scopes
+<span class="nc" id="L252">            this.uninterned.clear();</span>
+        }
+<span class="nc" id="L254">        this.readScope = newReadScope;</span>
+<span class="nc" id="L255">        return ret;</span>
+    }
+
+    /**
+     * Look up an identifier in an enclosing game.  If not interning
+     * prefer an non-interned result.
+     *
+     * @param game The {@code Game} to consult.
+     * @param id The object identifier.
+     * @return The {@code FreeColObject} found, or null if none.
+     */
+    private FreeColObject lookup(Game game, String id) {
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        FreeColObject fco = (shouldIntern()) ? null : uninterned.get(id);</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        return (fco != null) ? fco</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">            : (game == null) ? null</span>
+<span class="fc" id="L270">            : game.getFreeColGameObject(id);</span>
+    }
+
+    /**
+     * Look up an identifier in an enclosing game.
+     *
+     * This is public to allow the special fixup in Game.readChildren.
+     *
+     * @param &lt;T&gt; The expected object class type.
+     * @param game The {@code Game} to consult.
+     * @param id The object identifier.
+     * @param returnClass The class of the return value.
+     * @return The {@code FreeColObject} found, or null if none.
+     * @exception XMLStreamException if the return class does not match.
+     */
+    public &lt;T extends FreeColObject&gt; T lookup(Game game, String id,
+                                              Class&lt;T&gt; returnClass)
+        throws XMLStreamException {
+<span class="fc" id="L288">        FreeColObject fco = lookup(game, id);</span>
+        try {
+<span class="fc" id="L290">            return returnClass.cast(fco);</span>
+<span class="nc" id="L291">        } catch (ClassCastException cce) {</span>
+<span class="nc" id="L292">            throw new XMLStreamException(cce);</span>
+        }
+    }
+
+    /**
+     * Closes both the {@code XMLStreamReader} and
+     * the underlying stream if any.
+     *
+     * Implements interface Closeable.
+     */
+    @Override
+    public void close() {
+        try {
+<span class="fc" id="L305">            super.close();</span>
+<span class="nc" id="L306">        } catch (XMLStreamException xse) {</span>
+<span class="nc" id="L307">            logger.log(Level.WARNING, &quot;Error closing stream.&quot;, xse);</span>
+<span class="fc" id="L308">        }</span>
+
+<span class="fc bfc" id="L310" title="All 2 branches covered.">        if (inputStream != null) {</span>
+            try {
+<span class="fc" id="L312">                inputStream.close();</span>
+<span class="nc" id="L313">            } catch (IOException ioe) {</span>
+<span class="nc" id="L314">                logger.log(Level.WARNING, &quot;Error closing stream.&quot;, ioe);</span>
+<span class="fc" id="L315">            }</span>
+<span class="fc" id="L316">            inputStream = null;</span>
+        }
+<span class="fc" id="L318">    }</span>
+
+    // @compat 0.11.x
+    /**
+     * Reads the identifier attribute.
+     *
+     * When all the compatibility code is obsolete, remove this
+     * routine and replace its uses with just:
+     *     getAttribute(in, ID_ATTRIBUTE_TAG, (String)null)
+     * or equivalent.
+     *
+     * @return The identifier found, or null if none present.
+     */
+    public String readId() {
+        
+<span class="fc" id="L333">        String id = getAttribute(FreeColObject.ID_ATTRIBUTE_TAG, (String)null);</span>
+
+<span class="fc bfc" id="L335" title="All 2 branches covered.">        if (id == null) return null;</span>
+
+        // @compat 0.11.x, but really 0.10.x
+        // Upgrade some old ids.  0.11.x never generated them, but
+        // games upgraded from 0.10.x could still contain them.  We
+        // should have done this earlier, but that fell through the
+        // cracks...
+<span class="fc" id="L342">        int idx = id.indexOf(':');</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        if (idx &gt; 10) {</span>
+<span class="fc" id="L344">            String prefix = id.substring(0, idx);</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">            if (&quot;tileitemcontainer&quot;.equals(prefix)) {</span>
+<span class="nc" id="L346">                id = &quot;tileItemContainer&quot; + id.substring(idx);</span>
+<span class="pc bpc" id="L347" title="1 of 2 branches missed.">            } else if (&quot;tileimprovement&quot;.equals(prefix)) {</span>
+<span class="nc" id="L348">                id = &quot;tileImprovement&quot; + id.substring(idx);</span>
+            }
+        }
+        // @compat 0.11.x
+        
+<span class="fc" id="L353">        return id;</span>
+    }
+    // end @compat 0.11.x
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int nextTag() throws XMLStreamException {
+<span class="fc" id="L362">        int tag = super.nextTag();</span>
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">        if (tracing) {</span>
+<span class="nc bnc" id="L364" title="All 3 branches missed.">            switch (tag) {</span>
+            case XMLStreamConstants.START_ELEMENT:
+<span class="nc" id="L366">                System.err.println(&quot;[&quot; + getLocalName());</span>
+<span class="nc" id="L367">                break;</span>
+            case XMLStreamConstants.END_ELEMENT:
+<span class="nc" id="L369">                System.err.println(getLocalName() + &quot;]&quot;);</span>
+<span class="nc" id="L370">                break;</span>
+            default:
+<span class="nc" id="L372">                String val = tagStrings.get(tag);</span>
+<span class="nc bnc" id="L373" title="All 2 branches missed.">                System.err.println((val == null) ? &quot;Weird tag: &quot; + tag : val);</span>
+                break;
+            }
+        }
+<span class="fc" id="L377">        return tag;</span>
+    }
+             
+    /**
+     * Is the stream at the given tag?
+     *
+     * @param tag The tag to test.
+     * @return True if at the given tag.
+     */
+    public boolean atTag(String tag) {
+<span class="nc" id="L387">        return getLocalName().equals(tag);</span>
+    }
+
+    /**
+     * Expect a particular tag.
+     *
+     * @param tag The expected tag name.
+     * @exception XMLStreamException if the expected tag is not found.
+     */
+    public void expectTag(String tag) throws XMLStreamException {
+<span class="fc" id="L397">        final String endTag = getLocalName();</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">        if (!endTag.equals(tag)) {</span>
+<span class="nc" id="L399">            throw new XMLStreamException(&quot;Parse error, &quot; + tag</span>
+                + &quot; expected, not: &quot; + endTag);
+        }
+<span class="fc" id="L402">    }</span>
+
+    /**
+     * Check if there are more tags in the current element.
+     *
+     * @return True if the stream has not reached the end of the
+     *     current element.
+     * @exception XMLStreamException if there is an error with the stream.
+     */
+    public boolean moreTags() throws XMLStreamException {
+<span class="fc bfc" id="L412" title="All 2 branches covered.">        return nextTag() != XMLStreamConstants.END_ELEMENT;</span>
+    }
+
+    /**
+     * Close the current tag, checking that it did indeed close correctly.
+     *
+     * @param tag The expected tag name.
+     * @exception XMLStreamException if a closing tag is not found.
+     */
+    public void closeTag(String tag) throws XMLStreamException {
+<span class="pc bpc" id="L422" title="1 of 2 branches missed.">        if (moreTags()) {</span>
+<span class="nc" id="L423">            throw new XMLStreamException(&quot;Parse error, END_ELEMENT expected,&quot;</span>
+<span class="nc" id="L424">                + &quot; not: &quot; + getLocalName());</span>
+        }
+<span class="fc" id="L426">        expectTag(tag);</span>
+<span class="fc" id="L427">    }</span>
+
+    /**
+     * Close the current tag, but accept some alternative elements first.
+     *
+     * @param tag The expected tag to close.
+     * @param others Alternate elements to accept.
+     * @exception XMLStreamException if a closing tag is not found.
+     */
+    public void closeTag(String tag, String... others) throws XMLStreamException {
+<span class="nc bnc" id="L437" title="All 2 branches missed.">        for (int next = nextTag(); next != XMLStreamConstants.END_ELEMENT;</span>
+<span class="nc" id="L438">             next = nextTag()) {</span>
+<span class="nc" id="L439">            String at = find(others, s -&gt; atTag(s));</span>
+<span class="nc bnc" id="L440" title="All 2 branches missed.">            if (at == null) {</span>
+<span class="nc" id="L441">                throw new XMLStreamException(&quot;Parse error, END_ELEMENT(&quot; + tag</span>
+<span class="nc" id="L442">                    + &quot; or alternatives) expected, not: &quot; + getLocalName());</span>
+            }
+<span class="nc" id="L444">            closeTag(at);</span>
+        }
+<span class="nc" id="L446">        expectTag(tag);</span>
+<span class="nc" id="L447">    }</span>
+
+    /**
+     * Swallow a tag, ignoring anything read until the tag closes.
+     *
+     * @param tag The tag to swallow.
+     * @exception XMLStreamException if a there is an error with the stream.
+     */
+    public void swallowTag(String tag) throws XMLStreamException {
+<span class="fc bfc" id="L456" title="All 4 branches covered.">        while (moreTags() || !tag.equals(getLocalName()));</span>
+<span class="fc" id="L457">    }            </span>
+        
+    /**
+     * Extract the current tag and its attributes from an input stream.
+     * Useful for error messages.
+     *
+     * @return A simple display of the stream state.
+     */
+    public String currentTag() {
+<span class="nc" id="L466">        StringBuilder sb = new StringBuilder(getLocalName());</span>
+<span class="nc" id="L467">        sb.append(&quot;, attributes:&quot;);</span>
+<span class="nc" id="L468">        int n = getAttributeCount();</span>
+<span class="nc bnc" id="L469" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L470">            sb.append(' ').append(getAttributeLocalName(i))</span>
+<span class="nc" id="L471">                .append(&quot;=\&quot;&quot;).append(getAttributeValue(i)).append('&quot;');</span>
+        }
+<span class="nc" id="L473">        return sb.toString();</span>
+    }
+
+    /**
+     * Standardized way to throw a parsing exception with a bit of context.
+     *
+     * @param context A context string.
+     * @exception XMLStreamException is always thrown.
+     */
+    public void unexpectedTag(String context) throws XMLStreamException {
+<span class="nc" id="L483">        throw new XMLStreamException(&quot;In &quot; + context</span>
+<span class="nc" id="L484">            + &quot;, unexpected tag &quot; + getLocalName()</span>
+<span class="nc" id="L485">            + &quot;, at: &quot; + currentTag());</span>
+    }
+
+    /**
+     * Is there an attribute present in the stream?
+     *
+     * @param attributeName An attribute name
+     * @return True if the attribute is present.
+     */
+    public boolean hasAttribute(String attributeName) {
+<span class="fc bfc" id="L495" title="All 2 branches covered.">        return getParent().getAttributeValue(null, attributeName) != null;</span>
+    }
+
+    /**
+     * Gets a boolean from an attribute in a stream.
+     *
+     * @param attributeName The attribute name.
+     * @param defaultValue The default value.
+     * @return The boolean attribute value, or the default value if none found.
+     */
+    public boolean getAttribute(String attributeName, boolean defaultValue) {
+<span class="fc" id="L506">        final String attrib = getParent().getAttributeValue(null,</span>
+                                                            attributeName);
+<span class="fc bfc" id="L508" title="All 2 branches covered.">        return (attrib == null) ? defaultValue</span>
+<span class="fc" id="L509">            : Boolean.parseBoolean(attrib);</span>
+    }
+
+    /**
+     * Gets a float from an attribute in a stream.
+     *
+     * @param attributeName The attribute name.
+     * @param defaultValue The default value.
+     * @return The float attribute value, or the default value if none found.
+     */
+    public float getAttribute(String attributeName, float defaultValue) {
+<span class="fc" id="L520">        final String attrib = getParent().getAttributeValue(null,</span>
+                                                            attributeName);
+<span class="fc" id="L522">        float result = defaultValue;</span>
+<span class="fc bfc" id="L523" title="All 2 branches covered.">        if (attrib != null) {</span>
+            try {
+<span class="fc" id="L525">                result = Float.parseFloat(attrib);</span>
+<span class="nc" id="L526">            } catch (NumberFormatException e) {</span>
+<span class="nc" id="L527">                logger.warning(attributeName + &quot; is not a float: &quot; + attrib);</span>
+<span class="fc" id="L528">            }</span>
+        }
+<span class="fc" id="L530">        return result;</span>
+    }
+
+    /**
+     * Gets an int from an attribute in a stream.
+     *
+     * @param attributeName The attribute name.
+     * @param defaultValue The default value.
+     * @return The int attribute value, or the default value if none found.
+     */
+    public int getAttribute(String attributeName, int defaultValue) {
+<span class="fc" id="L541">        final String attrib = getParent().getAttributeValue(null,</span>
+                                                            attributeName);
+<span class="fc" id="L543">        int result = defaultValue;</span>
+<span class="fc bfc" id="L544" title="All 2 branches covered.">        if (attrib != null) {</span>
+            try {
+<span class="fc" id="L546">                result = Integer.decode(attrib);</span>
+<span class="nc" id="L547">            } catch (NumberFormatException e) {</span>
+<span class="nc" id="L548">                logger.warning(attributeName + &quot; is not an integer: &quot; + attrib);</span>
+<span class="fc" id="L549">            }</span>
+        }
+<span class="fc" id="L551">        return result;</span>
+    }
+
+    /**
+     * Gets a long from an attribute in a stream.
+     *
+     * @param attributeName The attribute name.
+     * @param defaultValue The default value.
+     * @return The long attribute value, or the default value if none found.
+     */
+    public long getAttribute(String attributeName, long defaultValue) {
+<span class="nc" id="L562">        final String attrib = getParent().getAttributeValue(null,</span>
+                                                            attributeName);
+<span class="nc" id="L564">        long result = defaultValue;</span>
+<span class="nc bnc" id="L565" title="All 2 branches missed.">        if (attrib != null) {</span>
+            try {
+<span class="nc" id="L567">                result = Long.decode(attrib);</span>
+<span class="nc" id="L568">            } catch (NumberFormatException e) {</span>
+<span class="nc" id="L569">                logger.warning(attributeName + &quot; is not a long: &quot; + attrib);</span>
+<span class="nc" id="L570">            }</span>
+        }
+<span class="nc" id="L572">        return result;</span>
+    }
+
+    /**
+     * Gets a string from an attribute in a stream.
+     *
+     * @param attributeName The attribute name.
+     * @param defaultValue The default value.
+     * @return The string attribute value, or the default value if none found.
+     */
+    public String getAttribute(String attributeName, String defaultValue) {
+<span class="fc" id="L583">        final String attrib = getParent().getAttributeValue(null,</span>
+                                                            attributeName);
+<span class="fc bfc" id="L585" title="All 2 branches covered.">        return (attrib == null) ? defaultValue</span>
+<span class="fc" id="L586">            : attrib;</span>
+    }
+
+    /**
+     * Gets an enum from an attribute in a stream.
+     *
+     * @param &lt;T&gt; The expected enum type.
+     * @param attributeName The attribute name.
+     * @param returnClass The class of the return value.
+     * @param defaultValue The default value.
+     * @return The enum attribute value, or the default value if none found.
+     */
+    public &lt;T extends Enum&lt;T&gt;&gt; T getAttribute(String attributeName,
+                                              Class&lt;T&gt; returnClass,
+                                              T defaultValue) {
+<span class="fc" id="L601">        final String attrib = getParent().getAttributeValue(null,</span>
+                                                            attributeName);
+<span class="fc" id="L603">        T result = defaultValue;</span>
+<span class="fc bfc" id="L604" title="All 2 branches covered.">        if (attrib != null) {</span>
+            try {
+<span class="fc" id="L606">                result = Enum.valueOf(returnClass, upCase(attrib));</span>
+<span class="nc" id="L607">            } catch (Exception e) {</span>
+<span class="nc" id="L608">                logger.warning(attributeName + &quot; is not a &quot;</span>
+<span class="nc" id="L609">                    + returnClass.getName() + &quot;: &quot; + attrib);</span>
+<span class="fc" id="L610">            }</span>
+        }
+<span class="fc" id="L612">        return result;</span>
+    }
+
+    /**
+     * Gets a FreeCol object from an attribute in a stream.
+     *
+     * @param &lt;T&gt; The expected attribute type.
+     * @param game The {@code Game} to look in.
+     * @param attributeName The attribute name.
+     * @param returnClass The {@code FreeColObject} type to expect.
+     * @param defaultValue The default value.
+     * @return The {@code FreeColObject} found, or the default
+     *     value if not.
+     * @exception XMLStreamException if the wrong class was passed.
+     */
+    public &lt;T extends FreeColObject&gt; T getAttribute(Game game,
+        String attributeName, Class&lt;T&gt; returnClass,
+        T defaultValue) throws XMLStreamException {
+
+        final String attrib =
+        // @compat 0.11.x
+<span class="fc bfc" id="L633" title="All 2 branches covered.">            (FreeColObject.ID_ATTRIBUTE_TAG.equals(attributeName)) ? readId() :</span>
+        // end @compat 0.11.x
+<span class="fc" id="L635">            getAttribute(attributeName, (String)null);</span>
+
+<span class="fc bfc" id="L637" title="All 2 branches covered.">        if (attrib == null) return defaultValue;</span>
+<span class="fc" id="L638">        return lookup(game, attrib, returnClass);</span>
+    }
+
+    /**
+     * Get a FreeCol AI object from an attribute in a stream.
+     *
+     * @param &lt;T&gt; The expected attribute type.
+     * @param aiMain The {@code AIMain} that contains the object.
+     * @param attributeName The attribute name.
+     * @param returnClass The {@code AIObject} type to expect.
+     * @param defaultValue The default value.
+     * @return The {@code AIObject} found, or the default value if not.
+     */
+    public &lt;T extends AIObject&gt; T getAttribute(AIMain aiMain,
+        String attributeName, Class&lt;T&gt; returnClass, T defaultValue) {
+        final String attrib =
+        // @compat 0.11.x
+<span class="nc bnc" id="L655" title="All 2 branches missed.">            (FreeColObject.ID_ATTRIBUTE_TAG.equals(attributeName)) ? readId() :</span>
+        // end @compat 0.11.x
+<span class="nc" id="L657">            getAttribute(attributeName, (String)null);</span>
+
+<span class="nc bnc" id="L659" title="All 2 branches missed.">        return (attrib == null) ? defaultValue</span>
+<span class="nc" id="L660">            : aiMain.getAIObject(attrib, returnClass);</span>
+    }
+
+    /**
+     * Find a new location from a stream attribute.  This is necessary
+     * because {@code Location} is an interface.
+     *
+     * @param game The {@code Game} to look in.
+     * @param attributeName The attribute to check.
+     * @param make If true, try to make the location if it is not found.
+     * @return The {@code Location} found.
+     * @exception XMLStreamException if a problem was encountered
+     *     during parsing.
+     */
+    public Location getLocationAttribute(Game game, String attributeName,
+                                         boolean make)
+        throws XMLStreamException {
+<span class="pc bpc" id="L677" title="1 of 2 branches missed.">        if (attributeName == null) return null;</span>
+
+        final String attrib =
+        // @compat 0.11.x
+<span class="fc bfc" id="L681" title="All 2 branches covered.">            (FreeColObject.ID_ATTRIBUTE_TAG.equals(attributeName)) ? readId() :</span>
+        // end @compat 0.11.x
+<span class="fc" id="L683">            getAttribute(attributeName, (String)null);</span>
+<span class="fc bfc" id="L684" title="All 2 branches covered.">        if (attrib == null) return null;</span>
+
+<span class="fc" id="L686">        FreeColObject fco = lookup(game, attrib);</span>
+<span class="pc bpc" id="L687" title="1 of 4 branches missed.">        if (fco == null &amp;&amp; make) {</span>
+<span class="fc" id="L688">            Class&lt;? extends FreeColGameObject&gt; c</span>
+<span class="fc" id="L689">                = Game.getLocationClass(attrib);</span>
+<span class="pc bpc" id="L690" title="1 of 2 branches missed.">            if (c != null) {</span>
+<span class="fc" id="L691">                fco = makeFreeColObject(game, attributeName, c,</span>
+<span class="pc bpc" id="L692" title="1 of 2 branches missed.">                                        getReadScope()==ReadScope.SERVER);</span>
+            }
+        }
+<span class="pc bpc" id="L695" title="1 of 2 branches missed.">        if (fco instanceof Location) return (Location)fco;</span>
+<span class="nc" id="L696">        logger.warning(&quot;Not a location: &quot; + attrib);</span>
+<span class="nc" id="L697">        return null;</span>
+    }
+
+    /**
+     * Get a map of attributes.
+     *
+     * @param attributes The list of attributes to look up.
+     * @return A map of attributes.
+     */
+    public Map&lt;String, String&gt; getAttributeMap(String... attributes) {
+<span class="fc" id="L707">        Map&lt;String, String&gt; ret = new HashMap&lt;&gt;(attributes.length);</span>
+<span class="fc bfc" id="L708" title="All 2 branches covered.">        for (String a : attributes) ret.put(a, getAttribute(a, (String)null));</span>
+<span class="fc" id="L709">        return ret;</span>
+    }
+            
+    /**
+     * Get a map of the array attributes.
+     *
+     * @return A map of array attributes.
+     */
+    public Map&lt;String, String&gt; getArrayAttributeMap() {
+<span class="fc" id="L718">        Map&lt;String, String&gt; ret = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L719">        int n = getAttribute(FreeColObject.ARRAY_SIZE_TAG, -1);</span>
+<span class="pc bpc" id="L720" title="1 of 2 branches missed.">        if (n &gt;= 0) {</span>
+<span class="fc" id="L721">            ret.put(FreeColObject.ARRAY_SIZE_TAG, Integer.toString(n));</span>
+<span class="fc bfc" id="L722" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L723">                String key = FreeColObject.arrayKey(i);</span>
+<span class="pc bpc" id="L724" title="1 of 2 branches missed.">                if (!hasAttribute(key)) break;</span>
+<span class="fc" id="L725">                ret.put(key, getAttribute(key, (String)null));</span>
+            }
+        }
+<span class="fc" id="L728">        return ret;</span>
+    }
+
+    /**
+     * Get a map of all attributes present.
+     *
+     * @return A map of all the attributes.
+     */
+    public Map&lt;String, String&gt; getAllAttributes() {
+<span class="nc" id="L737">        int n = getParent().getAttributeCount();</span>
+<span class="nc" id="L738">        Map&lt;String, String&gt; ret = new HashMap&lt;&gt;(n);</span>
+<span class="nc bnc" id="L739" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L740">            String key = getParent().getAttributeLocalName(i);</span>
+<span class="nc" id="L741">            String value = getParent().getAttributeValue(i);</span>
+<span class="nc" id="L742">            ret.put(key, value);</span>
+        }
+<span class="nc" id="L744">        return ret;</span>
+    }
+
+    /**
+     * Reads an XML-representation of a list of
+     * {@code FreeColSpecObjectType}s.
+     *
+     * @param &lt;T&gt; The list member type.
+     * @param tag The tag for the list.
+     * @param spec The {@code Specification} to find items in.
+     * @param type The type of the items to be added.  The type must exist
+     *     in the supplied specification.
+     * @return The list.
+     * @exception XMLStreamException if a problem was encountered
+     *     during parsing.
+     */
+    public &lt;T extends FreeColSpecObjectType&gt; List&lt;T&gt; readList(Specification spec,
+        String tag, Class&lt;T&gt; type) throws XMLStreamException {
+
+<span class="nc" id="L763">        expectTag(tag);</span>
+
+<span class="nc" id="L765">        final int length = getAttribute(FreeColObject.ARRAY_SIZE_TAG, -1);</span>
+<span class="nc bnc" id="L766" title="All 2 branches missed.">        if (length &lt; 0) return Collections.&lt;T&gt;emptyList();</span>
+
+<span class="nc" id="L768">        List&lt;T&gt; list = new ArrayList&lt;&gt;(length);</span>
+<span class="nc bnc" id="L769" title="All 2 branches missed.">        for (int x = 0; x &lt; length; x++) {</span>
+<span class="nc" id="L770">            T value = getType(spec, FreeColObject.arrayKey(x), type, (T)null); </span>
+<span class="nc bnc" id="L771" title="All 2 branches missed.">            if (value == null) logger.warning(&quot;Null list value(&quot; + x + &quot;)&quot;);</span>
+<span class="nc" id="L772">            list.add(value);</span>
+        }
+
+<span class="nc" id="L775">        closeTag(tag);</span>
+<span class="nc" id="L776">        return list;</span>
+    }
+
+    /**
+     * Find a {@code FreeColGameObject} of a given class
+     * from a stream attribute.
+     *
+     * Use this routine when the object is optionally already be
+     * present in the game.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to look in.
+     * @param attributeName The attribute name.
+     * @param returnClass The class to expect.
+     * @param defaultValue A default value to return if not found.
+     * @param required If true a null result should throw an exception.
+     * @return The {@code FreeColGameObject} found, or the default
+     *     value if not found.
+     * @exception XMLStreamException if the attribute is missing.
+     */
+    public &lt;T extends FreeColGameObject&gt; T findFreeColGameObject(Game game,
+        String attributeName, Class&lt;T&gt; returnClass, T defaultValue,
+        boolean required) throws XMLStreamException {
+
+<span class="fc" id="L800">        T ret = getAttribute(game, attributeName, returnClass, (T)null);</span>
+<span class="fc bfc" id="L801" title="All 2 branches covered.">        if (ret == (T)null) {</span>
+<span class="pc bpc" id="L802" title="1 of 2 branches missed.">            if (required) {</span>
+<span class="nc" id="L803">                throw new XMLStreamException(&quot;Missing &quot; + attributeName</span>
+<span class="nc" id="L804">                    + &quot; for &quot; + returnClass.getName() + &quot;: &quot; + currentTag());</span>
+            } else {
+<span class="fc" id="L806">                ret = defaultValue;</span>
+            }
+        }
+<span class="fc" id="L809">        return ret;</span>
+    }
+
+    /**
+     * Either get an existing {@code FreeColObject} from a stream
+     * attribute or create it if it does not exist.
+     *
+     * Use this routine when the object may not necessarily already be
+     * present in the game, but is expected to be defined eventually.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to look in.
+     * @param attributeName The required attribute name.
+     * @param returnClass The class of object.
+     * @param required If true a null result should throw an exception.
+     * @return The {@code FreeColObject} found or made, or null
+     *     if the attribute was not present.
+     * @exception XMLStreamException if a problem was encountered
+     *     during parsing.
+     */
+    public &lt;T extends FreeColObject&gt; T makeFreeColObject(Game game,
+        String attributeName, Class&lt;T&gt; returnClass, boolean required)
+        throws XMLStreamException {
+        final String id =
+            // @compat 0.11.x
+<span class="fc bfc" id="L834" title="All 2 branches covered.">            (FreeColObject.ID_ATTRIBUTE_TAG.equals(attributeName)) ? readId() :</span>
+            // end @compat 0.11.x
+<span class="fc" id="L836">            getAttribute(attributeName, (String)null);</span>
+<span class="fc" id="L837">        T ret = null;</span>
+<span class="fc bfc" id="L838" title="All 2 branches covered.">        if (id == null) {</span>
+<span class="pc bpc" id="L839" title="1 of 2 branches missed.">            if (required) {</span>
+<span class="nc" id="L840">                throw new XMLStreamException(&quot;Missing &quot; + attributeName</span>
+<span class="nc" id="L841">                    + &quot; for &quot; + returnClass.getName() + &quot;: &quot; + currentTag());</span>
+            }
+<span class="fc bfc" id="L843" title="All 2 branches covered.">        } else if ((ret = lookup(game, id, returnClass)) == null) {</span>
+<span class="fc" id="L844">            ret = Game.newInstance(game, returnClass,</span>
+<span class="fc bfc" id="L845" title="All 2 branches covered.">                                   getReadScope() == ReadScope.SERVER);</span>
+<span class="pc bpc" id="L846" title="1 of 2 branches missed.">            if (ret == null) {</span>
+<span class="nc" id="L847">                String err = &quot;Failed to create &quot; + returnClass.getName()</span>
+                    + &quot; with id: &quot; + id;
+<span class="nc bnc" id="L849" title="All 2 branches missed.">                if (required) throw new XMLStreamException(err);</span>
+<span class="nc" id="L850">                logger.warning(err);</span>
+<span class="pc bfc" id="L851" title="All 2 branches covered.">            } else if (ret instanceof FreeColGameObject) {</span>
+                // Do not set the id earlier or interning will happen
+                // by default in the constructor called from newInstance
+<span class="fc" id="L854">                ret.setId(id);</span>
+<span class="pc bpc" id="L855" title="1 of 2 branches missed.">                if (shouldIntern()) {</span>
+<span class="fc" id="L856">                    ((FreeColGameObject)ret).internId(id);</span>
+                } else {
+<span class="nc" id="L858">                    uninterned.put(id, ret);</span>
+                }
+            }
+        }
+<span class="fc" id="L862">        return ret;</span>
+    }
+
+    /**
+     * Do a normal interning read of a {@code FreeColObject}.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to look in.
+     * @param returnClass The class to expect.
+     * @return The {@code FreeColObject} found, or null there
+     *     was no ID_ATTRIBUTE_TAG present.
+     * @exception XMLStreamException if there is problem reading the stream.
+     */
+    private &lt;T extends FreeColObject&gt; T internedRead(Game game,
+        Class&lt;T&gt; returnClass) throws XMLStreamException {
+
+<span class="fc" id="L878">        T ret = makeFreeColObject(game, FreeColObject.ID_ATTRIBUTE_TAG, </span>
+                                  returnClass, false);
+<span class="pc bpc" id="L880" title="1 of 2 branches missed.">        if (ret != null) ret.readFromXML(this);</span>
+<span class="fc" id="L881">        return ret;</span>
+    }
+
+    /**
+     * Do a special non-interning read of a {@code FreeColObject}.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to look in.
+     * @param returnClass The class to expect.
+     * @return The {@code FreeColObject} found, or null there
+     *     was no ID_ATTRIBUTE_TAG present.
+     * @exception XMLStreamException if there is problem reading the stream.
+     */
+    private &lt;T extends FreeColObject&gt; T uninternedRead(Game game,
+        Class&lt;T&gt; returnClass) throws XMLStreamException {
+
+<span class="fc" id="L897">        String id = readId();</span>
+<span class="pc bpc" id="L898" title="1 of 2 branches missed.">        if (id == null) {</span>
+<span class="nc" id="L899">            throw new XMLStreamException(&quot;Null object identifier for: &quot; + returnClass.getName());</span>
+        }
+        T ret;
+<span class="fc" id="L902">        FreeColObject fco = uninterned.get(id);</span>
+<span class="pc bpc" id="L903" title="1 of 2 branches missed.">        if (fco == null) {</span>
+<span class="fc" id="L904">            ret = Game.newInstance(game, returnClass,</span>
+<span class="pc bpc" id="L905" title="1 of 2 branches missed.">                                   getReadScope() == ReadScope.SERVER);</span>
+<span class="pc bpc" id="L906" title="1 of 2 branches missed.">            if (ret == null) {</span>
+<span class="nc" id="L907">                throw new XMLStreamException(&quot;Failed to create &quot;</span>
+<span class="nc" id="L908">                    + returnClass.getName() + &quot; with id: &quot; + id);</span>
+            }
+        } else {
+            try {
+<span class="nc" id="L912">                ret = returnClass.cast(fco);</span>
+<span class="nc" id="L913">            } catch (ClassCastException cce) {</span>
+<span class="nc" id="L914">                throw new XMLStreamException(cce);</span>
+<span class="nc" id="L915">            }</span>
+        }
+<span class="fc" id="L917">        uninterned.put(id, ret); // Register id before reading</span>
+<span class="fc" id="L918">        ret.readFromXML(this);</span>
+<span class="fc" id="L919">        return ret;</span>
+    }
+
+    /**
+     * Reads a {@code FreeColObject} from a stream.
+     * Expects the object to be identified by the standard ID_ATTRIBUTE_TAG.
+     *
+     * Use this routine when the object may or may not have been
+     * referenced and created-by-id in this game, but this is the
+     * point where it is authoritatively defined.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to look in.
+     * @param returnClass The class to expect.
+     * @return The {@code FreeColObject} found, or null there
+     *     was no ID_ATTRIBUTE_TAG present.
+     * @exception XMLStreamException if there is problem reading the stream.
+     */
+    public &lt;T extends FreeColObject&gt; T readFreeColObject(Game game,
+        Class&lt;T&gt; returnClass) throws XMLStreamException {
+<span class="fc bfc" id="L939" title="All 2 branches covered.">        return (shouldIntern())</span>
+<span class="fc" id="L940">            ? internedRead(game, returnClass)</span>
+<span class="fc" id="L941">            : uninternedRead(game, returnClass);</span>
+    }
+
+    /**
+     * Read a {@code FreeColObject} from a stream.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to look in.
+     * @return The {@code FreeColObject} found.
+     * @exception XMLStreamException if there is problem reading the stream.
+     */
+    public &lt;T extends FreeColObject&gt; T readFreeColObject(Game game)
+        throws XMLStreamException {
+<span class="nc" id="L954">        final String tag = getLocalName();</span>
+<span class="nc" id="L955">        Class&lt;T&gt; returnClass = FreeColObject.getFreeColObjectClassByName(tag);</span>
+<span class="nc bnc" id="L956" title="All 2 branches missed.">        if (returnClass == null) {</span>
+<span class="nc" id="L957">            throw new XMLStreamException(&quot;No class: &quot; + tag);</span>
+        }
+<span class="nc" id="L959">        return readFreeColObject(game, returnClass);</span>
+    }
+
+    /**
+     * Find a FreeCol AI object from an attribute in a stream.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param aiMain The {@code AIMain} that contains the object.
+     * @param attributeName The attribute name.
+     * @param returnClass The {@code AIObject} type to expect.
+     * @param defaultValue The default value.
+     * @param required If true a null result should throw an exception.
+     * @exception XMLStreamException if there is problem reading the stream.
+     * @return The {@code AIObject} found, or the default value if not.
+     */
+    public &lt;T extends AIObject&gt; T findAIObject(AIMain aiMain,
+        String attributeName, Class&lt;T&gt; returnClass, T defaultValue,
+        boolean required) throws XMLStreamException {
+
+<span class="nc" id="L978">        T ret = getAttribute(aiMain, attributeName, returnClass, (T)null);</span>
+<span class="nc bnc" id="L979" title="All 2 branches missed.">        if (ret == (T)null) {</span>
+<span class="nc bnc" id="L980" title="All 2 branches missed.">            if (required) {</span>
+<span class="nc" id="L981">                throw new XMLStreamException(&quot;Missing &quot; + attributeName</span>
+<span class="nc" id="L982">                    + &quot; for &quot; + returnClass.getName() + &quot;: &quot; + currentTag());</span>
+            } else {
+<span class="nc" id="L984">                ret = defaultValue;</span>
+            }
+        }
+<span class="nc" id="L987">        return ret;</span>
+    }
+
+    /**
+     * Either get an existing {@code AIObject} from a stream
+     * attribute or create it if it does not exist.
+     *
+     * Use this routine when the object may not necessarily already be
+     * present in the game, but is expected to be defined eventually.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param aiMain The {@code AIMain} that contains the object.
+     * @param attributeName The attribute name.
+     * @param returnClass The {@code AIObject} type to expect.
+     * @param defaultValue The default value.
+     * @param required If true, throw exceptions on missing data.
+     * @exception XMLStreamException if there is problem reading the stream.
+     * @return The {@code AIObject} found, or the default value if not.
+     */
+    public &lt;T extends AIObject&gt; T makeAIObject(AIMain aiMain,
+        String attributeName, Class&lt;T&gt; returnClass, T defaultValue,
+        boolean required) throws XMLStreamException {
+
+        final String id =
+            // @compat 0.11.x
+<span class="nc bnc" id="L1012" title="All 2 branches missed.">            (FreeColObject.ID_ATTRIBUTE_TAG.equals(attributeName)) ? readId() :</span>
+            // end @compat 0.11.x
+<span class="nc" id="L1014">            getAttribute(attributeName, (String)null);</span>
+
+<span class="nc" id="L1016">        T ret = null;</span>
+<span class="nc bnc" id="L1017" title="All 2 branches missed.">        if (id == null) {</span>
+<span class="nc bnc" id="L1018" title="All 2 branches missed.">            if (required) {</span>
+<span class="nc" id="L1019">                throw new XMLStreamException(&quot;Missing &quot; + attributeName</span>
+<span class="nc" id="L1020">                    + &quot; for &quot; + returnClass.getName() + &quot;: &quot; + currentTag());</span>
+            }
+        } else {
+<span class="nc" id="L1023">            ret = aiMain.getAIObject(id, returnClass);</span>
+<span class="nc bnc" id="L1024" title="All 2 branches missed.">            if (ret == null) {</span>
+                try {
+<span class="nc" id="L1026">                    Constructor&lt;T&gt; c = returnClass.getConstructor(AIMain.class,</span>
+                                                                  String.class);
+<span class="nc" id="L1028">                    ret = returnClass.cast(c.newInstance(aiMain, id));</span>
+<span class="nc bnc" id="L1029" title="All 4 branches missed.">                    if (required &amp;&amp; ret == null) {</span>
+<span class="nc" id="L1030">                        throw new XMLStreamException(&quot;Constructed null &quot;</span>
+<span class="nc" id="L1031">                            + returnClass.getName() + &quot; for &quot; + id</span>
+<span class="nc" id="L1032">                            + &quot;: &quot; + currentTag());</span>
+                    }
+<span class="nc" id="L1034">                } catch (NoSuchMethodException | SecurityException </span>
+                        | InstantiationException | IllegalAccessException 
+                        | IllegalArgumentException | InvocationTargetException 
+                        | XMLStreamException e) {
+<span class="nc bnc" id="L1038" title="All 2 branches missed.">                    if (required) {</span>
+<span class="nc" id="L1039">                        throw new XMLStreamException(e);</span>
+                    } else {
+<span class="nc" id="L1041">                        logger.log(Level.WARNING, &quot;Failed to create AIObject: &quot;</span>
+                                   + id, e);
+                    }
+<span class="nc" id="L1044">                }</span>
+            }
+        }
+<span class="nc" id="L1047">        return ret;</span>
+    }
+
+    /**
+     * Should the game object type being read clear its containers before
+     * reading the child elements?
+     *
+     * @return True if the containers should be cleared.
+     */
+    public boolean shouldClearContainers() {
+<span class="pc bpc" id="L1057" title="1 of 2 branches missed.">        return !getAttribute(FreeColSpecObjectType.PRESERVE_TAG, false);</span>
+    }
+    
+    /**
+     * Should the attributes of the game object type be read?
+     *
+     * @return True if the attributes should be read.
+     */
+    public boolean shouldReadAttributes() {
+<span class="pc bpc" id="L1066" title="1 of 2 branches missed.">        return !getAttribute(FreeColSpecObjectType.PRESERVE_ATTRIBUTES_TAG, false);</span>
+    }
+
+    /**
+     * Get a FreeColSpecObjectType by identifier from a stream from a
+     * specification.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param spec The {@code Specification} to look in.
+     * @param attributeName the name of the attribute identifying the
+     *     {@code FreeColSpecObjectType}.
+     * @param returnClass The expected class of the return value.
+     * @param defaultValue A default value to return if the attributeName 
+     *     attribute is not present.
+     * @return The {@code FreeColSpecObjectType} found, or the
+     *     {@code defaultValue}.
+     */
+    public &lt;T extends FreeColSpecObjectType&gt; T getType(Specification spec,
+        String attributeName, Class&lt;T&gt; returnClass, T defaultValue) {
+
+        final String attrib =
+        // @compat 0.11.x
+<span class="fc bfc" id="L1088" title="All 2 branches covered.">            (FreeColObject.ID_ATTRIBUTE_TAG.equals(attributeName)) ? readId() :</span>
+        // end @compat 0.11.x
+<span class="fc" id="L1090">            getAttribute(attributeName, (String)null);</span>
+
+<span class="fc bfc" id="L1092" title="All 2 branches covered.">        return (attrib == null) ? defaultValue</span>
+<span class="fc" id="L1093">            : spec.findType(attrib, returnClass);</span>
+    }
+    
+    /**
+     * Get an initialized FreeColSpecObjectType by identifier from a stream from a
+     * specification.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param spec The {@code Specification} to look in.
+     * @param attributeName the name of the attribute identifying the
+     *     {@code FreeColSpecObjectType}.
+     * @param returnClass The expected class of the return value.
+     * @param defaultValue A default value to return if the attributeName 
+     *     attribute is not present.
+     * @return The {@code FreeColSpecObjectType} found, or the
+     *     {@code defaultValue}.
+     */
+    public &lt;T extends FreeColSpecObjectType&gt; T getAlreadyInitializedType(Specification spec,
+        String attributeName, Class&lt;T&gt; returnClass, T defaultValue) {
+
+<span class="fc" id="L1113">        final String id = getAttribute(attributeName, (String)null);</span>
+<span class="fc bfc" id="L1114" title="All 2 branches covered.">        if (id == null) {</span>
+<span class="fc" id="L1115">            return defaultValue;</span>
+        }
+        
+<span class="fc" id="L1118">        final T o = spec.getAlreadyInitializedType(id, returnClass);</span>
+<span class="pc bpc" id="L1119" title="1 of 2 branches missed.">        if (o == null) {</span>
+<span class="nc" id="L1120">            throw new IllegalArgumentException(String.format(</span>
+                &quot;The object \&quot;%s\&quot; of type \&quot;%s\&quot; was referenced from a \&quot;%s\&quot; attribute before being initialized.&quot;,
+<span class="nc" id="L1122">                id, returnClass.getSimpleName(), attributeName</span>
+            ));
+        }
+<span class="fc" id="L1125">        return o;</span>
+    }
+
+    /**
+     * Copy a FreeColObject by serializing it and reading back the result
+     * with a non-interning stream.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to look in.
+     * @param returnClass The class to expect.
+     * @return The copied {@code FreeColObject} found, or null there
+     *     was no ID_ATTRIBUTE_TAG present.
+     * @exception XMLStreamException if there is problem reading the stream.
+     */
+    public &lt;T extends FreeColObject&gt; T copy(Game game, Class&lt;T&gt; returnClass)
+        throws XMLStreamException {
+
+<span class="fc" id="L1142">        setReadScope(ReadScope.NOINTERN);</span>
+<span class="fc" id="L1143">        nextTag();</span>
+<span class="fc" id="L1144">        return uninternedRead(game, returnClass);</span>
+    }
+
+    /**
+     * Fill in the identifier values supplied in a map.
+     *
+     * Special case for early reads of the client options.
+     *
+     * @param map A map containing identifiers to find as keys.
+     * @param attr The attribute to get for each identifier found.
+     * @return The number of identifiers found or negative on error.
+     * @exception XMLStreamException if a problem was encountered
+     *     during parsing.
+     */
+    public int readAttributeValues(Map&lt;String, String&gt; map,
+                                   String attr) throws XMLStreamException {
+<span class="nc" id="L1160">        int ret = 0;</span>
+<span class="nc bnc" id="L1161" title="All 2 branches missed.">        while (hasNext()) {</span>
+            String id;
+            try {
+<span class="nc" id="L1164">                nextTag();</span>
+<span class="nc" id="L1165">            } catch (XMLStreamException xse) {</span>
+<span class="nc" id="L1166">                break;</span>
+<span class="nc" id="L1167">            }</span>
+<span class="nc bnc" id="L1168" title="All 2 branches missed.">            if (getEventType() == XMLEvent.START_ELEMENT</span>
+<span class="nc bnc" id="L1169" title="All 2 branches missed.">                &amp;&amp; (id = readId()) != null</span>
+<span class="nc bnc" id="L1170" title="All 2 branches missed.">                &amp;&amp; map.containsKey(id)) {</span>
+<span class="nc" id="L1171">                map.put(id, getAttribute(attr, (String)null));</span>
+<span class="nc" id="L1172">                ret++;</span>
+            }
+<span class="nc" id="L1174">        }</span>
+<span class="nc" id="L1175">        return ret;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

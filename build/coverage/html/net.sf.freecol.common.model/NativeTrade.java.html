@@ -1,0 +1,671 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NativeTrade.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">NativeTrade.java</span></div><h1>NativeTrade.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Function;
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+
+/**
+ * Container class for the information that persists while a
+ * native trade session is underway.
+ */
+public class NativeTrade extends FreeColGameObject {
+
+<span class="nc" id="L40">    private static final Logger logger = Logger.getLogger(NativeTrade.class.getName());</span>
+
+    public static final String TAG = &quot;nativeTrade&quot;;
+
+    /** The type of native trade command. */
+<span class="fc" id="L45">    public static enum NativeTradeAction {</span>
+        // Requests from European trader
+<span class="fc" id="L47">        OPEN(false, true),         // Start a new trade session</span>
+<span class="fc" id="L48">        CLOSE(true, true),         // End an existing session</span>
+<span class="fc" id="L49">        BUY(false, true),          // Buy goods</span>
+<span class="fc" id="L50">        SELL(false, true),         // Sell goods</span>
+<span class="fc" id="L51">        GIFT(false, true),         // Gift goods</span>
+        // Positive responses from native trader
+<span class="fc" id="L53">        ACK_OPEN(false, false),    // Open accepted</span>
+<span class="fc" id="L54">        ACK_BUY(false, false),     // Purchase accepted</span>
+<span class="fc" id="L55">        ACK_SELL(false, false),    // Sale accepted</span>
+<span class="fc" id="L56">        ACK_GIFT(false, false),    // Gift accepted</span>
+<span class="fc" id="L57">        ACK_BUY_HAGGLE(false,false),    // Haggle accepted</span>
+<span class="fc" id="L58">        ACK_SELL_HAGGLE(false,false),   // Haggle accepted</span>
+        // Negative responses from native trader
+<span class="fc" id="L60">        NAK_GOODS(false, false),   // Gift failed due to storage</span>
+<span class="fc" id="L61">        NAK_HAGGLE(true, false),   // Trade failed due to too much haggling</span>
+<span class="fc" id="L62">        NAK_HOSTILE(true, false),  // Natives are hostile</span>
+<span class="fc" id="L63">        NAK_NOSALE(true, false),   // Nothing to trade</span>
+<span class="fc" id="L64">        NAK_INVALID(true, false);  // Trade is completely invalid</span>
+
+        /** Does this action close the trade? */
+        private final boolean closing;
+
+        /** Should this action originate with a European player? */
+        private final boolean fromEuropeans;
+
+
+        /**
+         * Create a new native trade action.
+         *
+         * @param closing If true this is an action that closes the session.
+         * @param fromEuropeans True if a European action.
+         */
+<span class="fc" id="L79">        NativeTradeAction(boolean closing, boolean fromEuropeans) {</span>
+<span class="fc" id="L80">            this.closing = closing;</span>
+<span class="fc" id="L81">            this.fromEuropeans = fromEuropeans;</span>
+<span class="fc" id="L82">        }</span>
+
+        /**
+         * Is this a closing action?
+         *
+         * @return True if a closing action.
+         */
+        public boolean isClosing() {
+<span class="nc" id="L90">            return this.closing;</span>
+        }
+
+        /**
+         * Should this action have come from a European player?
+         *
+         * @return True if a European action.
+         */
+        public boolean isEuropean() {
+<span class="nc" id="L99">            return this.fromEuropeans;</span>
+        }
+    };
+
+    /** The unit that is trading. */
+    private Unit unit;
+
+    /** The settlement to trade with. */
+    private IndianSettlement is;
+
+    /** How many times this trade has been tried. */
+    private int count;
+
+    /** True if no purchases made in this trade. */
+    private boolean buy;
+        
+    /** True if no sales made in this trade. */
+    private boolean sell;
+
+    /** True if no gifts made in this trade. */
+    private boolean gift;
+
+    /** An item under consideration for a transaction. */
+    private NativeTradeItem item;
+    
+    /**
+     * The goods on the unit that are being offered for purchase by
+     * the settlement.
+     */
+<span class="nc" id="L128">    private List&lt;NativeTradeItem&gt; unitToSettlement = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * The goods in the settlement that are being offered for purchase
+     * by the unit.
+     */
+<span class="nc" id="L134">    private List&lt;NativeTradeItem&gt; settlementToUnit = new ArrayList&lt;&gt;();</span>
+
+
+    /**
+     * Simple constructor, used in Game.newInstance.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param id The identifier (ignored).
+     */
+    public NativeTrade(Game game, String id) {
+<span class="nc" id="L144">        super(game, id);</span>
+<span class="nc" id="L145">    }</span>
+
+    /**
+     * Create a new trade session.
+     *
+     * @param unit The {@code Unit} that is trading.
+     * @param is The {@code IndianSettlement} to trade with.
+     */
+    public NativeTrade(Unit unit, IndianSettlement is) {
+<span class="nc" id="L154">        this(unit.getGame(), &quot;&quot;); // Identifier not needed</span>
+
+<span class="nc" id="L156">        this.unit = unit;</span>
+<span class="nc" id="L157">        this.is = is;</span>
+<span class="nc" id="L158">        this.count = 0;</span>
+<span class="nc" id="L159">        this.buy = this.sell = this.gift = true;</span>
+<span class="nc" id="L160">    }</span>
+
+
+    /**
+     * Check if the trade participants are at war.
+     *
+     * @return True if the traders are at war.
+     */
+    private boolean atWar() {
+<span class="nc" id="L169">        return this.is.getOwner().atWarWith(this.unit.getOwner());</span>
+    }
+
+    /**
+     * Get a key for this transaction.
+     *
+     * @return A suitable key.
+     */
+    public String getKey() {
+<span class="nc" id="L178">        return getNativeTradeKey(this.unit, this.is);</span>
+    }
+
+    /**
+     * Make a transaction key for a native trade.
+     *
+     * @param unit The {@code Unit} that is trading.
+     * @param is The {@code IndianSettlement} that is trading.
+     * @return A suitable key.
+     */
+    public static String getNativeTradeKey(Unit unit, IndianSettlement is) {
+<span class="nc" id="L189">        return unit.getId() + &quot;-&quot; + is.getId();</span>
+    }
+
+    /**
+     * Get the unit that is trading.
+     *
+     * @return The {@code Unit} that started the trade.
+     */
+    public Unit getUnit() {
+<span class="nc" id="L198">        return this.unit;</span>
+    }
+
+    /**
+     * Get the settlement that is trading.
+     *
+     * @return The {@code IndianSettlement} that is traded with.
+     */
+    public IndianSettlement getIndianSettlement() {
+<span class="nc" id="L207">        return this.is;</span>
+    }
+
+    /**
+     * Is purchasing available in this transaction?
+     *
+     * @return True if no blocking purchase has been made.
+     */
+    public boolean getBuy() {
+<span class="nc" id="L216">        return this.buy;</span>
+    }
+
+    /**
+     * Can the unit owner buy more items in this session at present?
+     *
+     * @return True if not blocked, at peace, there are purchases to
+     *     be made and space available.
+     */
+    public boolean canBuy() {
+<span class="nc bnc" id="L226" title="All 6 branches missed.">        return getBuy() &amp;&amp; !atWar() &amp;&amp; this.unit.getSpaceLeft() &gt; 0</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            &amp;&amp; any(getSettlementToUnit(), NativeTradeItem::priceIsValid);</span>
+    }
+
+    /**
+     * Set the purchase state.
+     *
+     * @param buy The new purchase state.
+     */
+    public void setBuy(boolean buy) {
+<span class="nc" id="L236">        this.buy = buy;</span>
+<span class="nc" id="L237">    }</span>
+
+    /**
+     * Is selling available in this transaction?
+     *
+     * @return True if no blocking sale has been made.
+     */
+    public boolean getSell() {
+<span class="nc" id="L245">        return this.sell;</span>
+    }
+
+    /**
+     * Can the unit owner buy more items in this session at present?
+     *
+     * @return True if not blocked, at peace, and there are sales to be made.
+     */
+    public boolean canSell() {
+<span class="nc bnc" id="L254" title="All 4 branches missed.">        return getSell() &amp;&amp; !atWar()</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">            &amp;&amp; any(getUnitToSettlement(), NativeTradeItem::priceIsValid);</span>
+    }
+    
+    /**
+     * Set the sale state.
+     *
+     * @param sell The new sale state.
+     */
+    public void setSell(boolean sell) {
+<span class="nc" id="L264">        this.sell = sell;</span>
+<span class="nc" id="L265">    }</span>
+    
+    /**
+     * Is giving available in this transaction?
+     *
+     * @return True if no blocking gift has been made.
+     */
+    public boolean getGift() {
+<span class="nc" id="L273">        return this.gift;</span>
+    }
+
+    /**
+     * Can the unit owner give more items in this session at present?
+     *
+     * @return True if not blocked, and the unit has gifts to give.
+     */
+    public boolean canGift() {
+<span class="nc bnc" id="L282" title="All 4 branches missed.">        return getGift() &amp;&amp; this.unit.hasGoodsCargo();</span>
+    }
+    
+    /**
+     * Set the gift state.
+     *
+     * @param gift The new gift state.
+     */
+    public void setGift(boolean gift) {
+<span class="nc" id="L291">        this.gift = gift;</span>
+<span class="nc" id="L292">    }</span>
+
+    /**
+     * Have no trades been performed in this transaction?
+     *
+     * @return True if no blocking purchase, sale or gift has occurred.
+     */
+    public boolean hasNotTraded() {
+<span class="nc bnc" id="L300" title="All 6 branches missed.">        return getBuy() &amp;&amp; getSell() &amp;&amp; getGift();</span>
+    }
+
+    /**
+     * Get the transaction count.
+     *
+     * @return The transaction count.
+     */
+    public int getCount() {
+<span class="nc" id="L309">        return this.count;</span>
+    }
+
+    /**
+     * Set the transaction count.
+     *
+     * @param count The new transaction count.
+     */
+    public void setCount(int count) {
+<span class="nc" id="L318">        this.count = count;</span>
+<span class="nc" id="L319">    }</span>
+
+    /**
+     * Is this transaction complete?
+     *
+     * @return True if the transaction is over.
+     */
+    public boolean getDone() {
+<span class="nc bnc" id="L327" title="All 2 branches missed.">        return this.count &lt; 0</span>
+<span class="nc bnc" id="L328" title="All 6 branches missed.">            || (!canBuy() &amp;&amp; !canSell() &amp;&amp; !canGift());</span>
+    }
+
+    /**
+     * Set this transaction as complete.
+     */
+    public void setDone() {
+<span class="nc" id="L335">        this.count = -1;</span>
+<span class="nc" id="L336">    }</span>
+
+    /**
+     * Get the item being traded.
+     *
+     * @return The current {@code NativeTradeItem}.
+     */
+    public NativeTradeItem getItem() {
+<span class="nc" id="L344">        return this.item;</span>
+    }
+
+    /**
+     * Set the item being traded.
+     *
+     * @param nti The new {@code NativeTradeItem}.
+     */
+    public void setItem(NativeTradeItem nti) {
+<span class="nc" id="L353">        this.item = nti;</span>
+<span class="nc" id="L354">    }</span>
+
+    /**
+     * Get the list of items the unit is able to offer the settlement.
+     *
+     * Note: some of these items might be currently invalid.
+     *
+     * @return A list of {@code NativeTradeItem}s the unit might sell.
+     */
+    public List&lt;NativeTradeItem&gt; getUnitToSettlement() {
+<span class="nc" id="L364">        return this.unitToSettlement;</span>
+    }
+
+    /**
+     * Get the list of items the settlement is able to offer the unit.
+     *
+     * Note: some of these items might be currently invalid.
+     *
+     * @return A list of {@code NativeTradeItem}s the unit might buy.
+     */
+    public List&lt;NativeTradeItem&gt; getSettlementToUnit() {
+<span class="nc" id="L375">        return this.settlementToUnit;</span>
+    }
+
+    /**
+     * Add an item to the unit list of items.
+     *
+     * @param nti The {@code NativeTradeItem} to add.
+     */
+    public void addToUnit(NativeTradeItem nti) {
+<span class="nc" id="L384">        this.unitToSettlement.add(nti);</span>
+<span class="nc" id="L385">    }</span>
+
+    /**
+     * Remove an item from the unit list of items.
+     *
+     * @param nti The {@code NativeTradeItem} to remove.
+     */
+    public void removeFromUnit(NativeTradeItem nti) {
+<span class="nc" id="L393">        removeInPlace(this.unitToSettlement, nti.goodsMatcher());</span>
+<span class="nc" id="L394">    }</span>
+
+    /**
+     * Is another native trade compatible with this one?
+     *
+     * @param nt The other {@code NativeTrade}.
+     * @return True if the other trade is compatible.
+     */
+    public boolean isCompatible(final NativeTrade nt) {
+<span class="nc" id="L403">        return this.getKey().equals(nt.getKey());</span>
+    }
+
+    /**
+     * Raw initialization of the unit and settlement list.
+     * Does not do pricing!
+     */
+    public void initialize() {
+<span class="nc" id="L411">        final Player unitPlayer = this.unit.getOwner();</span>
+<span class="nc" id="L412">        final Player settlementPlayer = this.is.getOwner();</span>
+<span class="nc" id="L413">        final Game game = this.unit.getGame();</span>
+<span class="nc bnc" id="L414" title="All 2 branches missed.">        for (Goods g : this.unit.getGoodsList()) {</span>
+<span class="nc" id="L415">            this.unitToSettlement.add(new NativeTradeItem(game,</span>
+                    unitPlayer, settlementPlayer, g));
+<span class="nc" id="L417">        }</span>
+<span class="nc bnc" id="L418" title="All 2 branches missed.">        for (Goods g : this.is.getSellGoods(this.unit)) {</span>
+<span class="nc" id="L419">            this.settlementToUnit.add(new NativeTradeItem(game,</span>
+                    settlementPlayer, unitPlayer, g));
+<span class="nc" id="L421">        }</span>
+<span class="nc" id="L422">    }</span>
+
+    /**
+     * Merge another compatible native trade into this one.
+     *
+     * @param nt The {@code NativeTrade} to merge.
+     */
+    public void mergeFrom(final NativeTrade nt) {
+<span class="nc bnc" id="L430" title="All 4 branches missed.">        if (isCompatible(nt) &amp;&amp; !this.equals(nt)) {</span>
+<span class="nc" id="L431">            this.unitToSettlement.clear();</span>
+<span class="nc" id="L432">            this.unitToSettlement.addAll(nt.getUnitToSettlement());</span>
+<span class="nc" id="L433">            this.settlementToUnit.clear();</span>
+<span class="nc" id="L434">            this.settlementToUnit.addAll(nt.getSettlementToUnit());</span>
+<span class="nc" id="L435">            this.item = nt.getItem();</span>
+        }
+<span class="nc" id="L437">    }</span>
+
+    /**
+     * Limit the number of items offered by the settlement.
+     *
+     * Used in the client to implement a Col1 restriction.
+     *
+     * @param n The number of items to offer.
+     */
+    public void limitSettlementToUnit(int n) {
+<span class="nc" id="L447">        List&lt;NativeTradeItem&gt; best = transform(this.settlementToUnit,</span>
+            NativeTradeItem::priceIsValid,
+<span class="nc" id="L449">            Function.&lt;NativeTradeItem&gt;identity(),</span>
+            NativeTradeItem.descendingPriceComparator);
+<span class="nc bnc" id="L451" title="All 2 branches missed.">        if (best.size() &lt;= n) return;</span>
+<span class="nc bnc" id="L452" title="All 2 branches missed.">        for (NativeTradeItem nti : best.subList(n, best.size())) {</span>
+<span class="nc" id="L453">            nti.setPrice(NativeTradeItem.PRICE_INVALID);</span>
+<span class="nc" id="L454">        }</span>
+<span class="nc" id="L455">    }</span>
+            
+    /**
+     * Choose the next available upward haggling price.
+     *
+     * @param price The initial price.
+     * @return The new upward haggled price.
+     */
+    public static int haggleUp(int price) {
+<span class="nc" id="L464">        return (price * 11) / 10;</span>
+    }
+
+    /**
+     * Choose the next available downward haggling price.
+     *
+     * @param price The initial price.
+     * @return The new downward haggled price.
+     */
+    public static int haggleDown(int price) {
+<span class="nc" id="L474">        return (price * 9) / 10;</span>
+    }
+
+
+    // Override FreeColGameObject
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean isInternable() {
+<span class="nc" id="L484">        return false;</span>
+    }
+
+
+    // Override FreeColGameObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L495">        NativeTrade o = copyInCast(other, NativeTrade.class);</span>
+<span class="nc bnc" id="L496" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L497">        final Game game = getGame();</span>
+<span class="nc" id="L498">        this.unit = game.updateRef(o.getUnit());</span>
+<span class="nc" id="L499">        this.is = game.updateRef(o.getIndianSettlement());</span>
+<span class="nc" id="L500">        this.count = o.getCount();</span>
+<span class="nc" id="L501">        this.buy = o.getBuy();</span>
+<span class="nc" id="L502">        this.sell = o.getSell();</span>
+<span class="nc" id="L503">        this.gift = o.getGift();</span>
+<span class="nc" id="L504">        this.item = game.update(o.getItem(), false);</span>
+<span class="nc" id="L505">        this.unitToSettlement = game.update(o.getUnitToSettlement(), false);</span>
+<span class="nc" id="L506">        this.settlementToUnit = game.update(o.getSettlementToUnit(), false);</span>
+<span class="nc" id="L507">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String BUY_TAG = &quot;buy&quot;;
+    private static final String COUNT_TAG = &quot;count&quot;;
+    private static final String GIFT_TAG = &quot;gift&quot;;
+    private static final String SELL_TAG = &quot;sell&quot;;
+    private static final String SETTLEMENT_TAG = &quot;settlement&quot;;
+    private static final String SETTLEMENT_TO_UNIT_TAG = &quot;settlementToUnit&quot;;
+    private static final String UNIT_TAG = &quot;unit&quot;;
+    private static final String UNIT_TO_SETTLEMENT_TAG = &quot;unitToSettlement&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L528">        super.writeAttributes(xw);</span>
+
+<span class="nc" id="L530">        xw.writeAttribute(BUY_TAG, this.buy);</span>
+        
+<span class="nc" id="L532">        xw.writeAttribute(COUNT_TAG, this.count);</span>
+        
+<span class="nc" id="L534">        xw.writeAttribute(GIFT_TAG, this.gift);</span>
+
+<span class="nc" id="L536">        xw.writeAttribute(SELL_TAG, this.sell);</span>
+
+<span class="nc" id="L538">        xw.writeAttribute(SETTLEMENT_TAG, this.is);</span>
+
+<span class="nc" id="L540">        xw.writeAttribute(UNIT_TAG, this.unit);</span>
+<span class="nc" id="L541">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L548">        super.writeChildren(xw);</span>
+
+<span class="nc" id="L550">        xw.writeStartElement(SETTLEMENT_TO_UNIT_TAG);</span>
+
+<span class="nc bnc" id="L552" title="All 2 branches missed.">        for (NativeTradeItem nti : this.settlementToUnit) nti.toXML(xw);</span>
+
+<span class="nc" id="L554">        xw.writeEndElement();</span>
+
+<span class="nc" id="L556">        xw.writeStartElement(UNIT_TO_SETTLEMENT_TAG);</span>
+
+<span class="nc bnc" id="L558" title="All 2 branches missed.">        for (NativeTradeItem nti : this.unitToSettlement) nti.toXML(xw);</span>
+
+<span class="nc" id="L560">        xw.writeEndElement();</span>
+
+<span class="nc bnc" id="L562" title="All 2 branches missed.">        if (this.item != null) this.item.toXML(xw);</span>
+<span class="nc" id="L563">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L571">        final Game game = getGame();</span>
+<span class="nc" id="L572">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L574">        this.buy = xr.getAttribute(BUY_TAG, false);</span>
+
+<span class="nc" id="L576">        this.count = xr.getAttribute(COUNT_TAG, -1);</span>
+        
+<span class="nc" id="L578">        this.gift = xr.getAttribute(GIFT_TAG, false);</span>
+
+<span class="nc" id="L580">        this.sell = xr.getAttribute(SELL_TAG, false);</span>
+
+<span class="nc" id="L582">        this.is = xr.getAttribute(game, SETTLEMENT_TAG,</span>
+            IndianSettlement.class, (IndianSettlement)null);
+
+<span class="nc" id="L585">        this.unit = xr.getAttribute(game, UNIT_TAG, Unit.class, (Unit)null);</span>
+<span class="nc" id="L586">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+        // Clear containers
+<span class="nc" id="L594">        this.unitToSettlement.clear();</span>
+<span class="nc" id="L595">        this.settlementToUnit.clear();</span>
+<span class="nc" id="L596">        this.item = null;</span>
+
+<span class="nc" id="L598">        super.readChildren(xr);</span>
+<span class="nc" id="L599">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L606">        String tag = xr.getLocalName();</span>
+<span class="nc" id="L607">        Game game = getGame();</span>
+
+<span class="nc bnc" id="L609" title="All 2 branches missed.">        if (SETTLEMENT_TO_UNIT_TAG.equals(tag)) {</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">            while (xr.moreTags()) {</span>
+<span class="nc" id="L611">                tag = xr.getLocalName();</span>
+<span class="nc bnc" id="L612" title="All 2 branches missed.">                if (NativeTradeItem.TAG.equals(tag)) {</span>
+<span class="nc" id="L613">                    this.settlementToUnit.add(new NativeTradeItem(game, xr));</span>
+                } else {
+<span class="nc" id="L615">                    logger.warning(&quot;SettlementToUnit-item expected, not: &quot; + tag);</span>
+                }
+            }
+
+<span class="nc bnc" id="L619" title="All 2 branches missed.">        } else if (UNIT_TO_SETTLEMENT_TAG.equals(tag)) {</span>
+<span class="nc bnc" id="L620" title="All 2 branches missed.">            while (xr.moreTags()) {</span>
+<span class="nc" id="L621">                tag = xr.getLocalName();</span>
+<span class="nc bnc" id="L622" title="All 2 branches missed.">                if (NativeTradeItem.TAG.equals(tag)) {</span>
+<span class="nc" id="L623">                    this.unitToSettlement.add(new NativeTradeItem(game, xr));</span>
+                } else {
+<span class="nc" id="L625">                    logger.warning(&quot;UnitToSettlement-item expected, not: &quot; + tag);</span>
+                }
+            }
+
+<span class="nc bnc" id="L629" title="All 2 branches missed.">        } else if (NativeTradeItem.TAG.equals(tag)) {</span>
+<span class="nc" id="L630">            this.item = new NativeTradeItem(game, xr);</span>
+
+        } else {
+<span class="nc" id="L633">            super.readChild(xr);</span>
+        }
+<span class="nc" id="L635">    }</span>
+        
+    /**
+     * {@inheritDoc}
+     */
+<span class="nc" id="L640">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L650">        StringBuilder sb = new StringBuilder(128);</span>
+<span class="nc" id="L651">        NativeTradeItem item = getItem();</span>
+<span class="nc" id="L652">        sb.append('[').append(TAG)</span>
+<span class="nc" id="L653">            .append(' ').append(getUnit().getId())</span>
+<span class="nc" id="L654">            .append(' ').append(getIndianSettlement().getId())</span>
+<span class="nc" id="L655">            .append(&quot; buy=&quot;).append(getBuy())</span>
+<span class="nc" id="L656">            .append(&quot; sell=&quot;).append(getSell())</span>
+<span class="nc" id="L657">            .append(&quot; gift=&quot;).append(getGift())</span>
+<span class="nc" id="L658">            .append(&quot; count=&quot;).append(getCount())</span>
+<span class="nc bnc" id="L659" title="All 2 branches missed.">            .append(&quot; item=&quot;).append((item == null) ? &quot;null&quot; : item.toString())</span>
+<span class="nc" id="L660">            .append(&quot; unitToSettlement[&quot;);</span>
+<span class="nc bnc" id="L661" title="All 2 branches missed.">        for (NativeTradeItem nti : this.unitToSettlement) {</span>
+<span class="nc" id="L662">            sb.append(' ').append(nti);</span>
+<span class="nc" id="L663">        }</span>
+<span class="nc" id="L664">        sb.append(&quot;] settlementToUnit[&quot;);</span>
+<span class="nc bnc" id="L665" title="All 2 branches missed.">        for (NativeTradeItem nti : this.settlementToUnit) {</span>
+<span class="nc" id="L666">            sb.append(' ').append(nti);</span>
+<span class="nc" id="L667">        }</span>
+<span class="nc" id="L668">        return sb.append(&quot; ]]&quot;).toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

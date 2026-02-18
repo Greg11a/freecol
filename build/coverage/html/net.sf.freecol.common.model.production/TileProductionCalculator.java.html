@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TileProductionCalculator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model.production</a> &gt; <span class="el_source">TileProductionCalculator.java</span></div><h1>TileProductionCalculator.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model.production;
+
+import static net.sf.freecol.common.util.CollectionUtils.concat;
+import static net.sf.freecol.common.util.CollectionUtils.forEach;
+import static net.sf.freecol.common.util.CollectionUtils.map;
+
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.FeatureContainer;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Modifier;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.ProductionCache;
+import net.sf.freecol.common.model.ProductionInfo;
+import net.sf.freecol.common.model.ProductionType;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.TileImprovementType;
+import net.sf.freecol.common.model.TileType;
+import net.sf.freecol.common.model.Turn;
+import net.sf.freecol.common.model.UnitType;
+
+/**
+ * Calculates the production for a tile.
+ */
+public class TileProductionCalculator {
+
+    private Player owner;
+    private int colonyProductionBonus;
+    
+    
+    /**
+     * Creates a calculator for the given owner and colony data.
+     * 
+     * @param owner The {@code Player} owning the building.
+     * @param colonyProductionBonus The production bonus for the colony where the building
+     *      is located.
+     */
+<span class="fc" id="L61">    public TileProductionCalculator(Player owner, int colonyProductionBonus) {</span>
+<span class="fc" id="L62">        this.owner = owner;</span>
+<span class="fc" id="L63">        this.colonyProductionBonus = colonyProductionBonus;</span>
+<span class="fc" id="L64">    }</span>
+    
+    
+    /**
+     * Gets the basic production information for the colony tile,
+     * ignoring any colony limits (which for now, should be
+     * irrelevant).
+     *
+     * In the original game, the following special rules apply to
+     * colony center tiles:
+     * - All tile improvements contribute to the production of food
+     * - Only natural tile improvements, such as rivers, contribute
+     *   to the production of other types of goods.
+     * - Artificial tile improvements, such as plowing, are ignored.
+     *
+     * @param tile The {@code Tile} where the production is happening.
+     * @param turn The current game turn.
+     * @param workerAssignment If any, the worker assign to this tile.
+     * @param colonyCenterTile If true, then the tile will autoproduce.
+     * @return The raw production of this colony tile.
+     * @see ProductionCache#update
+     */
+    public ProductionInfo getBasicProductionInfo(Tile tile, Turn turn, WorkerAssignment workerAssignment, boolean colonyCenterTile) {
+<span class="fc" id="L87">        return getBasicProductionInfo(tile, turn, workerAssignment, colonyCenterTile, List.of());</span>
+    }
+    
+    private ProductionInfo getBasicProductionInfo(Tile tile,
+            Turn turn,
+            WorkerAssignment workerAssignment,
+            boolean colonyCenterTile,
+            List&lt;TileImprovementType&gt; additionalTileImprovements) {
+<span class="fc" id="L95">        ProductionInfo pi = new ProductionInfo();</span>
+        
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (workerAssignment.getProductionType() == null) {</span>
+            /*
+             *  XXX: It's silly that the production is calculated
+             *       before the productionType is set.
+             */
+             
+<span class="fc" id="L103">            return pi;</span>
+        }
+
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (colonyCenterTile) {</span>
+<span class="fc" id="L107">            forEach(workerAssignment.getProductionType().getOutputs(), output -&gt; {</span>
+<span class="fc" id="L108">                    int n = getCenterTileProduction(turn, tile, output.getType(), additionalTileImprovements);</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                    if (n &gt; 0) {</span>
+<span class="fc" id="L110">                        pi.addProduction(new AbstractGoods(output.getType(), n));</span>
+                    }
+<span class="fc" id="L112">                });</span>
+        } else {
+<span class="fc" id="L114">            forEach(map(workerAssignment.getProductionType().getOutputs(), AbstractGoods::getType),</span>
+                gt -&gt; {
+<span class="fc" id="L116">                    int n = getUnitProduction(turn, tile, workerAssignment, gt, additionalTileImprovements);</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                    if (n &gt; 0) {</span>
+<span class="fc" id="L118">                        pi.addProduction(new AbstractGoods(gt, n));</span>
+                    }
+<span class="fc" id="L120">                });</span>
+        }
+<span class="fc" id="L122">        return pi;</span>
+    }
+    
+    public MaximumPotentialProduction getMaximumPotentialProduction(GoodsType goodsType, Tile tile, UnitType unitType) {
+<span class="fc" id="L126">        final Specification spec = tile.getSpecification();</span>
+<span class="fc" id="L127">        final Turn turn = new Turn(1);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        final boolean colonyCenterTile = (unitType == null);</span>
+<span class="fc" id="L129">        final TileType originalTileType = tile.getType();</span>
+<span class="fc" id="L130">        final ProductionType originalProductionType = ProductionType.getBestProductionType(goodsType, originalTileType.getAvailableProductionTypes(colonyCenterTile));</span>
+        
+<span class="fc" id="L132">        final ProductionInfo result = getBasicProductionInfo(tile, turn, new WorkerAssignment(unitType, originalProductionType), colonyCenterTile);</span>
+<span class="fc" id="L133">        MaximumPotentialProduction maximumPotentialProduction = new MaximumPotentialProduction(result, List.of());</span>
+<span class="fc" id="L134">        int currentMaximumPotentialProduction = productionOfGoodsType(goodsType, result);</span>
+        
+<span class="fc" id="L136">        final List&lt;TileImprovementType&gt; tileTypeChanging = spec.getTileImprovementTypeList()</span>
+<span class="fc" id="L137">                .stream()</span>
+<span class="fc bfc" id="L138" title="All 6 branches covered.">                .filter(tit -&gt; !tit.isNatural() &amp;&amp; tit.isTileTypeAllowed(originalTileType) &amp;&amp; tit.isChangeType())</span>
+<span class="fc" id="L139">                .collect(Collectors.toList());</span>
+        
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        for (TileImprovementType tit : getNormalImprovements(spec, originalTileType)) {</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">            if (!tile.isImprovementTypeAllowed(tit)) {</span>
+<span class="nc" id="L143">                continue;</span>
+            }
+<span class="fc" id="L145">            final ProductionInfo newResult = getBasicProductionInfo(tile, turn, new WorkerAssignment(unitType, originalProductionType), colonyCenterTile, List.of(tit));</span>
+<span class="fc" id="L146">            final int amount = productionOfGoodsType(goodsType, newResult);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            if (amount &gt; currentMaximumPotentialProduction) {</span>
+<span class="fc" id="L148">                currentMaximumPotentialProduction = amount;</span>
+<span class="fc" id="L149">                maximumPotentialProduction = new MaximumPotentialProduction(newResult, List.of(tit));</span>
+            }
+<span class="fc" id="L151">        }</span>
+        
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        for (TileImprovementType tileTypeChange : tileTypeChanging) {</span>
+<span class="fc" id="L154">            final TileType newTileType = tileTypeChange.getChange(originalTileType);</span>
+<span class="fc" id="L155">            final ProductionType newProductionType = ProductionType.getBestProductionType(goodsType, newTileType.getAvailableProductionTypes(colonyCenterTile));</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            for (TileImprovementType tit : getNormalImprovements(spec, newTileType)) {</span>
+<span class="fc" id="L157">                final ProductionInfo newResult = getBasicProductionInfo(tile, turn, new WorkerAssignment(unitType, newProductionType), colonyCenterTile, List.of(tileTypeChange, tit));</span>
+<span class="fc" id="L158">                final int amount = productionOfGoodsType(goodsType, newResult);</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">                if (amount &gt; currentMaximumPotentialProduction) {</span>
+<span class="fc" id="L160">                    currentMaximumPotentialProduction = amount;</span>
+<span class="fc" id="L161">                    maximumPotentialProduction = new MaximumPotentialProduction(newResult, List.of(tileTypeChange, tit));</span>
+                }
+<span class="fc" id="L163">            }</span>
+<span class="fc" id="L164">            final ProductionInfo newResult = getBasicProductionInfo(tile, turn, new WorkerAssignment(unitType, newProductionType), colonyCenterTile, List.of(tileTypeChange));</span>
+<span class="fc" id="L165">            final int amount = productionOfGoodsType(goodsType, newResult);</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">            if (amount &gt; currentMaximumPotentialProduction) {</span>
+<span class="nc" id="L167">                currentMaximumPotentialProduction = amount;</span>
+<span class="nc" id="L168">                maximumPotentialProduction = new MaximumPotentialProduction(newResult, List.of(tileTypeChange));</span>
+            }
+<span class="fc" id="L170">        }</span>
+        
+<span class="fc" id="L172">        return maximumPotentialProduction;</span>
+    }
+    
+    private static List&lt;TileImprovementType&gt; getNormalImprovements(Specification spec, TileType tileType) {
+<span class="fc" id="L176">        return spec.getTileImprovementTypeList()</span>
+<span class="fc" id="L177">                .stream()</span>
+<span class="fc bfc" id="L178" title="All 6 branches covered.">                .filter(tit -&gt; !tit.isNatural() &amp;&amp; tit.isTileTypeAllowed(tileType) &amp;&amp; !tit.isChangeType())</span>
+<span class="fc" id="L179">                .collect(Collectors.toList());</span>
+    }
+
+    private static int productionOfGoodsType(GoodsType goodsType, ProductionInfo newResult) {
+<span class="fc" id="L183">        return newResult.getProduction().stream()</span>
+<span class="fc" id="L184">                .filter(a -&gt; a.getType().equals(goodsType))</span>
+<span class="fc" id="L185">                .map(AbstractGoods::getAmount)</span>
+<span class="fc" id="L186">                .findFirst()</span>
+<span class="fc" id="L187">                .orElse(0);</span>
+    }
+    
+    /**
+     * Gets the productivity of a unit working in this work location,
+     * considering *only* the contribution of the unit, exclusive of
+     * that of the work location.
+     *
+     * Used below, only public for the test suite.
+     *
+     * @param turn The current game turn.
+     * @param tile The tile where the production is happening.
+     * @param workerAssignment If any, the worker assigned to the {@code Tile}.
+     * @param goodsType The {@code GoodsType} to check the production of.
+     * @return The maximum return from this unit.
+     */
+    public int getUnitProduction(Turn turn, Tile tile, WorkerAssignment workerAssignment, GoodsType goodsType, List&lt;TileImprovementType&gt; additionalTileImprovements) {
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        if (workerAssignment == null</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">                || workerAssignment.getProductionType().getOutputs().noneMatch(g -&gt; goodsType.equals(g.getType()))</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">                || workerAssignment.getUnitType() == null) {</span>
+<span class="nc" id="L207">            return 0;</span>
+        }
+        
+<span class="fc" id="L210">        final TileType newTileType = getResultingTileType(tile.getType(), additionalTileImprovements);</span>
+<span class="fc" id="L211">        final int production = getBaseProduction(newTileType, workerAssignment.getProductionType(), goodsType, workerAssignment.getUnitType());</span>
+<span class="fc" id="L212">        return Math.max(0, (int) FeatureContainer.applyModifiers(</span>
+                production,
+                turn,
+<span class="fc" id="L215">                getProductionModifiers(turn, tile, goodsType, workerAssignment.getUnitType(), additionalTileImprovements)));</span>
+    }
+    
+    private int getCenterTileProduction(Turn turn, Tile tile, GoodsType goodsType, List&lt;TileImprovementType&gt; additionalTileImprovements) {
+<span class="fc" id="L219">        final TileType newTileType = getResultingTileType(tile.getType(), additionalTileImprovements);</span>
+<span class="fc" id="L220">        final int production = newTileType.getBaseProduction(null, goodsType, null);</span>
+<span class="fc" id="L221">        return Math.max(0, (int) FeatureContainer.applyModifiers(</span>
+                production,
+                turn,
+<span class="fc" id="L224">                getCenterTileProductionModifiers(turn, tile, goodsType, additionalTileImprovements)));</span>
+    }
+    
+    /**
+     * Get the base production exclusive of any bonuses.
+     *
+     * @param tileType The tile type where the production is happening.
+     * @param productionType An optional {@code ProductionType} to use,
+     *     if null the best available one is used.
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType An optional {@code UnitType} to use.
+     * @return The base production due to tile type and resources.
+     */
+    private int getBaseProduction(TileType tileType, ProductionType productionType,
+                                 GoodsType goodsType, UnitType unitType) {
+<span class="pc bpc" id="L239" title="3 of 6 branches missed.">        if (tileType == null || goodsType == null || !goodsType.isFarmed()) {</span>
+<span class="nc" id="L240">            return 0;</span>
+        }
+<span class="fc" id="L242">        final int amount = tileType.getBaseProduction(productionType, goodsType, unitType);</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        return (amount &lt; 0) ? 0 : amount;</span>
+    }
+    
+    private TileType getResultingTileType(TileType originalTileType, List&lt;TileImprovementType&gt; additionalTileImprovements) {
+<span class="fc" id="L247">        final List&lt;TileImprovementType&gt; tileTypeChange = additionalTileImprovements.stream().filter(tit -&gt; tit.isChangeType()).collect(Collectors.toList());</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        if (tileTypeChange.size() &gt; 1) {</span>
+<span class="nc" id="L249">            throw new IllegalArgumentException(&quot;Only the last tile type change should be included in additionalTileImprovements&quot;);</span>
+        }
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        if (tileTypeChange.isEmpty()) {</span>
+<span class="fc" id="L252">            return originalTileType;</span>
+        }
+<span class="fc" id="L254">        return tileTypeChange.get(0).getChange(originalTileType);</span>
+    }
+    
+    /**
+     * Gets the production modifiers for the given type of goods and
+     * unit type.
+     *
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType The optional {@code UnitType} to produce them.
+     * @return A stream of the applicable modifiers.
+     */
+    public Stream&lt;Modifier&gt; getProductionModifiers(Turn turn, Tile tile, GoodsType goodsType, UnitType unitType, List&lt;TileImprovementType&gt; additionalTileImprovements) {
+<span class="fc" id="L266">        final TileType newTileType = getResultingTileType(tile.getType(), additionalTileImprovements);</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        final boolean tileTypeChanged = (newTileType != tile.getType());</span>
+        
+        final Stream&lt;Modifier&gt; productionModifiers;
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        if (!tileTypeChanged) {</span>
+<span class="fc" id="L271">            productionModifiers = tile.getProductionModifiers(goodsType, unitType);</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">        } else if (tile.getTileItemContainer() != null) {</span>
+<span class="nc" id="L273">            productionModifiers = tile.getTileItemContainer().getProductionModifiersWithoutResource(goodsType, unitType);</span>
+        } else {
+<span class="fc" id="L275">            productionModifiers = Stream.of();</span>
+        }
+        
+<span class="pc bpc" id="L278" title="1 of 4 branches missed.">        if (tileTypeChanged &amp;&amp; !newTileType.canProduce(goodsType, unitType)</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">                || !tile.canProduce(goodsType, unitType)) {</span>
+<span class="fc" id="L280">            return Stream.&lt;Modifier&gt;empty();</span>
+        }
+        
+<span class="fc" id="L283">        Stream&lt;Modifier&gt; additionalProductionModifiers = additionalTileImprovements.stream()</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">                .filter(tit -&gt; !tit.isChangeType())</span>
+<span class="fc" id="L285">                .flatMap(tit -&gt; tit.getProductionModifiers(goodsType, unitType, newTileType, 1));</span>
+        
+<span class="fc" id="L287">        return concat(productionModifiers,</span>
+                additionalProductionModifiers,
+<span class="fc bfc" id="L289" title="All 2 branches covered.">                (unitType != null) ? unitType.getModifiers(goodsType.getId(), newTileType, turn) : Stream.of(),</span>
+<span class="fc bfc" id="L290" title="All 4 branches covered.">                (owner != null &amp;&amp; unitType != null) ? owner.getModifiers(goodsType.getId(), unitType, turn) : Stream.of(),</span>
+                //(owner != null &amp;&amp; unitType == null) ? owner.getModifiers(goodsType.getId(), tile.getType(), turn) : Stream.of()
+<span class="fc bfc" id="L292" title="All 2 branches covered.">                ProductionUtils.getRebelProductionModifiersForTile(((!tileTypeChanged) ? tile : null), colonyProductionBonus, goodsType, unitType));</span>
+    }
+
+    /**
+     * Gets the production modifiers for the given type of goods on
+     * the colony center tile.
+     *
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType The optional {@code UnitType} to produce them.
+     * @return A stream of the applicable modifiers.
+     */
+    public Stream&lt;Modifier&gt; getCenterTileProductionModifiers(Turn turn, Tile tile, GoodsType goodsType, List&lt;TileImprovementType&gt; additionalTileImprovements) {        
+<span class="fc" id="L304">        return getProductionModifiers(turn, tile, goodsType, null, additionalTileImprovements);</span>
+    }
+    
+    public static class MaximumPotentialProduction {
+        private ProductionInfo productionInfo;
+        private List&lt;TileImprovementType&gt; tileImprovementType;
+        
+<span class="fc" id="L311">        public MaximumPotentialProduction(ProductionInfo productionInfo, List&lt;TileImprovementType&gt; tileImprovementType) {</span>
+<span class="fc" id="L312">            this.productionInfo = productionInfo;</span>
+<span class="fc" id="L313">            this.tileImprovementType = tileImprovementType;</span>
+<span class="fc" id="L314">        }</span>
+        
+        public ProductionInfo getProductionInfo() {
+<span class="nc" id="L317">            return productionInfo;</span>
+        }
+        
+        public List&lt;TileImprovementType&gt; getTileImprovementType() {
+<span class="nc" id="L321">            return tileImprovementType;</span>
+        }
+        
+        public int getAmount(GoodsType goodsType) {
+<span class="fc" id="L325">            return productionOfGoodsType(goodsType, productionInfo);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProductionMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">ProductionMap.java</span></div><h1>ProductionMap.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+
+/**
+ * A map of goods types and their production.
+ */
+<span class="fc" id="L33">public class ProductionMap {</span>
+
+    public static class ProductionTree {
+
+        /**
+         * The abstract goods all other types of goods in this tree are
+         * finally stored as.
+         */
+        private AbstractGoods root;
+
+        /**
+         * The abstract goods that are actually produced.
+         */
+        private List&lt;AbstractGoods&gt; leafs;
+
+
+<span class="fc" id="L49">        public ProductionTree(AbstractGoods root, AbstractGoods... leafs) {</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">            if (leafs.length &gt; 0) {</span>
+<span class="fc" id="L51">                this.leafs = new ArrayList&lt;&gt;(leafs.length);</span>
+<span class="fc" id="L52">                int amount = root.getAmount();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                for (AbstractGoods leaf : leafs) {</span>
+<span class="fc" id="L54">                    this.leafs.add(new AbstractGoods(leaf));</span>
+<span class="fc" id="L55">                    amount += leaf.getAmount();</span>
+                }
+<span class="fc" id="L57">                this.root = new AbstractGoods(root.getType(), amount);</span>
+<span class="fc" id="L58">            } else {</span>
+<span class="nc" id="L59">                this.root = new AbstractGoods(root);</span>
+            }
+<span class="fc" id="L61">        }</span>
+
+
+        public final AbstractGoods getRoot() {
+<span class="nc" id="L65">            return root;</span>
+        }
+
+        public final void setRoot(final AbstractGoods newRoot) {
+<span class="nc" id="L69">            this.root = newRoot;</span>
+<span class="nc" id="L70">        }</span>
+
+        public final List&lt;AbstractGoods&gt; getLeafs() {
+<span class="nc" id="L73">            return leafs;</span>
+        }
+
+        public final void setLeafs(final List&lt;AbstractGoods&gt; newLeafs) {
+<span class="nc" id="L77">            this.leafs = newLeafs;</span>
+<span class="nc" id="L78">        }</span>
+
+        public void add(AbstractGoods goods) {
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if (goods.getType().getStoredAs() != root.getType()) {</span>
+<span class="nc" id="L82">                throw new IllegalArgumentException(goods.getType().getId() + &quot; is not stored as &quot;</span>
+<span class="nc" id="L83">                                                   + root.getType());</span>
+            } else {
+<span class="fc" id="L85">                AbstractGoods leaf = find(leafs, AbstractGoods.matches(goods.getType()));</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                if (leaf != null) {</span>
+<span class="fc" id="L87">                    leaf.setAmount(leaf.getAmount() + goods.getAmount());</span>
+<span class="fc" id="L88">                    root.setAmount(root.getAmount() + goods.getAmount());</span>
+<span class="fc" id="L89">                    return;</span>
+                }
+<span class="nc" id="L91">                leafs.add(new AbstractGoods(goods));</span>
+<span class="nc" id="L92">                root.setAmount(root.getAmount() + goods.getAmount());</span>
+            }
+<span class="nc" id="L94">        }</span>
+
+        public int remove(AbstractGoods goods) {
+<span class="fc" id="L97">            int consumed = goods.getAmount();</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            if (goods.getType() == root.getType()) {</span>
+<span class="fc" id="L99">                root.setAmount(root.getAmount() - consumed);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                for (AbstractGoods leaf : leafs) {</span>
+<span class="fc" id="L101">                    leaf.setAmount(Math.min(leaf.getAmount(), root.getAmount()));</span>
+<span class="fc" id="L102">                }</span>
+            } else {
+<span class="fc" id="L104">                AbstractGoods leaf = find(leafs, AbstractGoods.matches(goods.getType()));</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                if (leaf != null) {</span>
+<span class="fc" id="L106">                    leaf.setAmount(leaf.getAmount() - consumed);</span>
+<span class="fc" id="L107">                    root.setAmount(root.getAmount() - consumed);</span>
+                }
+            }
+<span class="fc" id="L110">            return consumed;</span>
+        }
+
+        public AbstractGoods get(GoodsType type) {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            if (root.getType() == type) {</span>
+<span class="fc" id="L115">                return root;</span>
+            } else {
+<span class="fc" id="L117">                AbstractGoods leaf = find(leafs, AbstractGoods.matches(type));</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                if (leaf != null) {</span>
+<span class="fc" id="L119">                    return new AbstractGoods(type, leaf.getAmount());</span>
+                }
+            }
+<span class="nc" id="L122">            return null;</span>
+        }
+
+
+        // Override Object
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public String toString() {
+<span class="nc" id="L133">            StringBuilder sb = new StringBuilder(32);</span>
+<span class="nc" id="L134">            sb.append('[').append(root.getSuffix()).append(':');</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            for (AbstractGoods ag : leafs) {</span>
+<span class="nc" id="L136">                sb.append(' ').append(ag);</span>
+<span class="nc" id="L137">            }</span>
+<span class="nc" id="L138">            sb.append(&quot; ]&quot;);</span>
+<span class="nc" id="L139">            return sb.toString();</span>
+        }
+    }
+
+
+<span class="fc" id="L144">    private final Map&lt;GoodsType, Object&gt; cache = new HashMap&lt;&gt;();</span>
+
+
+    public AbstractGoods get(GoodsType type) {
+<span class="fc" id="L148">        Object value = cache.get(type);</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L150">            return new AbstractGoods(type, 0);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        } else if (value instanceof Integer) {</span>
+<span class="fc" id="L152">            return new AbstractGoods(type, (Integer) value);</span>
+        } else {
+<span class="fc" id="L154">            return ((ProductionTree) value).get(type);</span>
+        }
+    }
+
+    public void add(AbstractGoods goods) {
+<span class="fc" id="L159">        GoodsType goodsType = goods.getType();</span>
+<span class="fc" id="L160">        Object value = cache.get(goodsType);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (value == null) {</span>
+            // no entry yet
+<span class="fc" id="L163">            GoodsType rootType = goodsType.getStoredAs();</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">            if (rootType == goodsType) {</span>
+<span class="fc" id="L165">                cache.put(goodsType, goods.getAmount());</span>
+            } else {
+                // is leaf of production tree
+<span class="fc" id="L168">                value = cache.get(rootType);</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">                if (value instanceof ProductionTree) {</span>
+                    // entry is already present
+<span class="nc" id="L171">                    ((ProductionTree) value).add(goods);</span>
+                } else {
+                    // add new root entry
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                    int amount = (value == null) ? 0 : (Integer)value;</span>
+<span class="fc" id="L175">                    value = new ProductionTree(new AbstractGoods(rootType, amount), goods);</span>
+<span class="fc" id="L176">                    cache.put(rootType, value);</span>
+                }
+                // add the same entry for the goods type itself
+<span class="fc" id="L179">                cache.put(goodsType, value);</span>
+            }
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        } else if (value instanceof Integer) {</span>
+<span class="fc" id="L182">            cache.put(goodsType, (Integer) value + goods.getAmount());</span>
+        } else {
+<span class="fc" id="L184">            ((ProductionTree) value).add(goods);</span>
+        }
+<span class="fc" id="L186">    }</span>
+
+    public void remove(AbstractGoods goods) {
+<span class="fc" id="L189">        Object value = cache.get(goods.getType());</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (value instanceof ProductionTree) {</span>
+<span class="fc" id="L191">            ((ProductionTree) value).remove(goods);</span>
+        } else {
+<span class="fc" id="L193">            add(new AbstractGoods(goods.getType(), -goods.getAmount()));</span>
+        }
+<span class="fc" id="L195">    }</span>
+
+
+    public void add(List&lt;AbstractGoods&gt; goods) {
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        for (AbstractGoods g : goods) {</span>
+<span class="fc" id="L200">            add(g);</span>
+<span class="fc" id="L201">        }</span>
+<span class="fc" id="L202">    }</span>
+
+    public void remove(List&lt;AbstractGoods&gt; goods) {
+<span class="fc bfc" id="L205" title="All 2 branches covered.">        for (AbstractGoods g : goods) {</span>
+<span class="fc" id="L206">            remove(g);</span>
+<span class="fc" id="L207">        }</span>
+<span class="fc" id="L208">    }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L218">        StringBuilder sb = new StringBuilder(64);</span>
+<span class="nc" id="L219">        sb.append('[');</span>
+<span class="nc" id="L220">        forEachMapEntry(cache, e -&gt;</span>
+<span class="nc" id="L221">            sb.append(' ').append(e.getKey().getSuffix())</span>
+<span class="nc" id="L222">              .append(':').append(e.getValue()));</span>
+<span class="nc" id="L223">        sb.append(&quot; ]&quot;);</span>
+<span class="nc" id="L224">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

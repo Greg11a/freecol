@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InciteTradeItem.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">InciteTradeItem.java</span></div><h1>InciteTradeItem.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.util.Utils;
+
+
+/**
+ * A trade item consisting of a player to incite war against.
+ */
+public class InciteTradeItem extends TradeItem {
+    
+    public static final String TAG = &quot;inciteTradeItem&quot;;
+
+    /** The victim player. */
+    private Player victim;
+
+    
+    /**
+     * Creates a new {@code InciteTradeItem} inincite.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param source The source {@code Player}.
+     * @param destination The destination {@code Player}.
+     * @param victim The {@code Player} to incite against.
+     */
+    public InciteTradeItem(Game game, Player source, Player destination,
+                           Player victim) {
+<span class="nc" id="L51">        super(game, Messages.nameKey(&quot;model.tradeItem.incite&quot;),</span>
+              source, destination);
+
+<span class="nc" id="L54">        this.victim = victim;</span>
+<span class="nc" id="L55">    }</span>
+
+    /**
+     * Creates a new {@code InciteTradeItem} inincite.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param xr A {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is an error reading the stream.
+     */
+    public InciteTradeItem(Game game, FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L65">        super(game, xr);</span>
+<span class="nc" id="L66">    }</span>
+
+
+    // Interface TradeItem
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isValid() {
+<span class="nc bnc" id="L76" title="All 4 branches missed.">        return this.victim != null &amp;&amp; this.victim != getSource()</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">            &amp;&amp; this.victim != getDestination();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isUnique() {
+<span class="nc" id="L85">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getLabel() {
+<span class="nc" id="L93">        return StringTemplate.template(Messages.descriptionKey(&quot;model.tradeItem.incite&quot;))</span>
+<span class="nc" id="L94">            .addStringTemplate(&quot;%nation%&quot;, this.victim.getNationLabel());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Player getVictim() {
+<span class="nc" id="L102">        return this.victim;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public int evaluateFor(Player player) {
+<span class="nc" id="L109">        final Player victim = getVictim();</span>
+<span class="nc bnc" id="L110" title="All 3 branches missed.">        switch (player.getStance(victim)) {</span>
+        case ALLIANCE:
+<span class="nc" id="L112">            return INVALID_TRADE_ITEM;</span>
+        case WAR: // Not invalid, other player may not know our stance
+<span class="nc" id="L114">            return 0;</span>
+        default:
+            break;
+        }
+        // FIXME: magic#, needs rebalancing
+<span class="nc" id="L119">        return -(int)Math.round(50.0 / player.getStrengthRatio(victim, false));</span>
+    }
+    
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L130">        InciteTradeItem o = copyInCast(other, InciteTradeItem.class);</span>
+<span class="nc bnc" id="L131" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L132">        this.victim = getGame().updateRef(o.getVictim());</span>
+<span class="nc" id="L133">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String VICTIM_TAG = &quot;victim&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L147">        super.writeAttributes(xw);</span>
+
+<span class="nc" id="L149">        xw.writeAttribute(VICTIM_TAG, this.victim);</span>
+<span class="nc" id="L150">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L157">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L159">        this.victim = xr.findFreeColGameObject(getGame(), VICTIM_TAG,</span>
+                                               Player.class, (Player)null, true);
+<span class="nc" id="L161">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="nc" id="L166">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (!(o instanceof InciteTradeItem)) return false;</span>
+<span class="nc" id="L177">        InciteTradeItem other = (InciteTradeItem)o;</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        return Utils.equals(this.victim, other.victim)</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">            &amp;&amp; super.equals(other);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="nc" id="L187">        int hash = super.hashCode();</span>
+<span class="nc" id="L188">        return 37 * hash + Utils.hashCode(this.victim);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L196">        StringBuilder sb = new StringBuilder(16);</span>
+<span class="nc" id="L197">        sb.append('[').append(getId())</span>
+<span class="nc" id="L198">            .append(' ').append(this.victim.getId()).append(']');</span>
+<span class="nc" id="L199">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

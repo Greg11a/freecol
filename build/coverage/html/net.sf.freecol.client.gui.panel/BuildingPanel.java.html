@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BuildingPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">BuildingPanel.java</span></div><h1>BuildingPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import static net.sf.freecol.common.util.CollectionUtils.first;
+
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.image.BufferedImage;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Logger;
+
+import javax.swing.ImageIcon;
+import javax.swing.JLabel;
+import javax.swing.JToolTip;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.label.ProductionLabel;
+import net.sf.freecol.client.gui.label.UnitLabel;
+import net.sf.freecol.client.gui.tooltip.BuildingToolTip;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.Building;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.ProductionInfo;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.option.GameOptions;
+
+
+/**
+ * This panel represents a single building in a Colony.
+ */
+public class BuildingPanel extends MigPanel implements PropertyChangeListener {
+
+<span class="nc" id="L58">    private static final Logger logger = Logger.getLogger(BuildingPanel.class.getName());</span>
+
+    /** The enclosing client. */
+    private final FreeColClient freeColClient;
+
+    /** The Building to display. */
+    private final Building building;
+
+    /** Labels for any units present. */
+<span class="nc" id="L67">    private final List&lt;UnitLabel&gt; unitLabels = new ArrayList&lt;&gt;();</span>
+    
+    private final Dimension unscaledMinimumWorkerAndProductionSize;
+
+
+    /**
+     * Creates this BuildingPanel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param building The building to display information from.
+     */
+    public BuildingPanel(FreeColClient freeColClient, Building building) {
+<span class="nc" id="L79">        super(new MigLayout(&quot;ins 0 0 0 0, gap 0 0&quot;, layoutConstraintString(building), &quot;0:push[32!, bottom]0[58!, bottom]&quot;));</span>
+<span class="nc" id="L80">        this.freeColClient = freeColClient;</span>
+<span class="nc" id="L81">        this.building = building;</span>
+<span class="nc" id="L82">        this.unscaledMinimumWorkerAndProductionSize = new Dimension(Math.max(64, building.getUnitCapacity() * 32), 90);</span>
+
+<span class="nc" id="L84">        setToolTipText(&quot; &quot;);</span>
+<span class="nc" id="L85">    }</span>
+
+    private static String layoutConstraintString(Building building) {
+<span class="nc" id="L88">        return &quot;push&quot; + layoutWorkerString(building) + &quot;push&quot;;</span>
+    }
+
+    private static String layoutWorkerString(Building building) {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        if (building.getUnitCapacity() &lt; 2) {</span>
+<span class="nc" id="L93">            return &quot;[64!]&quot;;</span>
+        }
+<span class="nc" id="L95">        final StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        for (int i=0; i&lt;building.getUnitCapacity(); i++) {</span>
+<span class="nc" id="L97">            sb.append(&quot;[32!]&quot;);</span>
+        }
+<span class="nc" id="L99">        return sb.toString();</span>
+    }
+
+    private ImageLibrary getImageLibrary() {
+<span class="nc" id="L103">        return this.freeColClient.getGUI().getFixedImageLibrary();</span>
+    }
+
+    /**
+     * Initialize this building panel.
+     */
+    public void initialize() {
+<span class="nc" id="L110">        cleanup();</span>
+<span class="nc" id="L111">        addPropertyChangeListeners();</span>
+<span class="nc" id="L112">        update();</span>
+<span class="nc" id="L113">    }</span>
+
+    /**
+     * Clean up this building panel.
+     */
+    protected void cleanup() {
+<span class="nc" id="L119">        unitLabels.clear();</span>
+<span class="nc" id="L120">        removePropertyChangeListeners();</span>
+<span class="nc" id="L121">        removeAll();</span>
+<span class="nc" id="L122">    }</span>
+
+    /**
+     * Add any property change listeners.
+     */
+    protected void addPropertyChangeListeners() {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (building != null) {</span>
+<span class="nc" id="L129">            building.addPropertyChangeListener(this);</span>
+        }
+<span class="nc" id="L131">    }</span>
+
+    /**
+     * Remove any property change listeners.
+     */
+    protected void removePropertyChangeListeners() {
+<span class="nc bnc" id="L137" title="All 2 branches missed.">        if (building != null) {</span>
+<span class="nc" id="L138">            building.removePropertyChangeListener(this);</span>
+        }
+<span class="nc" id="L140">    }</span>
+
+    /**
+     * Update up this building panel.
+     */
+    protected void update() {
+<span class="nc" id="L146">        removeAll();</span>
+<span class="nc" id="L147">        unitLabels.clear();</span>
+
+<span class="nc" id="L149">        final Colony colony = building.getColony();</span>
+<span class="nc" id="L150">        ProductionLabel productionOutput = null;</span>
+<span class="nc" id="L151">        ProductionInfo info = building.getProductionInfo();</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        AbstractGoods output = (info == null) ? null</span>
+<span class="nc" id="L153">            : first(info.getProduction());</span>
+<span class="nc bnc" id="L154" title="All 4 branches missed.">        if (output != null &amp;&amp; output.getAmount() &gt; 0) {</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (building.hasAbility(Ability.AVOID_EXCESS_PRODUCTION)) {</span>
+<span class="nc" id="L156">                int stored = colony.getGoodsCount(output.getType());</span>
+<span class="nc" id="L157">                int capacity = colony.getWarehouseCapacity();</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">                if (output.getAmount() + stored &gt; capacity) {</span>
+<span class="nc" id="L159">                    output = new AbstractGoods(output.getType(),</span>
+                                               capacity - stored);
+                }
+            }
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            AbstractGoods maximum = info.getMaximumProduction().isEmpty()</span>
+<span class="nc" id="L164">                ? output : info.getMaximumProduction().get(0);</span>
+<span class="nc" id="L165">            productionOutput = new ProductionLabel(freeColClient, output,</span>
+<span class="nc" id="L166">                                                   maximum.getAmount());</span>
+        }
+<span class="nc" id="L168">        JLabel upkeep = null;</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        if (building.getSpecification().getBoolean(GameOptions.ENABLE_UPKEEP)</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">            &amp;&amp; building.getType().getUpkeep() &gt; 0) {</span>
+<span class="nc" id="L171">            upkeep = new UpkeepLabel(building.getType().getUpkeep());</span>
+        }
+<span class="nc bnc" id="L173" title="All 2 branches missed.">        if (productionOutput == null) {</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">            if (upkeep != null) {</span>
+<span class="nc" id="L175">                add(upkeep, &quot;span, align center&quot;);</span>
+            } else {
+<span class="nc" id="L177">                final JLabel nothing = new JLabel();</span>
+<span class="nc" id="L178">                nothing.setOpaque(false);</span>
+<span class="nc" id="L179">                add(nothing, &quot;span, align center&quot;);</span>
+<span class="nc" id="L180">            }</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        } else if (upkeep == null) {</span>
+<span class="nc" id="L182">            add(productionOutput, &quot;span, align center&quot;);</span>
+        } else {
+<span class="nc" id="L184">            add(productionOutput, &quot;span, split 2, align center&quot;);</span>
+<span class="nc" id="L185">            add(upkeep);</span>
+        }
+
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        for (Unit unit : building.getUnitList()) {</span>
+<span class="nc" id="L189">            UnitLabel unitLabel = new UnitLabel(freeColClient, unit, true);</span>
+<span class="nc" id="L190">            unitLabels.add(unitLabel);</span>
+<span class="nc" id="L191">            add(unitLabel);</span>
+<span class="nc" id="L192">        }</span>
+        
+<span class="nc" id="L194">        final Dimension minimumWorkerAndProductionSize = getImageLibrary().scale(unscaledMinimumWorkerAndProductionSize);</span>
+        
+<span class="nc" id="L196">        final BufferedImage image = getImageLibrary().getScaledBuildingImage(building);</span>
+<span class="nc" id="L197">        final Dimension minimumSizeForImage = new Dimension(image.getWidth(), image.getHeight());</span>
+<span class="nc" id="L198">        setMinimumSize(largestWidthAndHeight(minimumWorkerAndProductionSize, minimumSizeForImage));</span>
+        
+<span class="nc" id="L200">        final Dimension preferredSizeForImage = getImageLibrary().determineMaxSizeUsingSizeFromAllLevels(building.getType(), building.getOwner());</span>
+<span class="nc" id="L201">        setPreferredSize(largestWidthAndHeight(minimumWorkerAndProductionSize, preferredSizeForImage));</span>
+<span class="nc" id="L202">        revalidate();</span>
+<span class="nc" id="L203">        repaint();</span>
+<span class="nc" id="L204">    }</span>
+
+    private Dimension largestWidthAndHeight(Dimension d1, Dimension d2) {
+<span class="nc" id="L207">        return new Dimension(Math.max(d1.width, d2.width), Math.max(d1.height, d2.height));</span>
+    }
+
+    /**
+     * Get the building this panel displays.
+     *
+     * @return The displayed {@code Building}.
+     */
+    public Building getBuilding() {
+<span class="nc" id="L216">        return building;</span>
+    }
+
+    /**
+     * Get any unit labels for the units present.
+     *
+     * @return A list of {@code UnitLabel}s.
+     */
+    public List&lt;UnitLabel&gt; getUnitLabels() {
+<span class="nc" id="L225">        return unitLabels;</span>
+    }
+
+
+    // Interface PropertyChangeListener
+
+    /**
+     * {@inheritDoc}
+     *
+     * Changes a property upon an interaction event, then logs the change
+     * when FreeCol is run on the Level.FINEST setting. The logging can be
+     * useful for debugging issues with a given building.
+     */
+    @Override
+    public void propertyChange(PropertyChangeEvent event) {
+<span class="nc" id="L240">        String property = event.getPropertyName();</span>
+<span class="nc" id="L241">        logger.finest(building.getId() + &quot; change &quot; + property</span>
+<span class="nc" id="L242">                      + &quot;: &quot; + event.getOldValue()</span>
+<span class="nc" id="L243">                      + &quot; -&gt; &quot; + event.getNewValue());</span>
+<span class="nc" id="L244">        update();</span>
+<span class="nc" id="L245">    }</span>
+
+
+    // Override JComponent
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public JToolTip createToolTip() {
+<span class="nc" id="L255">        return new BuildingToolTip(freeColClient, building);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void paintComponent(Graphics g) {
+<span class="nc" id="L263">        final ImageLibrary lib = getImageLibrary();</span>
+<span class="nc" id="L264">        final BufferedImage image = lib.getScaledBuildingImage(building);</span>
+<span class="nc" id="L265">        final Dimension size = getSize();</span>
+<span class="nc" id="L266">        g.drawImage(image,</span>
+<span class="nc" id="L267">                (size.width - image.getWidth()) / 2,</span>
+<span class="nc" id="L268">                size.height - image.getHeight(),</span>
+                this);
+<span class="nc" id="L270">    }</span>
+
+
+    /**
+     * A special label to display the building upkeep required.
+     */
+    public class UpkeepLabel extends JLabel {
+
+        /** The base image to display. */
+        private final int number;
+
+        /** The font for the label. */
+        private final Font font;
+
+        /**
+         * Create an upkeep label.
+         *
+         * @param number The upkeep cost.
+         */
+<span class="nc" id="L289">        public UpkeepLabel(int number) {</span>
+<span class="nc" id="L290">            super(new ImageIcon(getImageLibrary()</span>
+<span class="nc" id="L291">                .getScaledImage(ImageLibrary.ICON_COIN)));</span>
+<span class="nc" id="L292">            this.number = number;</span>
+<span class="nc" id="L293">            this.font = getImageLibrary().getScaledFont(&quot;simple-bold-tiny&quot;, null);</span>
+<span class="nc" id="L294">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void paintComponent(Graphics g) {
+<span class="nc" id="L301">            getIcon().paintIcon(null, g, 0, 0);</span>
+<span class="nc" id="L302">            ImageLibrary lib = getImageLibrary();</span>
+<span class="nc" id="L303">            BufferedImage img = lib.getStringImage(g, Integer.toString(number),</span>
+<span class="nc" id="L304">                getForeground(), this.font);</span>
+<span class="nc" id="L305">            g.drawImage(img,</span>
+<span class="nc" id="L306">                (getIcon().getIconWidth() - img.getWidth(null))/2,</span>
+<span class="nc" id="L307">                (getIcon().getIconHeight() - img.getHeight(null))/2, null);</span>
+<span class="nc" id="L308">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SimpleZippedAnimation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.io.sza</a> &gt; <span class="el_source">SimpleZippedAnimation.java</span></div><h1>SimpleZippedAnimation.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.io.sza;
+
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.max;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+import javax.imageio.ImageIO;
+
+import net.sf.freecol.common.util.ImageUtils;
+
+
+/**
+ * An animation made from images stored in a zip-file.
+ */
+public final class SimpleZippedAnimation implements Iterable&lt;AnimationEvent&gt; {
+
+    private static final class ImageAnimationEventImpl
+        implements ImageAnimationEvent {
+        
+        private final BufferedImage image;
+        private final int durationInMs;
+
+
+        /**
+         * Create a new wrapped image animation.
+         *
+         * @param image The {@code BufferedImage} to wrap.
+         * @param durationInMs The animation duration in ms.
+         */
+        private ImageAnimationEventImpl(final BufferedImage image,
+<span class="nc" id="L71">                                        final int durationInMs) {</span>
+<span class="nc" id="L72">            this.image = image;</span>
+<span class="nc" id="L73">            this.durationInMs = durationInMs;</span>
+<span class="nc" id="L74">        }</span>
+
+
+        /**
+         * Create a scaled version of this image animation.
+         *
+         * @param scale The scale factor to apply.
+         * @return The scaled {@code AnimationEvent}.
+         */
+        private AnimationEvent createScaledVersion(float scale) {
+<span class="nc" id="L84">            final int width = (int)(getWidth() * scale);</span>
+<span class="nc" id="L85">            final int height = (int)(getHeight() * scale);</span>
+<span class="nc" id="L86">            BufferedImage scaled = ImageUtils.createBufferedImage(width, height);</span>
+<span class="nc" id="L87">            Graphics2D g = scaled.createGraphics();</span>
+<span class="nc" id="L88">            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,</span>
+                               RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+<span class="nc" id="L90">            g.drawImage(this.image, 0, 0, width, height, null);</span>
+<span class="nc" id="L91">            g.dispose();</span>
+
+<span class="nc" id="L93">            return new ImageAnimationEventImpl(scaled, this.durationInMs);</span>
+        }
+
+        public int getWidth() {
+<span class="nc" id="L97">            return this.image.getWidth(null);</span>
+        }
+
+        public int getHeight() {
+<span class="nc" id="L101">            return this.image.getHeight(null);</span>
+        }
+        
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public BufferedImage getImage() {
+<span class="nc" id="L109">            return this.image;</span>
+        }
+        
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public int getDurationInMs() {
+<span class="nc" id="L117">            return this.durationInMs;</span>
+        }
+    }
+
+<span class="nc" id="L121">    private static final Predicate&lt;AnimationEvent&gt; isIAEI = ae -&gt;</span>
+<span class="nc" id="L122">        ae instanceof ImageAnimationEvent;</span>
+<span class="nc" id="L123">    private static final ToIntFunction&lt;AnimationEvent&gt; ifIAEIWidth = ae -&gt;</span>
+<span class="nc" id="L124">        ((ImageAnimationEventImpl)ae).getWidth();</span>
+<span class="nc" id="L125">    private static final ToIntFunction&lt;AnimationEvent&gt; ifIAEIHeight = ae -&gt;</span>
+<span class="nc" id="L126">        ((ImageAnimationEventImpl)ae).getHeight();</span>
+    
+    /** The descriptor file to find in the zip files. */
+    private static final String ANIMATION_DESCRIPTOR_FILE = &quot;animation.txt&quot;;
+
+    /** The animation events. */
+    private final List&lt;AnimationEvent&gt; events;
+
+    /** The maximum width of the individual animations. */
+    private final int width;
+    /** The maximum height of the individual animations. */
+    private final int height;
+
+
+    /**
+     * Creates a new animation from a stream generated by the provided URL.
+     * 
+     * @param url The URL to read a zip-file from. 
+     * @exception IOException if the file cannot be opened, or
+     *      is invalid.
+     */
+    public SimpleZippedAnimation(final URL url) throws IOException {
+<span class="nc" id="L148">        this(url.openStream());</span>
+<span class="nc" id="L149">    }</span>
+    
+    /**
+     * Creates a new animation from an input stream.
+     * 
+     * @param stream An {@code InputStream} to a zip-file.
+     * @exception IOException if the file cannot be opened, or is invalid.
+     */
+    public SimpleZippedAnimation(final InputStream stream) throws IOException {
+<span class="nc" id="L158">        this(new ZipInputStream(stream));</span>
+<span class="nc" id="L159">    }</span>
+
+    /**
+     * Create an animation from a zip input stream.
+     *
+     * @param zipStream An {@code ZipInputStream} to a zip-file.
+     * @exception IOException if the file cannot be opened, or is invalid.
+     */
+    private SimpleZippedAnimation(final ZipInputStream zipStream)
+        throws IOException {
+<span class="nc" id="L169">        this(loadEvents(zipStream));</span>
+<span class="nc" id="L170">    }</span>
+
+    /**
+     * Create an animation from a list of animation events.
+     *
+     * @param evl The list of {@code AnimationEvent}s.
+     */
+    private SimpleZippedAnimation(final List&lt;AnimationEvent&gt; evl) {
+<span class="nc" id="L178">        this(evl, max(evl, isIAEI, ifIAEIWidth), max(evl, isIAEI, ifIAEIHeight));</span>
+<span class="nc" id="L179">    }</span>
+
+    /**
+     * Create an animation from a given list of events and dimensions.
+     *
+     * @param events The list of {@code AnimationEvent}s.
+     * @param width The width of the animation.
+     * @param height The height of the animation.
+     */
+    private SimpleZippedAnimation(final List&lt;AnimationEvent&gt; events,
+<span class="nc" id="L189">                                  final int width, final int height) {</span>
+<span class="nc" id="L190">        this.events = events;</span>
+<span class="nc" id="L191">        this.width = width;</span>
+<span class="nc" id="L192">        this.height = height;</span>
+<span class="nc" id="L193">    }</span>
+
+
+    /**
+     * Load animation events from a zip stream.
+     *
+     * @param zipStream An {@code ZipInputStream} to a zip-file.
+     * @return A list of {@code AnimationEvent}s.
+     * @exception IOException if there is an error with the stream.
+     */
+    private static List&lt;AnimationEvent&gt; loadEvents(ZipInputStream zipStream)
+        throws IOException {
+        // Preload all files from the archive since we cannot use a
+        // ZipFile for reading (as we should support an arbitrary stream).
+<span class="nc" id="L207">        final Map&lt;String, BufferedImage&gt; loadingImages = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L208">        final List&lt;String&gt; loadingDescriptor = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L209">        try (zipStream) {</span>
+            BufferedReader in;
+            ZipEntry ze;
+<span class="nc bnc" id="L212" title="All 2 branches missed.">            while ((ze = zipStream.getNextEntry()) != null) {</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">                if (ANIMATION_DESCRIPTOR_FILE.equals(ze.getName())) {</span>
+<span class="nc" id="L214">                    in = new BufferedReader(new InputStreamReader(zipStream,</span>
+                                                                  StandardCharsets.UTF_8));
+                    String line;
+<span class="nc bnc" id="L217" title="All 2 branches missed.">                    while ((line = in.readLine()) != null) {</span>
+<span class="nc" id="L218">                        loadingDescriptor.add(line);</span>
+                    }
+<span class="nc" id="L220">                } else {</span>
+<span class="nc" id="L221">                    loadingImages.put(ze.getName(), ImageIO.read(zipStream));</span>
+                }
+<span class="nc" id="L223">                zipStream.closeEntry();</span>
+            }
+        }
+        
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        if (loadingDescriptor.isEmpty()) {</span>
+<span class="nc" id="L228">            throw new IOException(ANIMATION_DESCRIPTOR_FILE</span>
+                + &quot; is missing from the SZA: &quot; + zipStream);
+        }
+        
+<span class="nc" id="L232">        List&lt;AnimationEvent&gt; events = new ArrayList&lt;&gt;(loadingDescriptor.size());</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        for (String line : loadingDescriptor) {</span>
+<span class="nc" id="L234">            final int idx = line.indexOf('(');</span>
+<span class="nc" id="L235">            final int idx2 = line.indexOf(&quot;ms)&quot;);</span>
+<span class="nc bnc" id="L236" title="All 4 branches missed.">            if (idx &lt; 0 || idx2 &lt;= idx) {</span>
+<span class="nc" id="L237">                throw new IOException(ANIMATION_DESCRIPTOR_FILE</span>
+                    + &quot; should use the format: FILNAME (TIMEms) in: &quot; + line);
+            }
+<span class="nc" id="L240">            final String imageName = line.substring(0, idx).trim();</span>
+<span class="nc" id="L241">            final int ms = Integer.parseInt(line.substring(idx+1, idx2));</span>
+<span class="nc" id="L242">            final BufferedImage image = loadingImages.get(imageName);</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">            if (image == null) {</span>
+<span class="nc" id="L244">                throw new IOException(&quot;Could not find referenced image: &quot;</span>
+                    + imageName);
+            }
+<span class="nc" id="L247">            events.add(new ImageAnimationEventImpl(image, ms));</span>
+<span class="nc" id="L248">        }</span>
+<span class="nc" id="L249">        return events;</span>
+    }
+
+    /**
+     * Creates a scaled animation based on this object.
+     * 
+     * @param scale The scaling factor (with 1 being normal size,
+     *     2 twice the size, 0.5 half the size etc).
+     * @return The scaled animation.
+     */
+    public SimpleZippedAnimation createScaledVersion(final float scale) {
+<span class="nc" id="L260">        final Function&lt;AnimationEvent, AnimationEvent&gt; scaleEvent = ae -&gt;</span>
+<span class="nc bnc" id="L261" title="All 2 branches missed.">            (ae instanceof ImageAnimationEventImpl)</span>
+<span class="nc" id="L262">                ? ((ImageAnimationEventImpl)ae).createScaledVersion(scale)</span>
+<span class="nc" id="L263">                : ae;</span>
+<span class="nc" id="L264">        return new SimpleZippedAnimation(transform(this.events, alwaysTrue(),</span>
+                                                   scaleEvent),
+            (int)(this.width * scale), (int)(this.height * scale));
+    }
+
+    /**
+     * Gets the width of the animation.
+     *
+     * @return The largest width of all the frames in this animation.
+     */
+    public int getWidth() {
+<span class="nc" id="L275">        return this.width;</span>
+    }
+    
+    /**
+     * Gets the height of the animation.
+     *
+     * @return The largest height of all the frames in this animation.
+     */
+    public int getHeight() {
+<span class="nc" id="L284">        return this.height;</span>
+    }
+    
+
+    // Implement Iterable&lt;AnimationEvent&gt;
+
+    /**
+     * Make this animation iterable.
+     *
+     * @return An {@code Iterator} with all the images and other
+     *     resources (support for sound may be added later).
+     */
+    @Override
+    public Iterator&lt;AnimationEvent&gt; iterator() {
+<span class="nc" id="L298">        return Collections.unmodifiableList(this.events).iterator();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

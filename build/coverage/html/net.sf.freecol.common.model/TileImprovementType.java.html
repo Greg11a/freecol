@@ -1,0 +1,764 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TileImprovementType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">TileImprovementType.java</span></div><h1>TileImprovementType.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import static net.sf.freecol.common.util.CollectionUtils.all;
+import static net.sf.freecol.common.util.CollectionUtils.any;
+import static net.sf.freecol.common.util.CollectionUtils.first;
+import static net.sf.freecol.common.util.CollectionUtils.iterable;
+import static net.sf.freecol.common.util.CollectionUtils.mapEntriesByValue;
+import static net.sf.freecol.common.util.CollectionUtils.matchKey;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.stream.Stream;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.option.GameOptions;
+import net.sf.freecol.common.util.RandomChoice;
+
+
+/**
+ * An improvement to make to a tile.
+ */
+public final class TileImprovementType extends FreeColSpecObjectType {
+
+    public static final String TAG = &quot;tile-improvement-type&quot;;
+
+    /** Is this improvement natural or man-made? */
+    private boolean natural;
+
+    /** The magnitude of the improvement. */
+    private int magnitude;
+
+    /** The number of turns to build this improvement. */
+    private int addWorkTurns;
+
+    /** Any improvement that is required before this one. */
+    private TileImprovementType requiredImprovementType;
+
+    /** The role required to make this improvement. */
+    private Role requiredRole;
+
+    /** The amount of the equipment expended in making this improvement. */
+    private int expendedAmount;
+
+    /** The change to the movement cost due to this tile improvement. */
+<span class="fc" id="L72">    private int movementCost = -1;</span>
+
+    /**
+     * Can this improvement expose a resource when completed? This
+     * should only apply to improvement types that change the
+     * underlying tile type (e.g. clearing forests).
+     */
+    private int exposeResourcePercent;
+
+    /**
+     * The layer a TileItem belongs to. Items with higher zIndex
+     * will be displayed above items with a lower zIndex. E.g. the
+     * LostCityRumour would be displayed above the Plow improvement.
+     */
+    private int zIndex;
+
+    /** The workers that can make this improvement. */
+<span class="fc" id="L89">    private Set&lt;String&gt; allowedWorkers = null;</span>
+
+    /** The changes this improvement makes to a particular tile type. */
+<span class="fc" id="L92">    private Map&lt;TileType, TileTypeChange&gt; tileTypeChanges = null;</span>
+
+    /** The disasters that may strike this type of tile improvement. */
+<span class="fc" id="L95">    private List&lt;RandomChoice&lt;Disaster&gt;&gt; disasters = null;</span>
+
+
+    /**
+     * Create a new tile improvement type.
+     *
+     * @param id The object identifier.
+     * @param specification The {@code Specification} to refer to.
+     */
+    public TileImprovementType(String id, Specification specification) {
+<span class="fc" id="L105">        super(id, specification);</span>
+<span class="fc" id="L106">    }</span>
+
+
+    /**
+     * Is this tile improvement type natural?
+     *
+     * @return True if this is a natural tile improvement type.
+     */
+    public boolean isNatural() {
+<span class="fc" id="L115">        return natural;</span>
+    }
+
+    /**
+     * Get the magnitude of this tile improvement type.
+     *
+     * @return The magnitude.
+     */
+    public int getMagnitude() {
+<span class="fc" id="L124">        return magnitude;</span>
+    }
+
+    /**
+     * Get the number of turns to build this tile improvement type.
+     *
+     * @return The number of build turns.
+     */
+    public int getAddWorkTurns() {
+<span class="fc" id="L133">        return addWorkTurns;</span>
+    }
+
+    /**
+     * Gets the required improvement type.
+     *
+     * @return The required improvement type if any.
+     */
+    public TileImprovementType getRequiredImprovementType() {
+<span class="nc" id="L142">        return requiredImprovementType;</span>
+    }
+
+    /**
+     * Get the role required to perform this improvement, if any.
+     *
+     * @return The required {@code Role}.
+     */
+    public Role getRequiredRole() {
+<span class="fc" id="L151">        return requiredRole;</span>
+    }
+
+    /**
+     * Gets the amount of equipment expended in building this improvement type.
+     *
+     * @return The expended equipment amount, if any.
+     */
+    public int getExpendedAmount() {
+<span class="fc" id="L160">        return expendedAmount;</span>
+    }
+
+    /**
+     * Get the standard movement cost of the tile improvement type.
+     *
+     * @return The movement cost.
+     */
+    public int getMoveCost() {
+<span class="nc" id="L169">        return this.movementCost;</span>
+    }
+
+    /**
+     * Possibly reduce the cost of moving due to this tile improvement
+     * type.
+     *
+     * Only applies if movementCost is positive (see spec).  Do not
+     * return zero from a movement costing routine or units get free
+     * moves!
+     *
+     * @param originalCost The original movement cost.
+     * @return The movement cost after any change.
+     */
+    public int getMoveCost(int originalCost) {
+<span class="pc bpc" id="L184" title="2 of 4 branches missed.">        return (movementCost &gt; 0 &amp;&amp; movementCost &lt; originalCost)</span>
+<span class="fc" id="L185">            ? movementCost</span>
+<span class="nc" id="L186">            : originalCost;</span>
+    }
+
+    /**
+     * Gets the percent chance that this tile improvement can expose a
+     * resource on the tile. This only applies to TileImprovementTypes
+     * that change the underlying tile type (e.g. clearing forests).
+     *
+     * @return The exposure chance.
+     */
+    public int getExposeResourcePercent() {
+<span class="fc" id="L197">        return exposeResourcePercent;</span>
+    }
+
+    /**
+     * Get the layer.
+     *
+     * @return The layer.
+     */
+    public int getZIndex() {
+<span class="fc" id="L206">        return zIndex;</span>
+    }
+
+    /**
+     * Set the layer.
+     *
+     * @param newZIndex The new layer.
+     */
+    public void setZIndex(final int newZIndex) {
+<span class="nc" id="L215">        this.zIndex = newZIndex;</span>
+<span class="nc" id="L216">    }</span>
+
+    /**
+     * Get the set of allowed worker identifiers.
+     *
+     * @return The set of allowed worker identifiers.
+     */
+    protected Set&lt;String&gt; getAllowedWorkers() {
+<span class="nc bnc" id="L224" title="All 2 branches missed.">        if (this.allowedWorkers == null) this.allowedWorkers = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L225">        return this.allowedWorkers;</span>
+    }
+
+    /**
+     * Set the set of allowed worker identifiers.
+     *
+     * @param allowed The new set of allowed worker identifiers.
+     */
+    protected void setAllowedWorkers(Set&lt;String&gt; allowed) {
+<span class="nc bnc" id="L234" title="All 2 branches missed.">        if (this.allowedWorkers == null) {</span>
+<span class="nc" id="L235">            this.allowedWorkers = new HashSet&lt;&gt;();</span>
+        } else {
+<span class="nc" id="L237">            this.allowedWorkers.clear();</span>
+        }
+<span class="nc" id="L239">        this.allowedWorkers.addAll(allowed);</span>
+<span class="nc" id="L240">    }</span>
+
+    /**
+     * Add an allowed worker identifier.
+     *
+     * @param id The worker identifier to add.
+     */
+    private void addAllowedWorker(String id) {
+<span class="nc" id="L248">        getAllowedWorkers().add(id);</span>
+<span class="nc" id="L249">    }</span>
+
+    /**
+     * Is a particular unit type allowed to build this improvement?
+     *
+     * @param unitType The {@code UnitType} to check.
+     * @return True if the {@code UnitType} can build this improvement.
+     */
+    private boolean isWorkerTypeAllowed(UnitType unitType) {
+<span class="nc bnc" id="L258" title="All 4 branches missed.">        return allowedWorkers == null || allowedWorkers.isEmpty()</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">            || allowedWorkers.contains(unitType.getId());</span>
+    }
+
+    /**
+     * Is a particular unit allowed to build this improvement?
+     *
+     * Checks both the unit type and the available equipment.
+     *
+     * @param unit The {@code Unit} to check.
+     * @return True if the {@code Unit} can build this improvement.
+     */
+    public boolean isWorkerAllowed(Unit unit) {
+<span class="nc bnc" id="L271" title="All 4 branches missed.">        return isWorkerTypeAllowed(unit.getType())</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">            &amp;&amp; (requiredRole == null || unit.getRole() == requiredRole);</span>
+    }
+
+    /**
+     * This will check if in principle this type of improvement can be
+     * used on this kind of tile, disregarding the current state of an
+     * actual tile.
+     *
+     * If you want to find out if an improvement is allowed for a tile, call
+     * {@link Tile#isImprovementAllowed(TileImprovement)}.
+     *
+     * @param tileType The {@code TileType} to check.
+     * @return True if improvement is possible.
+     */
+    public boolean isTileTypeAllowed(TileType tileType) {
+<span class="fc" id="L287">        return all(getScopes(), s -&gt; s.appliesTo(tileType));</span>
+    }
+
+    public int getBonus(GoodsType goodsType) {
+<span class="nc" id="L291">        Modifier result = getProductionModifier(goodsType, magnitude);</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        if (result == null) {</span>
+<span class="nc" id="L293">            return 0;</span>
+        } else {
+<span class="nc" id="L295">            return (int) result.getValue();</span>
+        }
+    }
+
+    public Modifier getProductionModifier(GoodsType goodsType, int magnitude) {
+<span class="fc" id="L300">        final Modifier modifier = first(getModifiers(goodsType.getId()));</span>
+<span class="pc bpc" id="L301" title="2 of 6 branches missed.">        if (modifier == null || modifier.getValue() == 0 || magnitude &lt;= 0) {</span>
+<span class="fc" id="L302">            return modifier;</span>
+        }
+        
+<span class="fc" id="L305">        final Modifier modifierWithMagnitudeBonus = Modifier.makeModifier(modifier);</span>
+<span class="fc" id="L306">        modifierWithMagnitudeBonus.setValue(modifierWithMagnitudeBonus.getValue() * magnitude);</span>
+<span class="fc" id="L307">        return modifierWithMagnitudeBonus;</span>
+    }
+    
+    public Stream&lt;Modifier&gt; getProductionModifiers(GoodsType goodsType, UnitType unitType, TileType tileType, int magnitude) {
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">        if (goodsType == null) {</span>
+<span class="nc" id="L312">            return Stream.&lt;Modifier&gt;empty();</span>
+        }
+        
+<span class="fc" id="L315">        final Specification spec = getSpecification();</span>
+        
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        if (unitType == null</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">                &amp;&amp; isNatural()</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">                &amp;&amp; goodsType.isFoodType()) {</span>
+<span class="fc" id="L320">            return Stream.&lt;Modifier&gt;empty();</span>
+        }
+        
+<span class="fc bfc" id="L323" title="All 2 branches covered.">        if (unitType == null</span>
+<span class="fc bfc" id="L324" title="All 2 branches covered.">                &amp;&amp; !isNatural()</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">                &amp;&amp; !goodsType.isFoodType()</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">                &amp;&amp; spec.getBoolean(GameOptions.ONLY_NATURAL_IMPROVEMENTS)) {</span>
+<span class="fc" id="L327">            return Stream.&lt;Modifier&gt;empty();</span>
+        }
+        
+<span class="fc" id="L330">        Modifier m = getProductionModifier(goodsType, magnitude);</span>
+<span class="fc bfc" id="L331" title="All 2 branches covered.">        if (m == null) {</span>
+<span class="fc" id="L332">            return Stream.&lt;Modifier&gt;empty();</span>
+        }
+        
+<span class="fc bfc" id="L335" title="All 2 branches covered.">        if (unitType != null</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">                &amp;&amp; unitType.getExpertProduction() != null</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">                &amp;&amp; unitType.getExpertProduction().equals(goodsType)) {</span>
+<span class="fc" id="L338">            final Stream&lt;Modifier&gt; expertMultiplicativeModifier = unitType.getModifiers(goodsType.getId(), tileType, null)</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">                .filter(mod -&gt; mod.getType() == Modifier.ModifierType.MULTIPLICATIVE);</span>
+            
+<span class="fc" id="L341">            final float expertBonus = FeatureContainer.applyModifiers(m.getValue(), null, expertMultiplicativeModifier);</span>
+<span class="fc" id="L342">            m = Modifier.makeModifier(m);</span>
+<span class="fc" id="L343">            m.setValue(expertBonus);</span>
+        }
+        
+<span class="fc" id="L346">        return Stream.of(m);</span>
+    }
+
+    /**
+     * Get the tile type change map.
+     *
+     * @return The map of tile type to changes.
+     */
+    protected Map&lt;TileType, TileTypeChange&gt; getTileTypeChanges() {
+<span class="nc bnc" id="L355" title="All 2 branches missed.">        if (this.tileTypeChanges == null) this.tileTypeChanges = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L356">        return this.tileTypeChanges;</span>
+    }
+
+    /**
+     * Set the tile type change map.
+     *
+     * @param changes A new map of tile type to changes.
+     */
+    protected void setTileTypeChanges(Map&lt;TileType, TileTypeChange&gt; changes) {
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        if (this.tileTypeChanges == null) {</span>
+<span class="nc" id="L366">            this.tileTypeChanges = new HashMap&lt;&gt;();</span>
+        } else {
+<span class="nc" id="L368">            this.tileTypeChanges.clear();</span>
+        }
+<span class="nc" id="L370">        this.tileTypeChanges.putAll(changes);</span>
+<span class="nc" id="L371">    }</span>
+
+    /**
+     * Does this tile improvement change the underlying tile type.
+     *
+     * @return True if this tile improvement changes the tile type.
+     */
+    public boolean isChangeType() {
+<span class="pc bpc" id="L379" title="1 of 4 branches missed.">        return tileTypeChanges != null &amp;&amp; !tileTypeChanges.isEmpty();</span>
+    }
+
+    /**
+     * Gets the goods produced by applying this TileImprovementType
+     * to a Tile with the given TileType.
+     *
+     * @param from The original {@code TileType}.
+     * @return The {@code AbstractGoods} produced.
+     */
+    public AbstractGoods getProduction(TileType from) {
+<span class="fc bfc" id="L390" title="All 2 branches covered.">        if (tileTypeChanges == null) return null;</span>
+<span class="fc" id="L391">        TileTypeChange change = tileTypeChanges.get(from);</span>
+<span class="pc bpc" id="L392" title="1 of 2 branches missed.">        return (change == null) ? null : change.getProduction();</span>
+    }
+
+    /**
+     * Gets the destination type of a tile type change (or null).
+     *
+     * @param tileType The {@code TileType} that is to change.
+     * @return The resulting {@code TileType}.
+     */
+    public TileType getChange(TileType tileType) {
+<span class="fc bfc" id="L402" title="All 2 branches covered.">        if (tileTypeChanges == null) return null;</span>
+<span class="fc" id="L403">        TileTypeChange change = tileTypeChanges.get(tileType);</span>
+<span class="pc bpc" id="L404" title="1 of 2 branches missed.">        return (change == null) ? null : change.getTo();</span>
+    }
+
+    /**
+     * Can this tile improvement type change a tile type to the given
+     * tile type.
+     *
+     * @param tileType The required {@code TileType}.
+     * @return True if the required {@code TileType} can be changed to.
+     */
+    public boolean changeContainsTarget(TileType tileType) {
+<span class="pc bpc" id="L415" title="1 of 2 branches missed.">        return (tileTypeChanges == null) ? false</span>
+<span class="nc" id="L416">            : any(tileTypeChanges.values(),</span>
+<span class="nc" id="L417">                  matchKey(tileType, TileTypeChange::getTo));</span>
+    }
+
+    /**
+     * Add a tile type change.
+     *
+     * @param change The {@code TileTypeChange} to add.
+     */
+    private void addChange(TileTypeChange change) {
+<span class="fc bfc" id="L426" title="All 2 branches covered.">        if (tileTypeChanges == null) tileTypeChanges = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L427">        tileTypeChanges.put(change.getFrom(), change);</span>
+<span class="fc" id="L428">    }</span>
+
+    /**
+     * Gets the increase in production of the given GoodsType
+     * this tile improvement type would yield at a specified tile.
+     *
+     * @param tile The {@code Tile} to be considered.
+     * @param goodsType An optional preferred {@code GoodsType}.
+     * @return The increase in production
+     */
+    public int getImprovementValue(Tile tile, GoodsType goodsType) {
+<span class="fc" id="L439">        final UnitType colonistType = getSpecification().getDefaultUnitType();</span>
+<span class="fc" id="L440">        return getImprovementValue(tile, goodsType, colonistType);</span>
+    }
+    
+    /**
+     * Gets the increase in production of the given GoodsType
+     * this tile improvement type would yield at a specified tile.
+     *
+     * @param tile The {@code Tile} to be considered.
+     * @param goodsType An optional preferred {@code GoodsType}.
+     * @param unitType The unit type working on the tile.
+     * @return The increase in production
+     */
+    public int getImprovementValue(Tile tile, GoodsType goodsType, UnitType unitType) {
+<span class="fc" id="L453">        int value = 0;</span>
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">        if (goodsType.isFarmed()) {</span>
+<span class="fc" id="L455">            final int oldProduction = tile.getType()</span>
+<span class="fc" id="L456">                .getPotentialProduction(goodsType, unitType);</span>
+<span class="fc" id="L457">            TileType tt = getChange(tile.getType());</span>
+<span class="fc bfc" id="L458" title="All 2 branches covered.">            if (tt == null) { // simple bonus</span>
+<span class="fc" id="L459">                int production = tile.getPotentialProduction(goodsType, unitType);</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">                if (production &gt; 0) {</span>
+<span class="fc" id="L461">                    float chg = apply(production, null, goodsType.getId());</span>
+<span class="fc" id="L462">                    value = (int)(chg - production);</span>
+                }
+<span class="fc" id="L464">            } else { // tile type change</span>
+<span class="fc" id="L465">                int chg = tt.getPotentialProduction(goodsType, unitType)</span>
+                    - oldProduction;
+<span class="fc" id="L467">                value = chg;</span>
+            }
+        }
+<span class="fc" id="L470">        return value;</span>
+    }
+    
+    /**
+     * Gets the increase in production of the given GoodsType
+     * this tile improvement type would yield at a specified tile.
+     *
+     * @param tile The {@code Tile} to be considered.
+     * @param goodsType An optional preferred {@code GoodsType}.
+     * @return The increase in production
+     */
+    public int getImprovementValue(TileType tileType, GoodsType goodsType, UnitType unitType) {
+<span class="nc" id="L482">        int value = 0;</span>
+<span class="nc bnc" id="L483" title="All 2 branches missed.">        if (goodsType.isFarmed()) {</span>
+<span class="nc" id="L484">            final int oldProduction = tileType</span>
+<span class="nc" id="L485">                .getPotentialProduction(goodsType, unitType);</span>
+<span class="nc" id="L486">            TileType tt = getChange(tileType);</span>
+<span class="nc bnc" id="L487" title="All 2 branches missed.">            if (tt == null) { // simple bonus</span>
+<span class="nc" id="L488">                int production = tileType.getPotentialProduction(goodsType, unitType);</span>
+<span class="nc bnc" id="L489" title="All 2 branches missed.">                if (production &gt; 0) {</span>
+<span class="nc" id="L490">                    float chg = apply(production, null, goodsType.getId());</span>
+<span class="nc" id="L491">                    value = (int)(chg - production);</span>
+                }
+<span class="nc" id="L493">            } else { // tile type change</span>
+<span class="nc" id="L494">                int chg = tt.getPotentialProduction(goodsType, unitType)</span>
+                    - oldProduction;
+<span class="nc" id="L496">                value = chg;</span>
+            }
+        }
+<span class="nc" id="L499">        return value;</span>
+    }
+
+    /**
+     * Get the list of disasters for this tile type.
+     *
+     * @return The disaster list.
+     */
+    protected List&lt;RandomChoice&lt;Disaster&gt;&gt; getDisasters() {
+<span class="nc bnc" id="L508" title="All 2 branches missed.">        if (this.disasters == null) this.disasters = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L509">        return this.disasters;</span>
+    }
+
+    /**
+     * Set the list of disasters for this tile type.
+     *
+     * @param disasters The new list of {@code Disaster}s.
+     */
+    protected void setDisasters(List&lt;RandomChoice&lt;Disaster&gt;&gt; disasters) {
+<span class="nc bnc" id="L518" title="All 2 branches missed.">        if (this.disasters == null) {</span>
+<span class="nc" id="L519">            this.disasters = new ArrayList&lt;&gt;();</span>
+        } else {
+<span class="nc" id="L521">            this.disasters.clear();</span>
+        }
+<span class="nc" id="L523">        this.disasters.addAll(disasters);</span>
+<span class="nc" id="L524">    }</span>
+
+    /**
+     * Get a weighted list of natural disasters than can strike this
+     * tile improvement type.
+     *
+     * @return A stream of {@code Disaster} choices.
+     */
+    public Stream&lt;RandomChoice&lt;Disaster&gt;&gt; getDisasterChoices() {
+<span class="fc bfc" id="L533" title="All 2 branches covered.">        return (disasters == null)</span>
+<span class="fc" id="L534">            ? Stream.&lt;RandomChoice&lt;Disaster&gt;&gt;empty()</span>
+<span class="fc" id="L535">            : disasters.stream();</span>
+    }
+
+    /**
+     * Add a disaster.
+     *
+     * @param disaster The {@code Disaster} to add.
+     * @param probability The probability of the disaster.
+     */
+    private void addDisaster(Disaster disaster, int probability) {
+<span class="pc bpc" id="L545" title="1 of 2 branches missed.">        if (disasters == null) disasters = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L546">        disasters.add(new RandomChoice&lt;&gt;(disaster, probability));</span>
+<span class="fc" id="L547">    }</span>
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L557">        TileImprovementType o = copyInCast(other, TileImprovementType.class);</span>
+<span class="nc bnc" id="L558" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L559">        this.natural = o.isNatural();</span>
+<span class="nc" id="L560">        this.magnitude = o.getMagnitude();</span>
+<span class="nc" id="L561">        this.addWorkTurns = o.getAddWorkTurns();</span>
+<span class="nc" id="L562">        this.requiredImprovementType = o.getRequiredImprovementType();</span>
+<span class="nc" id="L563">        this.requiredRole = o.getRequiredRole();</span>
+<span class="nc" id="L564">        this.expendedAmount = o.getExpendedAmount();</span>
+<span class="nc" id="L565">        this.movementCost = o.getMoveCost();</span>
+<span class="nc" id="L566">        this.exposeResourcePercent = o.getExposeResourcePercent();</span>
+<span class="nc" id="L567">        this.zIndex = o.getZIndex();</span>
+<span class="nc" id="L568">        this.setAllowedWorkers(o.getAllowedWorkers());</span>
+<span class="nc" id="L569">        this.setTileTypeChanges(o.getTileTypeChanges());</span>
+<span class="nc" id="L570">        this.setDisasters(o.getDisasters());</span>
+<span class="nc" id="L571">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String ADD_WORK_TURNS_TAG = &quot;add-work-turns&quot;;
+    private static final String DISASTER_TAG = &quot;disaster&quot;;
+    private static final String EXPENDED_AMOUNT_TAG = &quot;expended-amount&quot;;
+    private static final String EXPOSE_RESOURCE_PERCENT_TAG = &quot;expose-resource-percent&quot;;
+    private static final String MAGNITUDE_TAG = &quot;magnitude&quot;;
+    private static final String MOVEMENT_COST_TAG = &quot;movement-cost&quot;;
+    private static final String NATURAL_TAG = &quot;natural&quot;;
+    private static final String PROBABILITY_TAG = &quot;probability&quot;;
+    private static final String REQUIRED_IMPROVEMENT_TAG = &quot;required-improvement&quot;;
+    private static final String REQUIRED_ROLE_TAG = &quot;required-role&quot;;
+    private static final String TILE_TYPE_CHANGE_TAG = &quot;tile-type-change&quot;;
+    private static final String WORKER_TAG = &quot;worker&quot;;
+    private static final String ZINDEX_TAG = &quot;zIndex&quot;;
+    // @compat 0.11.0
+    private static final String OLD_EXPENDED_EQUIPMENT_TYPE_TAG = &quot;expended-equipment-type&quot;;
+    // end @compat 0.11.0
+    // @compat 0.11.3
+    private static final String OLD_EXPOSE_RESOURCE_PERCENT_TAG = &quot;exposeResourcePercent&quot;;
+    // end @compat 0.11.3
+    // @compat 0.11.6
+    private static final String OLD_CHANGE_TAG = &quot;change&quot;;
+    // end @compat 0.11.6
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L606">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L608">        xw.writeAttribute(NATURAL_TAG, natural);</span>
+
+<span class="fc" id="L610">        xw.writeAttribute(MAGNITUDE_TAG, magnitude);</span>
+
+<span class="fc" id="L612">        xw.writeAttribute(ADD_WORK_TURNS_TAG, addWorkTurns);</span>
+
+<span class="pc bpc" id="L614" title="1 of 2 branches missed.">        if (requiredImprovementType != null) {</span>
+<span class="nc" id="L615">            xw.writeAttribute(REQUIRED_IMPROVEMENT_TAG,</span>
+                           requiredImprovementType);
+        }
+
+<span class="fc bfc" id="L619" title="All 2 branches covered.">        if (requiredRole != null) {</span>
+<span class="fc" id="L620">            xw.writeAttribute(REQUIRED_ROLE_TAG, requiredRole);</span>
+        }
+
+<span class="fc bfc" id="L623" title="All 2 branches covered.">        if (expendedAmount != 0) {</span>
+<span class="fc" id="L624">            xw.writeAttribute(EXPENDED_AMOUNT_TAG, expendedAmount);</span>
+        }
+
+<span class="fc" id="L627">        xw.writeAttribute(MOVEMENT_COST_TAG, movementCost);</span>
+
+<span class="fc" id="L629">        xw.writeAttribute(ZINDEX_TAG, zIndex);</span>
+
+<span class="fc" id="L631">        xw.writeAttribute(EXPOSE_RESOURCE_PERCENT_TAG, exposeResourcePercent);</span>
+<span class="fc" id="L632">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L639">        super.writeChildren(xw);</span>
+
+<span class="pc bpc" id="L641" title="1 of 2 branches missed.">        if (allowedWorkers != null) {</span>
+<span class="nc bnc" id="L642" title="All 2 branches missed.">            for (String id : allowedWorkers) {</span>
+<span class="nc" id="L643">                xw.writeStartElement(WORKER_TAG);</span>
+
+<span class="nc" id="L645">                xw.writeAttribute(ID_ATTRIBUTE_TAG, id);</span>
+
+<span class="nc" id="L647">                xw.writeEndElement();</span>
+<span class="nc" id="L648">            }</span>
+        }
+
+<span class="fc bfc" id="L651" title="All 2 branches covered.">        if (tileTypeChanges != null) {</span>
+            for (Entry&lt;TileType, TileTypeChange&gt; e
+<span class="fc bfc" id="L653" title="All 2 branches covered.">                     : mapEntriesByValue(tileTypeChanges)) {</span>
+<span class="fc" id="L654">                e.getValue().toXML(xw);</span>
+<span class="fc" id="L655">            }</span>
+        }
+
+<span class="fc bfc" id="L658" title="All 2 branches covered.">        for (RandomChoice&lt;Disaster&gt; choice : iterable(getDisasterChoices())) {</span>
+<span class="fc" id="L659">            xw.writeStartElement(DISASTER_TAG);</span>
+
+<span class="fc" id="L661">            xw.writeAttribute(ID_ATTRIBUTE_TAG, choice.getObject().getId());</span>
+
+<span class="fc" id="L663">            xw.writeAttribute(PROBABILITY_TAG, choice.getProbability());</span>
+
+<span class="fc" id="L665">            xw.writeEndElement();</span>
+<span class="fc" id="L666">        }</span>
+<span class="fc" id="L667">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L674">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L676">        final Specification spec = getSpecification();</span>
+
+<span class="fc" id="L678">        natural = xr.getAttribute(NATURAL_TAG, false);</span>
+
+<span class="fc" id="L680">        magnitude = xr.getAttribute(MAGNITUDE_TAG, 1);</span>
+
+<span class="fc" id="L682">        addWorkTurns = xr.getAttribute(ADD_WORK_TURNS_TAG, 0);</span>
+
+<span class="fc" id="L684">        requiredImprovementType = xr.getType(spec, REQUIRED_IMPROVEMENT_TAG,</span>
+            TileImprovementType.class, (TileImprovementType)null);
+
+<span class="fc" id="L687">        requiredRole = xr.getType(spec, REQUIRED_ROLE_TAG,</span>
+            Role.class, (Role)null);
+        // @compat 0.11.x
+<span class="pc bpc" id="L690" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_EXPENDED_EQUIPMENT_TYPE_TAG)) {</span>
+<span class="nc" id="L691">            requiredRole = spec.getRole(&quot;model.role.pioneer&quot;);</span>
+        }
+        // end @compat 0.11.x
+
+<span class="fc" id="L695">        expendedAmount = xr.getAttribute(EXPENDED_AMOUNT_TAG, 0);</span>
+
+<span class="fc" id="L697">        movementCost = xr.getAttribute(MOVEMENT_COST_TAG, 0);</span>
+
+<span class="fc" id="L699">        zIndex = xr.getAttribute(ZINDEX_TAG, 0);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L702" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_EXPOSE_RESOURCE_PERCENT_TAG)) {</span>
+<span class="nc" id="L703">            exposeResourcePercent = xr.getAttribute(OLD_EXPOSE_RESOURCE_PERCENT_TAG, 0);</span>
+        } else
+        // end @compat 0.11.3
+<span class="fc" id="L706">            exposeResourcePercent = xr.getAttribute(EXPOSE_RESOURCE_PERCENT_TAG, 0);</span>
+<span class="fc" id="L707">    }</span>
+    
+    /**
+    * {@inheritDoc}
+    */
+    @Override
+    protected void clearContainers(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L714">        super.clearContainers(xr);</span>
+<span class="fc" id="L715">        allowedWorkers = null;</span>
+<span class="fc" id="L716">        tileTypeChanges = null;</span>
+<span class="fc" id="L717">        disasters = null;</span>
+<span class="fc" id="L718">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L725">        super.readChildren(xr);</span>
+<span class="fc" id="L726">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L733">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L734">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L736" title="All 2 branches covered.">        if (TILE_TYPE_CHANGE_TAG.equals(tag)</span>
+            // @compat 0.11.6
+<span class="pc bpc" id="L738" title="1 of 2 branches missed.">            || OLD_CHANGE_TAG.equals(tag)</span>
+            // end @compat 0.11.6
+            ) {
+<span class="fc" id="L741">            addChange(new TileTypeChange(xr, spec));</span>
+
+<span class="fc bfc" id="L743" title="All 2 branches covered.">        } else if (DISASTER_TAG.equals(tag)) {</span>
+<span class="fc" id="L744">            Disaster disaster = xr.getType(spec, ID_ATTRIBUTE_TAG,</span>
+                                           Disaster.class, (Disaster)null);
+<span class="fc" id="L746">            int probability = xr.getAttribute(PROBABILITY_TAG, 100);</span>
+<span class="fc" id="L747">            addDisaster(disaster, probability);</span>
+<span class="fc" id="L748">            xr.closeTag(DISASTER_TAG);</span>
+
+<span class="pc bpc" id="L750" title="1 of 2 branches missed.">        } else if (WORKER_TAG.equals(tag)) {</span>
+<span class="nc" id="L751">            addAllowedWorker(xr.readId());</span>
+<span class="nc" id="L752">            xr.closeTag(WORKER_TAG);</span>
+
+        } else {
+<span class="fc" id="L755">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L757">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L762">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

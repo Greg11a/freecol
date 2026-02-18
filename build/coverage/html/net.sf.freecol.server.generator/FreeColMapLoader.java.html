@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FreeColMapLoader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.generator</a> &gt; <span class="el_source">FreeColMapLoader.java</span></div><h1>FreeColMapLoader.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.generator;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Map;
+import net.sf.freecol.common.model.Map.Layer;
+import net.sf.freecol.common.model.Nation;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Region;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.TileItemContainer;
+import net.sf.freecol.common.model.TileType;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerIndianSettlement;
+import net.sf.freecol.server.model.ServerPlayer;
+import net.sf.freecol.server.model.ServerRegion;
+
+
+/**
+ * Load a FreeCol map.
+ */
+public class FreeColMapLoader implements MapLoader {
+
+<span class="nc" id="L50">    private Map importMap = null;</span>
+
+    /**
+     * Constructor for the FreeColMapLoader class.
+     *
+     * @param file The File to load.
+     * @exception FreeColException if the format is incompatible.
+     * @exception IOException if the stream can not be created.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public FreeColMapLoader(File file)
+<span class="nc" id="L61">        throws FreeColException, IOException, XMLStreamException {</span>
+<span class="nc" id="L62">        this.importMap = FreeColServer.readMap(file, null);</span>
+<span class="nc" id="L63">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Layer loadMap(Game game, Layer layer) {
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        Layer highestLayer = layer.compareTo(importMap.getLayer()) &lt; 0</span>
+<span class="nc" id="L71">            ? layer : importMap.getLayer();</span>
+<span class="nc" id="L72">        int width = importMap.getWidth();</span>
+<span class="nc" id="L73">        int height = importMap.getHeight();</span>
+
+<span class="nc" id="L75">        java.util.Map&lt;String, ServerRegion&gt; regions = new HashMap&lt;&gt;();</span>
+
+<span class="nc" id="L77">        Map map = new Map(game, width, height);</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (highestLayer == Layer.LAND) {</span>
+            // import only the land / water distinction
+<span class="nc" id="L80">            map.populateTiles((x, y) -&gt; {</span>
+<span class="nc" id="L81">                    return new Tile(game,</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                        (importMap.getTile(x, y).getType().isWater())</span>
+<span class="nc" id="L83">                        ? TileType.WATER : TileType.LAND,</span>
+<span class="nc" id="L84">                        x, y);</span>
+                });
+        } else {
+<span class="nc" id="L87">            map.populateTiles((x, y) -&gt; {</span>
+<span class="nc" id="L88">                    Tile template = importMap.getTile(x, y);</span>
+<span class="nc" id="L89">                    Tile tile = new Tile(game, null, x, y);</span>
+
+                    // import tile types
+<span class="nc" id="L92">                    tile.setType(game.getSpecification().getTileType(template.getType().getId()));</span>
+<span class="nc" id="L93">                    tile.setMoveToEurope(template.getMoveToEurope());</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">                    if (highestLayer.compareTo(Layer.REGIONS) &gt;= 0) {</span>
+                        // import regions
+<span class="nc" id="L96">                        Region region = template.getRegion();</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">                        if (region != null) {</span>
+<span class="nc" id="L98">                            ServerRegion ours = regions.get(region.getId());</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">                            if (ours == null) {</span>
+<span class="nc" id="L100">                                ours = new ServerRegion(game, region);</span>
+<span class="nc" id="L101">                                regions.put(region.getId(), ours);</span>
+                            }
+<span class="nc" id="L103">                            tile.setRegion(ours);</span>
+<span class="nc" id="L104">                            ours.addTile(tile);</span>
+                        }
+<span class="nc bnc" id="L106" title="All 2 branches missed.">                        if (highestLayer.compareTo(Layer.RIVERS) &gt;= 0) {</span>
+                            // import tile improvements
+<span class="nc" id="L108">                            TileItemContainer newTic = new TileItemContainer(game, tile);</span>
+<span class="nc" id="L109">                            newTic.copyFrom(template.getTileItemContainer(), layer);</span>
+<span class="nc" id="L110">                            tile.setTileItemContainer(newTic);</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">                            if (layer.compareTo(Layer.NATIVES) &gt;= 0) {</span>
+                                // import native settlements
+<span class="nc bnc" id="L113" title="All 2 branches missed.">                                if (template.getOwner() != null) {</span>
+<span class="nc" id="L114">                                    String nationId = template.getOwner().getNationId();</span>
+<span class="nc" id="L115">                                    Player player = game.getPlayerByNationId(nationId);</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">                                    if (player == null) {</span>
+<span class="nc" id="L117">                                        Nation nation = game.getSpecification().getNation(nationId);</span>
+<span class="nc" id="L118">                                        player = new ServerPlayer(game, false, nation);</span>
+<span class="nc" id="L119">                                        game.addPlayer(player);</span>
+                                    }
+<span class="nc" id="L121">                                    tile.setOwner(player);</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">                                    if (template.getOwningSettlement() != null) {</span>
+<span class="nc" id="L123">                                        IndianSettlement is = (IndianSettlement) template.getOwningSettlement();</span>
+<span class="nc" id="L124">                                        tile.setOwningSettlement(new ServerIndianSettlement(game,</span>
+                                            player, tile, is));
+                                    }
+                                }
+                            }
+                        }
+                    }
+<span class="nc" id="L131">                    return tile;</span>
+                });
+        }
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        for (Region region : regions.values()) {</span>
+<span class="nc" id="L135">            map.addRegion(region);</span>
+<span class="nc" id="L136">        }</span>
+<span class="nc" id="L137">        map.setLayer(highestLayer);</span>
+<span class="nc" id="L138">        game.setMap(map);</span>
+<span class="nc" id="L139">        return highestLayer;</span>
+    }
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Layer getHighestLayer() {
+<span class="nc" id="L148">        return Layer.NATIVES;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

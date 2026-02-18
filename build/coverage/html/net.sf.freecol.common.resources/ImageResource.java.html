@@ -1,0 +1,375 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImageResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.resources</a> &gt; <span class="el_source">ImageResource.java</span></div><h1>ImageResource.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.resources;
+
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.first;
+import static net.sf.freecol.common.util.ImageUtils.createGrayscaleImage;
+import static net.sf.freecol.common.util.ImageUtils.createResizedImage;
+import static net.sf.freecol.common.util.ImageUtils.wildcardDimension;
+
+import java.awt.Dimension;
+import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
+import java.awt.Transparency;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Random;
+import java.util.function.Predicate;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.imageio.ImageIO;
+
+import net.sf.freecol.common.resources.Resource.Cleanable;
+
+
+/**
+ * A {@code Resource} wrapping an {@code Image}.
+ * @see Resource
+ */
+public class ImageResource extends Resource implements Cleanable {
+
+<span class="fc" id="L55">    private static final Logger logger = Logger.getLogger(ImageResource.class.getName());</span>
+
+    /** Comparator to compare buffered images by ascending size. */
+<span class="fc" id="L58">    private static final Comparator&lt;BufferedImage&gt; biComp</span>
+<span class="fc" id="L59">        = Comparator.&lt;BufferedImage&gt;comparingInt(bi -&gt;</span>
+<span class="nc" id="L60">            bi.getWidth() * bi.getHeight());</span>
+
+    /**
+     * Experimental flag for forcing lowest quality (for now using bitmask instead of
+     * full transparency ... later perhaps also fewer colors.
+     * 
+     * We should make a separate class for image configurations if we keep this
+     * longterm.
+     */
+<span class="fc" id="L69">    private static boolean forceLowestQuality = false;</span>
+    
+<span class="fc" id="L71">    private volatile BufferedImage image = null;</span>
+<span class="fc" id="L72">    private List&lt;URI&gt; alternativeLocators = null;</span>
+<span class="fc" id="L73">    private List&lt;BufferedImage&gt; loadedImages = null;</span>
+<span class="fc" id="L74">    private List&lt;ImageResource&gt; variations = new ArrayList&lt;&gt;();</span>
+
+
+    /**
+     * Do not use directly.
+     *
+     * @param cachingKey The caching key.
+     * @param resourceLocator The {@code URI} used when loading this resource.
+     */
+    public ImageResource(String cachingKey, URI resourceLocator) {
+<span class="fc" id="L84">        super(cachingKey, resourceLocator);</span>
+<span class="fc" id="L85">    }</span>
+
+
+    /**
+     * Adds another URI for loading a differently sized version of the image.
+     * Only use before preload got called!
+     *
+     * @param uri The {@code URI} used when loading.
+     */
+    public synchronized void addAlternativeResourceLocator(URI uri) {
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (this.alternativeLocators == null)</span>
+<span class="nc" id="L96">            this.alternativeLocators = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L97">        this.alternativeLocators.add(uri);</span>
+<span class="nc" id="L98">    }</span>
+    
+    public synchronized void addVariation(ImageResource imageResource) {
+<span class="fc" id="L101">        this.variations.add(imageResource);</span>
+<span class="fc" id="L102">    }</span>
+    
+    /**
+     * Adds another URIs for loading a differently sized version of the image.
+     * Only use before preload got called!
+     *
+     * @param uris A {@code List} of {@code URI}s used when loading.
+     */
+    public synchronized void addAlternativeResourceLocators(List&lt;URI&gt; uris) {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (this.alternativeLocators == null)</span>
+<span class="fc" id="L112">            this.alternativeLocators = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L113">        this.alternativeLocators.addAll(uris);</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Gets the {@code Image} represented by this resource.
+     *
+     * @return The image in its original size and color.
+     */
+    public BufferedImage getImage() {
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        if (this.image == null) {</span>
+<span class="nc" id="L123">            logger.finest(&quot;Preload not ready for &quot; + getResourceLocator());</span>
+<span class="nc" id="L124">            preload();</span>
+        }
+<span class="nc" id="L126">        return this.image;</span>
+    }
+    
+    public int getVariationNumberForSeed(int seed) {
+<span class="nc" id="L130">        return new Random(seed).nextInt(variations.size() + 1);</span>
+    }
+    
+    public int getVariationNumberForTick(long ticks) {
+<span class="nc" id="L134">        return (int) (ticks % (variations.size() + 1));</span>
+    }
+    
+    public int getNumberOfVariations() {
+<span class="nc" id="L138">        return variations.size() + 1;</span>
+    }
+    
+    public ImageResource getVariation(int variationNumber) {
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (variations.isEmpty()) {</span>
+<span class="nc" id="L143">            return this;</span>
+        }
+        
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (variationNumber &gt;= variations.size()) {</span>
+<span class="nc" id="L147">            return this;</span>
+        }
+<span class="nc" id="L149">        return variations.get(variationNumber);</span>
+    }
+    
+    
+    /**
+     * Gets the image using the specified dimension and choice of grayscale.
+     * 
+     * @param variation The image variation.
+     * @param d The {@code Dimension} of the requested image.
+     * @param grayscale If true return a grayscale image.
+     * @return The scaled {@code BufferedImage}.
+     */
+    public BufferedImage getImage(int variation, Dimension d, boolean grayscale) {
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        return (grayscale) ? getVariation(variation).getGrayscaleImage(d) : getVariation(variation).getColorImage(d);</span>
+    }
+    
+    /**
+     * Gets the image using the specified dimension and choice of grayscale.
+     * 
+     * @param d The {@code Dimension} of the requested image.
+     * @param grayscale If true return a grayscale image.
+     * @return The scaled {@code BufferedImage}.
+     */
+    public BufferedImage getImage(Dimension d, boolean grayscale) {
+<span class="nc bnc" id="L173" title="All 2 branches missed.">        return (grayscale) ? getGrayscaleImage(d) : getColorImage(d);</span>
+    }
+
+    /**
+     * Find the loaded image that satisfies a predicate.
+     *
+     * @param pred The &lt;code&gt;Predicate&lt;/code&gt; to satisfy.
+     * @return The &lt;code&gt;BufferedImage&lt;/code&gt; found, or if not found, the
+     *     one at the end of the loaded images list.
+     */
+    private synchronized BufferedImage findLoadedImage(Predicate&lt;BufferedImage&gt; pred) {
+<span class="nc" id="L184">        BufferedImage oim = find(this.loadedImages, pred);</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        return (oim != null) ? oim</span>
+<span class="nc" id="L186">            : this.loadedImages.get(this.loadedImages.size() - 1);</span>
+    }
+
+    private synchronized boolean haveAlternatives() {
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        return this.loadedImages != null;</span>
+    }
+    
+    /**
+     * Returns an image that has been forcefully scaled to the given size.
+     * 
+     * @param size The {@code Dimension} of the requested image.
+     * @return The {@code BufferedImage} with the exact dimension. When there
+     *      are alternative sizes, the image with the closest aspect ratio is
+     *      chosen to get the least amount distortion possible. 
+     */
+    public BufferedImage getSizedImageIgnoringProportions(Dimension size) {
+<span class="nc" id="L202">        BufferedImage img = getImage();</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (img == null) {</span>
+<span class="nc" id="L204">            return null;</span>
+        }
+<span class="nc bnc" id="L206" title="All 4 branches missed.">        if (size.width == img.getWidth() &amp;&amp; size.height == img.getHeight()) {</span>
+<span class="nc" id="L207">            return img;</span>
+        }
+<span class="nc bnc" id="L209" title="All 4 branches missed.">        if (loadedImages == null || loadedImages.isEmpty()) {</span>
+<span class="nc" id="L210">            return createResizedImage(img, size.width, size.height, true);</span>
+        }
+        
+<span class="nc" id="L213">        final double targetAspectRatio = ((double) size.width) / size.height;</span>
+<span class="nc" id="L214">        final BufferedImage img2 = loadedImages.stream().min((a, b) -&gt; {</span>
+<span class="nc" id="L215">            final double aspectDiffA = targetAspectRatio - ((double) a.getWidth()) / a.getHeight();</span>
+<span class="nc" id="L216">            final double aspectDiffB = targetAspectRatio - ((double) b.getWidth()) / b.getHeight();</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">            if (Math.abs(aspectDiffA) &gt; Math.abs(aspectDiffB)) {</span>
+<span class="nc" id="L218">                return 1;</span>
+            } else {
+<span class="nc" id="L220">                return -1;</span>
+            }
+<span class="nc" id="L222">        }).orElseThrow();</span>
+        
+<span class="nc" id="L224">        return createResizedImage(img2, size.width, size.height, true);</span>
+    }
+
+    /**
+     * Gets the image using the specified dimension.
+     *
+     * Rescaling will be performed if necessary.
+     * 
+     * @param siz The {@code Dimension} of the requested image.
+     * @return The {@code BufferedImage} with the required dimension.
+     */
+    private BufferedImage getColorImage(Dimension siz) {
+<span class="nc" id="L236">        BufferedImage img = getImage();</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">        if (img == null) return null; // Preload failed</span>
+<span class="nc" id="L238">        int w = img.getWidth();</span>
+<span class="nc" id="L239">        int h = img.getHeight();</span>
+<span class="nc" id="L240">        Dimension dNew = wildcardDimension(siz, new Dimension(w, h));</span>
+<span class="nc" id="L241">        int wNew = dNew.width, hNew = dNew.height;</span>
+<span class="nc bnc" id="L242" title="All 4 branches missed.">        if (wNew == w &amp;&amp; hNew == h) return img; // Matching dimension</span>
+
+<span class="nc bnc" id="L244" title="All 2 branches missed.">        if (this.haveAlternatives()) {</span>
+<span class="nc" id="L245">            final int fwNew = wNew, fhNew = hNew;</span>
+<span class="nc" id="L246">            final Predicate&lt;BufferedImage&gt; sizePred = i -&gt;</span>
+<span class="nc bnc" id="L247" title="All 4 branches missed.">                i.getWidth() &gt;= fwNew &amp;&amp; i.getHeight() &gt;= fhNew;</span>
+<span class="nc" id="L248">            img = findLoadedImage(sizePred);</span>
+<span class="nc" id="L249">            w = img.getWidth();</span>
+<span class="nc" id="L250">            h = img.getHeight();</span>
+<span class="nc" id="L251">            dNew = wildcardDimension(siz, new Dimension(w, h));</span>
+<span class="nc" id="L252">            wNew = dNew.width;</span>
+<span class="nc" id="L253">            hNew = dNew.height;</span>
+<span class="nc bnc" id="L254" title="All 4 branches missed.">            if (wNew == w &amp;&amp; hNew == h) return img; // Found loaded image</span>
+        }
+
+        /*
+         * Tileable images should not be scaled with interpolation, as this will produce
+         * partially transparent pixels. These pixels will overlap and make visible
+         * seams when tiling images.
+         * 
+         * Do NOT use:
+         *  // Directly scaling to less than half size would ignore some pixels.
+         *  // Prevent that by halving the base image size as often as needed.
+         *  while (wNew*2 &lt;= w &amp;&amp; hNew*2 &lt;= h) {
+         *      img = createHalvedImage(img);
+         *      w = img.getWidth();
+         *      h = img.getHeight();
+         *  }
+         */
+
+        // Do a final resize
+<span class="nc bnc" id="L273" title="All 4 branches missed.">        if (wNew != w || hNew != h) {</span>
+<span class="nc" id="L274">            img = createResizedImage(img, wNew, hNew);</span>
+        }
+<span class="nc" id="L276">        return img;</span>
+    }
+
+    /**
+     * Gets a grayscale version of the image of the given size.
+     * 
+     * @param siz The {@code Dimension} of the requested image.
+     * @return The {@code BufferedImage}.
+     */
+    private BufferedImage getGrayscaleImage(Dimension siz) {
+<span class="nc" id="L286">        final BufferedImage img = getColorImage(siz); // Get the scaled image</span>
+<span class="nc" id="L287">        return createGrayscaleImage(img);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public synchronized void preload() {
+<span class="nc bnc" id="L295" title="All 2 branches missed.">        if (this.image == null) {</span>
+<span class="nc" id="L296">            this.image = loadImage(getResourceLocator());</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            if (this.alternativeLocators != null) {</span>
+<span class="nc" id="L298">                this.loadedImages = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">                if (this.image != null) this.loadedImages.add(this.image);</span>
+<span class="nc bnc" id="L300" title="All 2 branches missed.">                for (URI uri : alternativeLocators) {</span>
+<span class="nc" id="L301">                    BufferedImage image = loadImage(uri);</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">                    if (image != null) this.loadedImages.add(image);</span>
+<span class="nc" id="L303">                }</span>
+<span class="nc" id="L304">                this.loadedImages.sort(biComp);</span>
+<span class="nc bnc" id="L305" title="All 4 branches missed.">                if (this.image == null &amp;&amp; !this.loadedImages.isEmpty()) {</span>
+<span class="nc" id="L306">                    this.image = first(this.loadedImages);</span>
+                }
+            }
+<span class="nc bnc" id="L309" title="All 2 branches missed.">            for (ImageResource variation : variations) {</span>
+<span class="nc" id="L310">                variation.preload();</span>
+<span class="nc" id="L311">            }</span>
+        }
+<span class="nc" id="L313">    }</span>
+
+    /**
+     * Load an image from a URI.
+     *
+     * @param uri The {@code URI} to load from.
+     * @return The loaded {@code BufferedImage}, or null on error.
+     */
+    private static BufferedImage loadImage(URI uri) {
+        try {
+<span class="nc" id="L323">            URL url = uri.toURL();</span>
+<span class="nc" id="L324">            BufferedImage image = ImageIO.read(url);</span>
+            
+<span class="nc bnc" id="L326" title="All 2 branches missed.">            if (image == null) {</span>
+<span class="nc" id="L327">                logger.log(Level.WARNING, &quot;Failed to read image from: &quot; + uri);</span>
+<span class="nc" id="L328">                return null;</span>
+            }
+
+            
+<span class="nc bnc" id="L332" title="All 2 branches missed.">            if (canUseBitmask(uri)) {</span>
+<span class="nc" id="L333">                final BufferedImage compatibleImage = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice().getDefaultConfiguration()</span>
+<span class="nc" id="L334">                        .createCompatibleImage(image.getWidth(), image.getHeight(), Transparency.BITMASK);</span>
+<span class="nc" id="L335">                final Graphics2D g = compatibleImage.createGraphics();</span>
+<span class="nc" id="L336">                g.drawImage(image, 0, 0, null);</span>
+<span class="nc" id="L337">                g.dispose();</span>
+<span class="nc" id="L338">                return compatibleImage;</span>
+            } else {
+<span class="nc" id="L340">                return image;</span>
+            }
+
+<span class="nc" id="L343">        } catch (IOException ioe) {</span>
+<span class="nc" id="L344">            logger.log(Level.WARNING, &quot;Exception to loading image from: &quot;</span>
+                + uri, ioe);
+        }
+<span class="nc" id="L347">        return null;</span>
+    }
+
+    @Override
+    public void clean() {
+<span class="nc" id="L352">        image = null;</span>
+<span class="nc bnc" id="L353" title="All 2 branches missed.">        if (loadedImages != null) {</span>
+<span class="nc" id="L354">            loadedImages.clear();</span>
+        }
+<span class="nc bnc" id="L356" title="All 2 branches missed.">        if (variations != null) {</span>
+<span class="nc" id="L357">            variations.stream().forEach(v -&gt; v.clean());</span>
+        }
+<span class="nc" id="L359">    }</span>
+
+    private static boolean canUseBitmask(URI uri) {
+        /* TODO: Better method for determining images that can use a bitmask. */
+<span class="nc bnc" id="L363" title="All 6 branches missed.">        return forceLowestQuality || uri.toString().contains(&quot;center&quot;) &amp;&amp; !uri.toString().contains(&quot;mask&quot;);</span>
+    }
+    
+    public static final void forceLowestQuality(boolean forceLowestQuality) {
+        // Deactive for testing:
+        //ImageResource.forceLowestQuality = forceLowestQuality;
+<span class="nc" id="L369">    }</span>
+    
+    public static final boolean isForceLowestQuality() {
+<span class="nc" id="L372">        return forceLowestQuality;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

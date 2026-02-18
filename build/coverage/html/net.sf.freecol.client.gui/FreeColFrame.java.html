@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FreeColFrame.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui</a> &gt; <span class="el_source">FreeColFrame.java</span></div><h1>FreeColFrame.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui;
+
+import java.awt.Dimension;
+import java.awt.DisplayMode;
+import java.awt.GraphicsConfiguration;
+import java.awt.GraphicsDevice;
+import java.awt.Insets;
+import java.awt.Rectangle;
+import java.awt.Toolkit;
+import java.beans.PropertyChangeListener;
+import java.util.Comparator;
+import java.util.List;
+import java.util.logging.Logger;
+
+import javax.swing.JFrame;
+import javax.swing.JMenuBar;
+
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.menu.FreeColMenuBar;
+import net.sf.freecol.common.option.FullscreenDisplayModeOption;
+
+
+/**
+ * The base frame for FreeCol.
+ */
+public class FreeColFrame extends JFrame {
+
+<span class="nc" id="L49">    private static final Logger logger = Logger.getLogger(FreeColFrame.class.getName());</span>
+
+    /** The FreeCol client controlling the frame. */
+    protected final FreeColClient freeColClient;
+
+<span class="nc" id="L54">    private PropertyChangeListener displayModeChange = (event) -&gt; {</span>
+<span class="nc" id="L55">                updateDisplayMode(getGraphicsConfiguration().getDevice());</span>
+<span class="nc" id="L56">            };</span>
+
+    /**
+     * Create a new main frame.
+     *
+     * @param freeColClient The enclosing {@code FreeColClient}.
+     * @param gd The {@code GraphicsDevice} to use.
+     * @param menuBar The menu bar to add to the frame.
+     * @param windowed If the frame should be windowed.
+     * @param bounds The optional size of the windowed frame.
+     */
+    public FreeColFrame(FreeColClient freeColClient, GraphicsDevice gd,
+                        JMenuBar menuBar, boolean windowed, Rectangle bounds) {
+<span class="nc" id="L69">        super(getFrameName(), gd.getDefaultConfiguration());</span>
+
+<span class="nc" id="L71">        this.freeColClient = freeColClient;</span>
+<span class="nc" id="L72">        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        if (windowed) {</span>
+<span class="nc" id="L74">            setResizable(true);</span>
+        } else {
+<span class="nc" id="L76">            setUndecorated(true);</span>
+<span class="nc" id="L77">            gd.setFullScreenWindow(this);</span>
+            
+<span class="nc" id="L79">            final FullscreenDisplayModeOption fdmo = getDisplayModeOption(freeColClient);</span>
+<span class="nc" id="L80">            fdmo.addPropertyChangeListener(displayModeChange);</span>
+<span class="nc" id="L81">            updateDisplayMode(gd);</span>
+        }
+        
+<span class="nc" id="L84">        setJMenuBar(menuBar);</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        addWindowListener(windowed</span>
+<span class="nc" id="L86">            ? new WindowedFrameListener(freeColClient)</span>
+<span class="nc" id="L87">            : new FullScreenFrameListener(freeColClient, this));</span>
+<span class="nc" id="L88">        setIconImage(ImageLibrary.getUnscaledImage(&quot;image.miscicon.FrameIcon&quot;));</span>
+
+<span class="nc" id="L90">        pack(); // necessary for getInsets</span>
+<span class="nc" id="L91">        Insets insets = getInsets();</span>
+
+        // numbers are taken from the size of the opening video
+<span class="nc" id="L94">        setMinimumSize(new Dimension(656 + insets.left + insets.right,</span>
+                                     480 + insets.top + insets.bottom));
+
+        // Use default bounds if not windowed or (possibly deliberately)
+        // invalid bounds specified
+<span class="nc bnc" id="L99" title="All 8 branches missed.">        if (!windowed || bounds==null || bounds.width&lt;=0 || bounds.height&lt;=0) {</span>
+<span class="nc" id="L100">            bounds = gd.getDefaultConfiguration().getBounds();</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">            if (windowed) {</span>
+<span class="nc" id="L102">                Insets screenInsets = Toolkit.getDefaultToolkit()</span>
+<span class="nc" id="L103">                        .getScreenInsets(gd.getDefaultConfiguration());</span>
+<span class="nc" id="L104">                bounds = new Rectangle(bounds.x + screenInsets.left,</span>
+                                       bounds.y + screenInsets.top,
+                                       bounds.width - screenInsets.right,
+                                       bounds.height - screenInsets.bottom);
+            }
+        }
+<span class="nc" id="L110">        setBounds(bounds);</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        logger.info(((windowed) ? &quot;Windowed&quot; : &quot;Full screen&quot;)</span>
+            + &quot; frame created with size &quot; + bounds.width
+            + &quot;x&quot; + bounds.height);
+        /* TODO: this should do something useful!
+        if (windowed) {
+            addComponentListener(new ComponentAdapter() {
+                @Override
+                public void componentResized(ComponentEvent e) {
+                    logger.info(&quot;Window size changes to &quot; + getSize());
+                }
+            });
+        }
+        */
+<span class="nc" id="L124">    }</span>
+
+    private FullscreenDisplayModeOption getDisplayModeOption(FreeColClient freeColClient) {
+<span class="nc" id="L127">        return freeColClient.getClientOptions().getOption(ClientOptions.DISPLAY_MODE_FULLSCREEN, FullscreenDisplayModeOption.class);</span>
+    }
+
+    private void updateDisplayMode(GraphicsDevice gd) {
+<span class="nc" id="L131">        final FullscreenDisplayModeOption fdmo = getDisplayModeOption(freeColClient);</span>
+<span class="nc" id="L132">        final DisplayMode displayMode = fdmo.getValue().getDisplayMode();</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (displayMode == null) {</span>
+<span class="nc" id="L134">            final DisplayMode matchingDisplayMode = List.of(gd.getDisplayModes()).stream()</span>
+<span class="nc" id="L135">                    .sorted(Comparator.comparingInt((DisplayMode dm) -&gt; dm.getWidth() * dm.getHeight())</span>
+<span class="nc" id="L136">                            .thenComparing(DisplayMode::getRefreshRate)</span>
+<span class="nc" id="L137">                            .thenComparing(DisplayMode::getBitDepth)</span>
+<span class="nc" id="L138">                            .reversed())</span>
+<span class="nc" id="L139">                    .findFirst()</span>
+<span class="nc" id="L140">                    .orElse(null);</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            if (matchingDisplayMode == null) {</span>
+<span class="nc" id="L142">                return;</span>
+            }
+<span class="nc" id="L144">            gd.setDisplayMode(matchingDisplayMode);</span>
+<span class="nc" id="L145">            return;</span>
+        }
+        
+<span class="nc" id="L148">        final DisplayMode matchingDisplayMode = List.of(gd.getDisplayModes()).stream()</span>
+<span class="nc bnc" id="L149" title="All 4 branches missed.">                .filter(dm -&gt; dm.getWidth() == displayMode.getWidth() &amp;&amp; dm.getHeight() == displayMode.getHeight())</span>
+<span class="nc" id="L150">                .sorted(Comparator.comparingInt(DisplayMode::getRefreshRate).thenComparing(DisplayMode::getBitDepth).reversed())</span>
+<span class="nc" id="L151">                .findFirst()</span>
+<span class="nc" id="L152">                .orElse(null);</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (matchingDisplayMode == null) {</span>
+<span class="nc" id="L154">            return;</span>
+        }
+        
+<span class="nc" id="L157">        gd.setDisplayMode(matchingDisplayMode);</span>
+<span class="nc" id="L158">    }</span>
+
+    public void exitFullScreen() {
+<span class="nc" id="L161">        GraphicsConfiguration GraphicsConf = getGraphicsConfiguration();</span>
+<span class="nc" id="L162">        GraphicsDevice gd = GraphicsConf.getDevice();</span>
+<span class="nc" id="L163">        gd.setFullScreenWindow(null);</span>
+<span class="nc" id="L164">        getDisplayModeOption(freeColClient).removePropertyChangeListener(displayModeChange);</span>
+<span class="nc" id="L165">    }</span>
+
+    public void setMenuBar(FreeColMenuBar bar) {
+<span class="nc" id="L168">        setJMenuBar(bar);</span>
+<span class="nc" id="L169">        validate();</span>
+<span class="nc" id="L170">    }</span>
+    
+    public void removeMenuBar() {
+<span class="nc" id="L173">        setJMenuBar(null);</span>
+<span class="nc" id="L174">        validate();</span>
+<span class="nc" id="L175">    }</span>
+
+    public void resetMenuBar() {
+<span class="nc" id="L178">        JMenuBar menuBar = getJMenuBar();</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (menuBar != null) {</span>
+<span class="nc" id="L180">            ((FreeColMenuBar)menuBar).reset();</span>
+        }
+<span class="nc" id="L182">    }</span>
+
+    public void updateMenuBar() {
+<span class="nc" id="L185">        JMenuBar menuBar = getJMenuBar();</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (menuBar != null) {</span>
+<span class="nc" id="L187">            ((FreeColMenuBar)menuBar).update();</span>
+        }
+<span class="nc" id="L189">    }</span>
+
+    /**
+     * Get the standard name for the main frame.
+     *
+     * @return The standard frame name.
+     */
+    private static String getFrameName() {
+<span class="nc" id="L197">        return &quot;FreeCol &quot; + FreeCol.getVersion();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

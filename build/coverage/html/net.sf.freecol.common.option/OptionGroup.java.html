@@ -1,0 +1,623 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OptionGroup.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.option</a> &gt; <span class="el_source">OptionGroup.java</span></div><h1>OptionGroup.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.option;
+
+import static net.sf.freecol.common.util.CollectionUtils.any;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.util.LogBuilder;
+
+
+/**
+ * Used for grouping {@link Option}s.
+ */
+public class OptionGroup extends AbstractOption&lt;OptionGroup&gt;
+    implements OptionContainer {
+
+<span class="fc" id="L49">    private static final Logger logger = Logger.getLogger(OptionGroup.class.getName());</span>
+
+    public static final String TAG = &quot;optionGroup&quot;;
+
+    /** The options in this group. */
+<span class="pc" id="L54">    private final List&lt;Option&lt;?&gt;&gt; options = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * A map of all option ids to its option.  Unlike the options
+     * array, this contains all child options of options that are
+     * themselves groups.
+     */
+<span class="pc" id="L61">    private final Map&lt;String, Option&lt;?&gt;&gt; optionMap = new HashMap&lt;&gt;();</span>
+
+    /** Is this option group user editable? */
+<span class="pc" id="L64">    private boolean editable = true;</span>
+
+    /** Should this option group be visible? */
+<span class="pc" id="L67">    private boolean visible = true;</span>
+    
+
+    /**
+     * Creates a new {@code OptionGroup}.
+     *
+     * @param id The object identifier.
+     */
+    public OptionGroup(String id) {
+<span class="fc" id="L76">        super(id);</span>
+<span class="fc" id="L77">    }</span>
+
+    /**
+     * Creates a new {@code OptionGroup}.
+     *
+     * @param specification The {@code Specification} to refer to.
+     */
+    public OptionGroup(Specification specification) {
+<span class="fc" id="L85">        super(specification);</span>
+<span class="fc" id="L86">    }</span>
+
+    /**
+     * Creates a new {@code OptionGroup}.
+     *
+     * @param id The object identifier.
+     * @param specification The {@code Specification} to refer to.
+     */
+    public OptionGroup(String id, Specification specification) {
+<span class="fc" id="L95">        super(id, specification);</span>
+<span class="fc" id="L96">    }</span>
+
+    /**
+     * Creates a new {@code OptionGroup}.
+     *
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @param specification The {@code Specification} to refer to.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public OptionGroup(FreeColXMLReader xr,
+        Specification specification) throws XMLStreamException {
+<span class="nc" id="L107">        super(specification);</span>
+
+<span class="nc" id="L109">        readFromXML(xr);</span>
+<span class="nc" id="L110">    }</span>
+
+
+    /**
+     * Is this option group editable?
+     *
+     * @return True if the option group is editable.
+     */
+    public boolean isEditable() {
+<span class="fc" id="L119">        return editable;</span>
+    }
+
+    /**
+     * Set the editable status of this group.
+     *
+     * @param editable The new editable status.
+     */
+    public void setEditable(boolean editable) {
+<span class="fc" id="L128">        this.editable = editable;</span>
+<span class="fc" id="L129">    }</span>
+
+    /**
+     * Should this option group be visible?
+     *
+     * @return True if the option group should be visible.
+     */
+    public boolean isVisible() {
+<span class="nc" id="L137">        return visible;</span>
+    }
+
+    /**
+     * Gets the i18n-name of this {@code Option}.
+     *
+     * @return The name as provided in the constructor.
+     */
+    public String getName() {
+<span class="nc" id="L146">        return Messages.getName(getId());</span>
+    }
+
+    /**
+     * Gets the i18n short description of this {@code Option}.
+     * Should be suitable for use as a tooltip text.
+     *
+     * @return A short description of this {@code Option}.
+     */
+    public String getShortDescription() {
+<span class="nc" id="L156">        return Messages.getShortDescription(getId());</span>
+    }
+
+    /**
+     * Get the options in this group.
+     *
+     * @return The list of {@code Option}s.
+     */
+    public List&lt;Option&lt;?&gt;&gt; getOptions() {
+<span class="fc" id="L165">        return options;</span>
+    }
+
+    /**
+     * Get an option in this group (or descendents) by object identifier.
+     *
+     * @param id The object identifier.
+     * @return The option, or null if not found.
+     */
+    public Option&lt;?&gt; getOption(String id) {
+<span class="fc" id="L175">        return optionMap.get(id);</span>
+    }
+
+    /**
+     * Does this option group contain any subgroups?
+     *
+     * @return True if there are any child {@code OptionGroup}s present.
+     */
+    public boolean hasOptionGroup() {
+<span class="nc" id="L184">        return any(options, o -&gt; o instanceof OptionGroup);</span>
+    }
+
+    /**
+     * Adds the given option to this group.  The option is assumed to
+     * be correct.
+     *
+     * @param option The {@code Option} to add.
+     */
+    public void add(Option&lt;?&gt; option) {
+<span class="fc" id="L194">        String id = option.getId();</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (optionMap.containsKey(id)) {</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">            for (int index = 0; index &lt; options.size(); index++) {</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">                if (id.equals(options.get(index).getId())) {</span>
+<span class="fc" id="L198">                    options.remove(index);</span>
+<span class="fc" id="L199">                    options.add(index, option);</span>
+<span class="fc" id="L200">                    break;</span>
+                }
+            }
+        } else {
+<span class="fc" id="L204">            options.add(option);</span>
+        }
+<span class="fc" id="L206">        optionMap.put(id, option);</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        if (option instanceof OptionGroup) {</span>
+<span class="fc" id="L208">            OptionGroup group = (OptionGroup) option;</span>
+<span class="fc bfc" id="L209" title="All 4 branches covered.">            group.setEditable(editable &amp;&amp; group.isEditable());</span>
+<span class="fc" id="L210">            addOptionGroup(group);</span>
+        }
+<span class="fc" id="L212">    }</span>
+
+    /**
+     * Merges the given {@code Option} into this group.
+     *
+     * - Option groups are *not* merged, but their leaf options are.
+     * - If an option is not already present it is ignored.
+     * - If an option is present, it is merged but in the option group where
+     *   it is already placed.
+     *
+     * The intent is that the option group structure is never subject to
+     * merging.
+     *
+     * @param option The {@code Option} to merge.
+     * @param lb A {@code LogBuilder} to log to.
+     * @return True if the merge was accepted.
+     */
+    public boolean merge(Option&lt;?&gt; option, LogBuilder lb) {
+<span class="nc bnc" id="L230" title="All 2 branches missed.">        if (option == null) return false;</span>
+<span class="nc" id="L231">        final String id = option.getId();</span>
+<span class="nc" id="L232">        OptionGroup etc = null;</span>
+
+        // Check first, it is valid to merge an option group onto
+        // one at the same level, for which it will not contain a key.
+<span class="nc bnc" id="L236" title="All 2 branches missed.">        if (option instanceof OptionGroup) {</span>
+<span class="nc" id="L237">            OptionGroup optionGroup = (OptionGroup)option;</span>
+<span class="nc" id="L238">            boolean result = true;</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">            for (Option&lt;?&gt; o : optionGroup.getOptions()) {</span>
+                // @compat 0.11.6
+                // Placement options move to their own group
+<span class="nc bnc" id="L242" title="All 2 branches missed.">                if (o.getId().startsWith(&quot;net.sf.freecol.client.gui.panel.&quot;)) {</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">                    if (etc == null) etc = getOptionGroup(ClientOptions.ETC);</span>
+<span class="nc" id="L244">                    etc.add(o);</span>
+<span class="nc" id="L245">                    lb.add(o.getId(), &quot; moved to &quot;, ClientOptions.ETC, &quot;.\n&quot;);</span>
+<span class="nc" id="L246">                    continue;</span>
+                }
+                // end @compat 0.11.6
+                
+                // Merge from the top level, so that the new
+                // option will end up in the group inherited
+                // from the standard client-options.xml.
+<span class="nc bnc" id="L253" title="All 4 branches missed.">                result = result &amp;&amp; this.merge(o, lb);</span>
+<span class="nc" id="L254">            }</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">            if (result) {</span>
+<span class="nc bnc" id="L256" title="All 4 branches missed.">                optionGroup.setEditable(editable &amp;&amp; optionGroup.isEditable());</span>
+            }
+<span class="nc" id="L258">            lb.add(id, &quot; group merged contents into &quot;, this.getId(), &quot;.\n&quot;);</span>
+<span class="nc" id="L259">            return result;</span>
+        }
+                
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (!optionMap.containsKey(id)) {</span>
+<span class="nc" id="L263">            lb.add(id, &quot; unknown/ignored.\n&quot;);</span>
+<span class="nc" id="L264">            return false;</span>
+        }
+
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        for (int index = 0; index &lt; options.size(); index++) {</span>
+<span class="nc" id="L268">            Option&lt;?&gt; o = options.get(index);</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">            if (id.equals(o.getId())) { // Found it, replace and return true</span>
+<span class="nc" id="L270">                options.remove(index);</span>
+<span class="nc" id="L271">                options.add(index, option);</span>
+<span class="nc" id="L272">                optionMap.put(id, option);</span>
+<span class="nc" id="L273">                lb.add(id, &quot; merged into &quot;, this.getId(),</span>
+<span class="nc" id="L274">                    &quot;: &quot;, option.toString() + &quot;.\n&quot;);</span>
+<span class="nc" id="L275">                return true;</span>
+            }
+<span class="nc bnc" id="L277" title="All 2 branches missed.">            if (o instanceof OptionGroup) {</span>
+<span class="nc" id="L278">                OptionGroup og = (OptionGroup)o;</span>
+<span class="nc bnc" id="L279" title="All 4 branches missed.">                if (og.optionMap.containsKey(id) &amp;&amp; og.merge(option, lb)) {</span>
+<span class="nc" id="L280">                    optionMap.put(id, option);</span>
+<span class="nc" id="L281">                    return true;</span>
+                }
+            }
+        }
+<span class="nc" id="L285">        lb.add(id, &quot; registered but not found!\n&quot;);</span>
+<span class="nc" id="L286">        return false;</span>
+    }
+        
+    /**
+     * Helper function to recursively add option group members to the
+     * optionMap.
+     *
+     * @param group The initial {@code OptionGroup} to add.
+     */
+    private void addOptionGroup(OptionGroup group) {
+<span class="fc bfc" id="L296" title="All 2 branches covered.">        for (Option&lt;?&gt; option : group.getOptions()) {</span>
+<span class="fc" id="L297">            optionMap.put(option.getId(), option);</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">            if (option instanceof OptionGroup) {</span>
+<span class="fc" id="L299">                addOptionGroup((OptionGroup) option);</span>
+            }
+<span class="fc" id="L301">        }</span>
+<span class="fc" id="L302">    }</span>
+
+    /**
+     * Remove an option.
+     *
+     * @param id The identifier of the option to remove.
+     * @return The {@code Option} removed if any.
+     */
+    public Option&lt;?&gt; remove(String id) {
+<span class="fc" id="L311">        final Option&lt;?&gt; op = optionMap.remove(id);</span>
+<span class="fc" id="L312">        options.remove(op);</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">        if (op != null) {</span>
+<span class="nc" id="L314">            options.stream()</span>
+<span class="nc" id="L315">                    .filter(o -&gt; o instanceof OptionGroup)</span>
+<span class="nc" id="L316">                    .map(o -&gt; (OptionGroup) o)</span>
+<span class="nc" id="L317">                    .forEach(og -&gt; og.remove(id));</span>
+        }
+<span class="fc" id="L319">        return op;</span>
+    }
+
+    /**
+     * Removes all of the {@code Option}s from this
+     * {@code OptionGroup}.
+     */
+    public void removeAll() {
+<span class="nc" id="L327">        options.clear();</span>
+<span class="nc" id="L328">        optionMap.clear();</span>
+<span class="nc" id="L329">    }</span>
+
+    /**
+     * Loads the options from the given reader.
+     *
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @return True if the options were loaded without error.
+     * @exception XMLStreamException if there is an error reading the stream.
+     */
+    protected boolean load(FreeColXMLReader xr) throws XMLStreamException {
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">        if (xr == null) return false;</span>
+<span class="fc" id="L340">        xr.nextTag();</span>
+<span class="fc" id="L341">        readFromXML(xr);</span>
+<span class="fc" id="L342">        return true;</span>
+    }
+    
+    /**
+     * Loads the options from the given file.
+     *
+     * @param file The {@code File} to read the options from.
+     * @return True if the options were loaded without error.
+     */
+    public boolean load(File file) {
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">        if (file == null) return false;</span>
+<span class="fc" id="L353">        boolean ret = false;</span>
+        try (
+<span class="fc" id="L355">             FreeColXMLReader xr = new FreeColXMLReader(file);</span>
+             ) {
+<span class="fc" id="L357">            ret = load(xr);</span>
+<span class="nc" id="L358">        } catch (IOException|XMLStreamException xse) {</span>
+<span class="nc" id="L359">            logger.log(Level.WARNING, &quot;Load OptionGroup(&quot; + getId()</span>
+<span class="nc" id="L360">                + &quot;) from file &quot; + file.getPath() + &quot; crashed&quot;, xse);</span>
+<span class="nc" id="L361">            return false;</span>
+<span class="fc" id="L362">        }</span>
+<span class="fc" id="L363">        logger.info(&quot;Load OptionGroup(&quot; + getId() + &quot;) from &quot; + file.getPath()</span>
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">            + ((ret) ? &quot; succeeded&quot; : &quot; failed&quot;));</span>
+<span class="fc" id="L365">        return ret;</span>
+    }
+
+    /**
+     * Load a specific option group from a file by identifier.
+     *
+     * @param file The {@code File} to load from.
+     * @param optionId The option identifier to look for.
+     * @param spec A base {@code Specification}.
+     * @return The {@code OptionGroup} found, or null on error or
+     *     not found.
+     */
+    public static OptionGroup loadOptionGroup(File file, String optionId,
+                                              Specification spec) {
+<span class="nc" id="L379">        OptionGroup ret = new OptionGroup(spec);</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">        if (ret.load(file)) {</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">            if (!optionId.equals(ret.getId())) {</span>
+<span class="nc" id="L382">                final Option&lt;?&gt; op = ret.getOption(optionId);</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">                ret = (op instanceof OptionGroup) ? (OptionGroup)op : null;</span>
+<span class="nc" id="L384">            }</span>
+        } else {
+<span class="nc" id="L386">            ret = null;</span>
+        }
+<span class="nc" id="L388">        return ret;</span>
+    }
+
+
+    // Interface OptionContainer
+
+    /**
+     * {@inheritDoc}
+     */    
+    public &lt;T extends Option&lt;?&gt;&gt; boolean hasOption(String id,
+                                                Class&lt;T&gt; returnClass) {
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">        if (id == null) return false;</span>
+<span class="fc" id="L400">        Option&lt;?&gt; val = this.optionMap.get(id);</span>
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">        return (val == null) ? false</span>
+<span class="fc" id="L402">            : returnClass.isAssignableFrom(val.getClass());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public &lt;T extends Option&lt;?&gt;&gt; T getOption(String id,
+                                          Class&lt;T&gt; returnClass) {
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">        if (id == null) {</span>
+<span class="nc" id="L411">            throw new RuntimeException(&quot;Null id: &quot; + this);</span>
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">        } else if (!this.optionMap.containsKey(id)) {</span>
+<span class="nc" id="L413">            throw new RuntimeException(&quot;Missing option: &quot; + id);</span>
+        } else {
+            try {
+<span class="fc" id="L416">                return returnClass.cast(optionMap.get(id));</span>
+<span class="nc" id="L417">            } catch (ClassCastException cce) {</span>
+<span class="nc" id="L418">                throw new RuntimeException(&quot;Not a &quot; + returnClass.getName()</span>
+                    + &quot;: &quot; + id, cce);
+            }
+        }
+    }
+
+    
+    // Interface Option
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public OptionGroup cloneOption() {
+<span class="nc" id="L432">        OptionGroup result = new OptionGroup(this.getId(), getSpecification());</span>
+<span class="nc" id="L433">        result.editable = this.editable;</span>
+<span class="nc" id="L434">        result.setValues(this);</span>
+<span class="nc" id="L435">        result.options.addAll(this.options);</span>
+<span class="nc" id="L436">        result.optionMap.putAll(this.optionMap);</span>
+<span class="nc" id="L437">        return result;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public OptionGroup getValue() {
+<span class="fc" id="L445">        return this;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void setValue(OptionGroup value) {
+<span class="nc bnc" id="L454" title="All 2 branches missed.">        if (value != null) {</span>
+<span class="nc bnc" id="L455" title="All 2 branches missed.">            for (Option&lt;?&gt; other : value.getOptions()) {</span>
+                @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="nc" id="L457">                Option mine = getOption(other.getId());</span>
+                // could be null if using custom options generated
+                // from an older version of the specification
+<span class="nc bnc" id="L460" title="All 2 branches missed.">                if (mine != null) {</span>
+<span class="nc" id="L461">                    mine.setValue(other.getValue());</span>
+                }
+<span class="nc" id="L463">            }</span>
+        }
+<span class="nc" id="L465">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setValue(String valueString, String defaultValueString) {
+        // No op.  Needed to avoid endless warnings from parent implementation.
+<span class="nc" id="L473">    }</span>
+
+
+    // Override AbstractOption
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void generateChoices() {
+<span class="fc bfc" id="L483" title="All 2 branches covered.">        for (Option&lt;?&gt; o : options) {</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">            if (o instanceof OptionGroup) {</span>
+<span class="fc" id="L485">                ((OptionGroup)o).generateChoices();</span>
+<span class="pc bpc" id="L486" title="1 of 2 branches missed.">            } else if (o instanceof AbstractOption&lt;?&gt;) {</span>
+<span class="fc" id="L487">                ((AbstractOption&lt;?&gt;)o).generateChoices();</span>
+            }
+<span class="fc" id="L489">        }</span>
+<span class="fc" id="L490">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isNullValueOK() {
+<span class="fc" id="L497">        return true;</span>
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean save(File file) {
+<span class="nc" id="L508">        boolean ret = false;</span>
+        try {
+<span class="nc" id="L510">            ret = this.save(file, null, true);</span>
+<span class="nc" id="L511">        } catch (Exception e) {</span>
+<span class="nc" id="L512">            logger.log(Level.WARNING, &quot;Save OptionGroup(&quot; + getId()</span>
+<span class="nc" id="L513">                + &quot;) to &quot; + file.getPath() + &quot; crashed&quot;, e);</span>
+<span class="nc" id="L514">            return false;</span>
+<span class="nc" id="L515">        }</span>
+<span class="nc" id="L516">        logger.info(&quot;Save OptionGroup(&quot; + getId() + &quot;) to &quot; + file.getPath()</span>
+<span class="nc bnc" id="L517" title="All 2 branches missed.">            + ((ret) ? &quot; succeeded&quot; : &quot; failed&quot;));</span>
+<span class="nc" id="L518">        return ret;</span>
+    }
+    
+
+    // Serialization
+
+    private static final String EDITABLE_TAG = &quot;editable&quot;;
+    private static final String VISIBLE_TAG = &quot;visible&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L533">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L535">        xw.writeAttribute(EDITABLE_TAG, editable);</span>
+
+<span class="fc" id="L537">        xw.writeAttribute(VISIBLE_TAG, visible);</span>
+<span class="fc" id="L538">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L545">        super.writeChildren(xw);</span>
+
+<span class="fc bfc" id="L547" title="All 2 branches covered.">        for (Option&lt;?&gt; o : options) {</span>
+<span class="fc" id="L548">            o.toXML(xw);</span>
+<span class="fc" id="L549">        }</span>
+<span class="fc" id="L550">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L557">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L559">        editable = xr.getAttribute(EDITABLE_TAG, true);</span>
+
+<span class="fc" id="L561">        visible = xr.getAttribute(VISIBLE_TAG, true);</span>
+<span class="fc" id="L562">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+        // Do *not* clear containers.
+        // ATM OptionGroups are purely additive/overwriting.
+
+<span class="fc" id="L572">        super.readChildren(xr);</span>
+        
+<span class="fc bfc" id="L574" title="All 2 branches covered.">        for (Option&lt;?&gt; option : getOptions()) {</span>
+<span class="fc" id="L575">            optionMap.put(option.getId(), option);</span>
+<span class="fc bfc" id="L576" title="All 2 branches covered.">            if (option instanceof OptionGroup) {</span>
+<span class="fc" id="L577">                addOptionGroup((OptionGroup) option);</span>
+            }
+<span class="fc" id="L579">        }</span>
+<span class="fc" id="L580">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L587">        String optionId = xr.readId();</span>
+<span class="fc" id="L588">        Option&lt;?&gt; option = getOption(optionId);</span>
+<span class="fc bfc" id="L589" title="All 2 branches covered.">        if (option == null) {</span>
+<span class="fc" id="L590">            AbstractOption&lt;?&gt; abstractOption = readOption(xr);</span>
+<span class="pc bpc" id="L591" title="1 of 2 branches missed.">            if (abstractOption != null) {</span>
+<span class="fc" id="L592">                add(abstractOption);</span>
+<span class="fc" id="L593">                abstractOption.setGroup(this.getId());</span>
+            }
+<span class="fc" id="L595">        } else {</span>
+            // FreeColActions are read here.
+<span class="fc" id="L597">            option.readFromXML(xr);</span>
+        }
+<span class="fc" id="L599">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L604">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L614">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L615">        sb.append('[').append(getId()).append(&quot; &lt;&quot;);</span>
+<span class="nc bnc" id="L616" title="All 2 branches missed.">        for (Option&lt;?&gt; o : getOptions()) {</span>
+<span class="nc" id="L617">            sb.append(' ').append(o.toString());</span>
+<span class="nc" id="L618">        }</span>
+<span class="nc" id="L619">        sb.append(&quot; &gt;]&quot;);</span>
+<span class="nc" id="L620">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

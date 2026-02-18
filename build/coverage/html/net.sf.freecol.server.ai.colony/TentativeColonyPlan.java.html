@@ -1,0 +1,523 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TentativeColonyPlan.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.colony</a> &gt; <span class="el_source">TentativeColonyPlan.java</span></div><h1>TentativeColonyPlan.java</h1><pre class="source lang-java linenums">package net.sf.freecol.server.ai.colony;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.BuildableType;
+import net.sf.freecol.common.model.BuildingType;
+import net.sf.freecol.common.model.FeatureContainer;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.ProductionInfo;
+import net.sf.freecol.common.model.ProductionType;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.TileImprovementType;
+import net.sf.freecol.common.model.Turn;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.model.production.BuildingProductionCalculator;
+import net.sf.freecol.common.model.production.TileProductionCalculator;
+import net.sf.freecol.common.model.production.TileProductionCalculator.MaximumPotentialProduction;
+import net.sf.freecol.common.model.production.WorkerAssignment;
+
+/**
+ * A colony plan that can easily be mutated.
+ * 
+ * @see #toColonyPlan
+ */
+public class TentativeColonyPlan {
+    
+    private final Tile centerTile;
+<span class="nc" id="L42">    private final Map&lt;Tile, TentativeColonyTilePlan&gt; tentativeColonyTilePlans = new IdentityHashMap&lt;&gt;();</span>
+<span class="nc" id="L43">    private final List&lt;WorkerPlan&gt; tentativeBuildingPlans = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L44">    private final Set&lt;BuildableType&gt; buildables = new HashSet&lt;&gt;();</span>
+    private final List&lt;TileImprovementType&gt; centerTileImprovements;
+
+    
+    /**
+     * Creates a new colony plan that can easily be mutated.
+     * 
+     * @param centerTile The &lt;code&gt;Tile&lt;/code&gt; where the colony is/will be located. 
+     * @see #toColonyPlan
+     */
+<span class="nc" id="L54">    public TentativeColonyPlan(Tile centerTile) {</span>
+<span class="nc" id="L55">        this.centerTile = centerTile;</span>
+        
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        for (Tile tile : getWorkTiles(centerTile)) {</span>
+<span class="nc" id="L58">            tentativeColonyTilePlans.put(tile, null);</span>
+<span class="nc" id="L59">        }</span>
+        
+<span class="nc" id="L61">        final MaximumPotentialProduction maximumPotentialProduction = getMaximumUnattendedProduction(centerTile);</span>
+<span class="nc" id="L62">        this.centerTileImprovements = maximumPotentialProduction.getTileImprovementType(); </span>
+<span class="nc" id="L63">    }</span>
+    
+    
+    /**
+     * Gets the &lt;code&gt;Tile&lt;/code&gt; where the colony is/will be located.
+     */
+    public Tile getCenterTile() {
+<span class="nc" id="L70">        return centerTile;</span>
+    }
+    
+    /**
+     * The tile improvements for the center colony tile.
+     */
+    public List&lt;TileImprovementType&gt; getCenterTileImprovements() {
+<span class="nc" id="L77">        return centerTileImprovements;</span>
+    }
+    
+    public Set&lt;BuildableType&gt; getBuildables() {
+<span class="nc" id="L81">        return buildables;</span>
+    }
+    
+    public void addBuildable(BuildableType buildableType) {
+<span class="nc" id="L85">        buildables.add(buildableType);</span>
+<span class="nc" id="L86">    }</span>
+    
+    public void removeColonyTilePlan(Tile tile) {
+<span class="nc" id="L89">        Objects.requireNonNull(tile, &quot;tile == null&quot;);</span>
+<span class="nc" id="L90">        tentativeColonyTilePlans.put(tile, null);</span>
+<span class="nc" id="L91">    }</span>
+    
+    public void addOrReplace(TentativeColonyTilePlan tentativeColonyTilePlan) {
+<span class="nc" id="L94">        tentativeColonyTilePlans.put(tentativeColonyTilePlan.getTile(), tentativeColonyTilePlan);</span>
+<span class="nc" id="L95">    }</span>
+    
+    public TentativeColonyTilePlan get(Tile tile) {
+<span class="nc" id="L98">        return tentativeColonyTilePlans.get(tile);</span>
+    }
+    
+    public void addBuildingWorkerPlan(WorkerPlan wp) {
+<span class="nc" id="L102">        Objects.requireNonNull(wp.getPlannedWorkLocation().getBuildingType(), &quot;buildingType&quot;);</span>
+<span class="nc" id="L103">        tentativeBuildingPlans.add(wp);</span>
+<span class="nc" id="L104">    }</span>
+    
+    public void removeBuildingWorkerPlan(WorkerPlan wp) {
+<span class="nc" id="L107">        Objects.requireNonNull(wp.getPlannedWorkLocation().getBuildingType(), &quot;buildingType&quot;);</span>
+<span class="nc" id="L108">        tentativeBuildingPlans.remove(wp);</span>
+<span class="nc" id="L109">    }</span>
+    
+    public List&lt;WorkerPlan&gt; getTentativeBuildingPlans(BuildingType bt) {
+<span class="nc" id="L112">        return tentativeBuildingPlans.stream()</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">                .filter(wp -&gt; wp.getPlannedWorkLocation().getBuildingType() == bt)</span>
+<span class="nc" id="L114">                .collect(Collectors.toList());</span>
+    }
+    
+    public List&lt;WorkerPlan&gt; getTentativeBuildingPlans() {
+<span class="nc" id="L118">        return tentativeBuildingPlans;</span>
+    }
+    
+    public List&lt;TentativeColonyTilePlan&gt; getTentativeColonyTilePlans() {
+<span class="nc" id="L122">        return tentativeColonyTilePlans.values().stream()</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">                .filter(tctp -&gt; tctp != null)</span>
+<span class="nc" id="L124">                .collect(Collectors.toList());</span>
+    }
+    
+    public List&lt;TentativeColonyTilePlan&gt; findTentativeColonyTilePlanProducing(GoodsType goodsType) {
+<span class="nc" id="L128">        return tentativeColonyTilePlans.values().stream()</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">                .filter(tctp -&gt; tctp != null</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                    &amp;&amp; tctp.getProduction().stream().anyMatch(g -&gt; g.getType().equals(goodsType))</span>
+                )
+<span class="nc" id="L132">                .collect(Collectors.toList());</span>
+    }
+    
+    public ColonyPlan toColonyPlan() {
+<span class="nc" id="L136">        return toColonyPlan(tentativeColonyTilePlans, tentativeBuildingPlans);</span>
+    }
+    
+    public int foodConsumedByOneWorker() {
+<span class="nc" id="L140">        final Specification s = getSpecification(); </span>
+<span class="nc" id="L141">        return foodConsumedByOneWorker(s);</span>
+    }
+    
+    public static int foodConsumedByOneWorker(Specification s) {
+<span class="nc" id="L145">        return s.getDefaultUnitType().getConsumptionOf(s.getPrimaryFoodType());</span>
+    }
+    
+    public List&lt;Tile&gt; prioritizeUnassignedTilesForFoodProduction() {
+<span class="nc" id="L149">        return prioritizeTilesForFoodProduction(unassignedWorkTiles());</span>
+    }
+    
+    public List&lt;Tile&gt; prioritizeTilesForFoodProduction(Collection&lt;Tile&gt; tiles) {
+<span class="nc" id="L153">        final int foodConsumedByOneWorker = foodConsumedByOneWorker();</span>
+<span class="nc" id="L154">        return tiles.stream()</span>
+<span class="nc" id="L155">                .filter(tile -&gt; {</span>
+<span class="nc" id="L156">                    final AbstractGoods bestFoodProduction = tile.getMaximumPotentialFoodProductionWithExpert();</span>
+<span class="nc bnc" id="L157" title="All 4 branches missed.">                    return bestFoodProduction != null &amp;&amp; bestFoodProduction.getAmount() &gt;= 2 * foodConsumedByOneWorker;</span>
+                })
+<span class="nc" id="L159">                .sorted((a, b) -&gt; Double.compare(scoreFoodProductionVsOtherGoods(b), scoreFoodProductionVsOtherGoods(a)))</span>
+<span class="nc" id="L160">                .collect(Collectors.toList());</span>
+    }
+    
+    private double scoreFoodProductionVsOtherGoods(Tile tile) {
+<span class="nc" id="L164">        final AbstractGoods bestFoodProduction = tile.getMaximumPotentialFoodProductionWithExpert();</span>
+<span class="nc bnc" id="L165" title="All 4 branches missed.">        if (bestFoodProduction == null || bestFoodProduction.getAmount() &lt;= 0) {</span>
+<span class="nc" id="L166">            return -1D;</span>
+        }
+<span class="nc" id="L168">        final Optional&lt;AbstractGoods&gt; bestAlternativeProduction = tile.getSortedPotential().stream()</span>
+<span class="nc" id="L169">            .filter(g -&gt; {</span>
+<span class="nc bnc" id="L170" title="All 4 branches missed.">                return !g.getType().isFoodType() &amp;&amp; !g.getType().isRawMaterialForUnstorableBuildingMaterial();</span>
+            })
+<span class="nc" id="L172">            .max((a, b) -&gt; Integer.compare(a.getAmount(), b.getAmount()));</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">        if (bestAlternativeProduction.isEmpty()) {</span>
+<span class="nc" id="L174">            return bestFoodProduction.getAmount(); </span>
+        }
+        
+<span class="nc" id="L177">        return bestFoodProduction.getAmount() / ((double) bestFoodProduction.getAmount() + bestAlternativeProduction.get().getAmount());</span>
+    }
+    
+    public Tile findBestUnassignedTileForProducing(GoodsType goodsType) {
+<span class="nc" id="L181">        final List&lt;Tile&gt; candidateTiles = unassignedWorkTiles();</span>
+<span class="nc" id="L182">        return findBestTileForProducing(candidateTiles, goodsType);</span>
+    }
+    
+    public Tile findBestTileForProducing(GoodsType goodsType) {
+<span class="nc" id="L186">        final Set&lt;Tile&gt; candidateTiles = tentativeColonyTilePlans.keySet();</span>
+<span class="nc" id="L187">        return findBestTileForProducing(candidateTiles, goodsType);</span>
+    }
+    
+    public List&lt;Tile&gt; unassignedWorkTiles() {
+<span class="nc" id="L191">        return tentativeColonyTilePlans.entrySet()</span>
+<span class="nc" id="L192">                .stream()</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">                .filter(e -&gt; e.getValue() == null)</span>
+<span class="nc" id="L194">                .map(Entry::getKey)</span>
+<span class="nc" id="L195">                .collect(Collectors.toList());</span>
+    }
+    
+    public Set&lt;Tile&gt; unassignedExcept(Collection&lt;Tile&gt; excludeTiles) {
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        return unassignedWorkTiles().stream().filter(t -&gt; !excludeTiles.contains(t)).collect(Collectors.toSet());</span>
+    }
+    
+    public Set&lt;Tile&gt; workTilesExcept(Set&lt;Tile&gt; ignoreTilesWithRequiredResources) {
+<span class="nc" id="L203">        return tentativeColonyTilePlans.keySet().stream()</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">                .filter(t -&gt; !ignoreTilesWithRequiredResources.contains(t))</span>
+<span class="nc" id="L205">                .collect(Collectors.toSet());</span>
+    }
+    
+    
+    public Tile findBestTileForProducing(Collection&lt;Tile&gt; candidateTiles, GoodsType goodsType) {
+<span class="nc bnc" id="L210" title="All 2 branches missed.">        if (candidateTiles.isEmpty()) {</span>
+<span class="nc" id="L211">            return null;</span>
+        }
+<span class="nc" id="L213">        final Specification s = centerTile.getSpecification();</span>
+        
+<span class="nc" id="L215">        Tile bestTile = null;</span>
+<span class="nc" id="L216">        int bestAmount = 0;</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        for (Tile t : candidateTiles) {</span>
+<span class="nc" id="L218">            final int newAmount = t.getMaximumPotential(goodsType, s.getExpertForProducing(goodsType));</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">            if (newAmount &gt; bestAmount) {</span>
+<span class="nc" id="L220">                bestTile = t;</span>
+<span class="nc" id="L221">                bestAmount = newAmount;</span>
+            }
+<span class="nc" id="L223">        }</span>
+        
+<span class="nc" id="L225">        return bestTile;</span>
+    }
+
+    
+    private ColonyPlan toColonyPlan(final Map&lt;Tile, TentativeColonyTilePlan&gt; tentativeColonyTilePlans, final List&lt;WorkerPlan&gt; tentativeBuildingPlans) {
+<span class="nc" id="L230">        final List&lt;TileImprovementPlan&gt; tileImprovementPlans = tentativeColonyTilePlans.values()</span>
+<span class="nc" id="L231">            .stream()</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">            .filter(tp -&gt; tp != null)</span>
+<span class="nc" id="L233">            .map(tp -&gt; {</span>
+<span class="nc" id="L234">                return tp.getTileImprovements().stream().map(ti -&gt; new TileImprovementPlan(ti, tp.getTile())).collect(Collectors.toList());</span>
+            })
+<span class="nc" id="L236">            .flatMap(Collection::stream)</span>
+<span class="nc" id="L237">            .collect(Collectors.toList());</span>
+        
+<span class="nc" id="L239">        centerTileImprovements.stream()</span>
+<span class="nc" id="L240">                .map(ti -&gt; new TileImprovementPlan(ti, centerTile))</span>
+<span class="nc" id="L241">                .forEach(tip -&gt; tileImprovementPlans.add(tip));</span>
+        
+<span class="nc" id="L243">        final List&lt;WorkerPlan&gt; workerPlans = new ArrayList&lt;&gt;();</span>
+        
+<span class="nc" id="L245">        tentativeColonyTilePlans.values()</span>
+<span class="nc" id="L246">            .stream()</span>
+<span class="nc" id="L247">            .filter(Objects::nonNull)</span>
+<span class="nc" id="L248">            .map(TentativeColonyTilePlan::getWorkerPlan)</span>
+<span class="nc" id="L249">            .forEach(wp -&gt; {</span>
+<span class="nc" id="L250">                workerPlans.add(wp);</span>
+<span class="nc" id="L251">            });</span>
+<span class="nc" id="L252">        workerPlans.addAll(tentativeBuildingPlans);</span>
+<span class="nc" id="L253">        final ColonyPlan colonyPlan = new ColonyPlan(buildables, tileImprovementPlans, workerPlans);</span>
+<span class="nc" id="L254">        return colonyPlan;</span>
+    }
+    
+    public Specification getSpecification() {
+<span class="nc" id="L258">        return centerTile.getSpecification();</span>
+    }
+    
+    
+    public static class TentativeProduction {
+        private Map&lt;GoodsType, Integer&gt; production;
+        private Map&lt;GoodsType, Integer&gt; deficits;
+        
+<span class="nc" id="L266">        public TentativeProduction(Map&lt;GoodsType, Integer&gt; production, Map&lt;GoodsType, Integer&gt; deficits) {</span>
+<span class="nc" id="L267">            this.production = production;</span>
+<span class="nc" id="L268">            this.deficits = deficits;</span>
+<span class="nc" id="L269">        }</span>
+        
+        public List&lt;AbstractGoods&gt; getProduction() {
+<span class="nc" id="L272">            return production.entrySet()</span>
+<span class="nc" id="L273">                    .stream()</span>
+<span class="nc" id="L274">                    .map(e -&gt; new AbstractGoods(e.getKey(), e.getValue()))</span>
+<span class="nc" id="L275">                    .collect(Collectors.toList());</span>
+        }
+        
+        public List&lt;AbstractGoods&gt; getDeficits() {
+<span class="nc" id="L279">            return deficits.entrySet()</span>
+<span class="nc" id="L280">                    .stream()</span>
+<span class="nc" id="L281">                    .map(e -&gt; new AbstractGoods(e.getKey(), e.getValue()))</span>
+<span class="nc" id="L282">                    .collect(Collectors.toList());</span>
+        }
+        
+        public int getAmountProduced(GoodsType gt) {
+<span class="nc" id="L286">            return production.getOrDefault(gt, 0);</span>
+        }
+    }
+
+    public List&lt;AbstractGoods&gt; determineTentativeProduction() {
+<span class="nc" id="L291">        return determineTentativeProductionAndDeficits().getProduction();</span>
+    }
+    
+    public TentativeProduction determineTentativeProductionAndDeficits() {
+<span class="nc" id="L295">        return determineTentativeProductionAndDeficits(getSpecification(),</span>
+                centerTile,
+                tentativeColonyTilePlans,
+<span class="nc" id="L298">                getBuildingWorkerPlansByType(),</span>
+<span class="nc" id="L299">                getBuildingTypesToBuild());</span>
+    }
+    
+    public static TentativeProduction determineTentativeProductionAndDeficits(Specification s,
+            Tile centerTile,
+            Map&lt;Tile, TentativeColonyTilePlan&gt; tentativeColonyTilePlans,
+            Map&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; buildingWorkerPlansByType,
+            List&lt;BuildingType&gt; buildingTypesToBuild) {
+<span class="nc" id="L307">        final Map&lt;GoodsType, Integer&gt; deficits = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L308">        final Map&lt;GoodsType, Integer&gt; production = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L309">        production.put(s.getPrimaryFoodType(), 0);        </span>
+
+<span class="nc bnc" id="L311" title="All 2 branches missed.">        for (TentativeColonyTilePlan p : tentativeColonyTilePlans.values()) {</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">            if (p == null) {</span>
+<span class="nc" id="L313">                continue;</span>
+            }
+<span class="nc bnc" id="L315" title="All 2 branches missed.">            for (AbstractGoods g : p.getProduction()) {</span>
+<span class="nc" id="L316">                final Integer oldAmount = production.get(g.getType().getStoredAs());</span>
+<span class="nc bnc" id="L317" title="All 2 branches missed.">                final int amount = ((oldAmount != null) ? oldAmount : 0) + g.getAmount();</span>
+<span class="nc" id="L318">                production.put(g.getType().getStoredAs(), amount);</span>
+<span class="nc" id="L319">            }</span>
+<span class="nc" id="L320">            production.put(s.getPrimaryFoodType(), production.get(s.getPrimaryFoodType()) - foodConsumedByOneWorker(s));</span>
+<span class="nc" id="L321">        }</span>
+        
+<span class="nc" id="L323">        final Map&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; buildings = buildingWorkerPlansByType;</span>
+<span class="nc" id="L324">        final FeatureContainer colonyFeatureContainer = new FeatureContainer();</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        for (BuildingType bt : buildingTypesToBuild) {</span>
+<span class="nc" id="L326">            colonyFeatureContainer.addFeatures(bt);</span>
+<span class="nc" id="L327">        }</span>
+        
+        
+        
+<span class="nc" id="L331">        final List&lt;Entry&lt;BuildingType, List&lt;WorkerPlan&gt;&gt;&gt; buildingsList = new ArrayList&lt;&gt;(buildings.entrySet());</span>
+<span class="nc" id="L332">        Collections.sort(buildingsList, (a, b) -&gt; {</span>
+<span class="nc" id="L333">            return Integer.compare(b.getKey().getPriority(), a.getKey().getPriority());</span>
+        });
+        
+<span class="nc bnc" id="L336" title="All 2 branches missed.">        for (Entry&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; building : buildingsList) {</span>
+<span class="nc bnc" id="L337" title="All 4 branches missed.">            if (building.getKey() == null || building.getValue().isEmpty()) {</span>
+<span class="nc" id="L338">                continue;</span>
+            }
+<span class="nc" id="L340">            final BuildingProductionCalculator bpc = new BuildingProductionCalculator(null, colonyFeatureContainer, 2);</span>
+<span class="nc" id="L341">            final List&lt;WorkerAssignment&gt; workerAssignments = building.getValue().stream()</span>
+<span class="nc" id="L342">                    .map(wp -&gt; {</span>
+<span class="nc" id="L343">                        final List&lt;ProductionType&gt; productionTypes = building.getKey().getAvailableProductionTypes(false).stream()</span>
+<span class="nc bnc" id="L344" title="All 2 branches missed.">                                .filter(productionType -&gt; productionType.getOutputs().anyMatch(g -&gt; g.getAmount() &gt; 0))</span>
+<span class="nc" id="L345">                                .collect(Collectors.toList());</span>
+<span class="nc" id="L346">                        production.put(s.getPrimaryFoodType(), production.get(s.getPrimaryFoodType()) - foodConsumedByOneWorker(s));</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">                        if (productionTypes.isEmpty()) {</span>
+<span class="nc" id="L348">                            return null;</span>
+                        }
+<span class="nc" id="L350">                        return new WorkerAssignment(wp.getUnitType(), productionTypes.get(0));</span>
+                    })
+<span class="nc" id="L352">                    .filter(Objects::nonNull)</span>
+<span class="nc" id="L353">                    .collect(Collectors.toList());</span>
+<span class="nc" id="L354">            final List&lt;AbstractGoods&gt; inputAndOutput = production.entrySet()</span>
+<span class="nc" id="L355">                    .stream()</span>
+<span class="nc" id="L356">                    .map(e -&gt; new AbstractGoods(e.getKey(), e.getValue()))</span>
+<span class="nc" id="L357">                    .collect(Collectors.toList());</span>
+<span class="nc" id="L358">            final ProductionInfo pi = bpc.getAdjustedProductionInfo(building.getKey(), new Turn(0), workerAssignments, inputAndOutput, inputAndOutput, 10000);</span>
+<span class="nc bnc" id="L359" title="All 2 branches missed.">            for (AbstractGoods ag : pi.getConsumption()) {</span>
+<span class="nc" id="L360">                final Integer oldAmount = production.get(ag.getType());</span>
+<span class="nc bnc" id="L361" title="All 2 branches missed.">                final int amount = ((oldAmount != null) ? oldAmount : 0) - ag.getAmount();</span>
+<span class="nc" id="L362">                production.put(ag.getType(), amount);</span>
+                
+<span class="nc" id="L364">                final AbstractGoods maxConsumption = pi.getMaximumConsumption()</span>
+<span class="nc" id="L365">                        .stream()</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">                        .filter(maxConsumeAg -&gt; maxConsumeAg.getType() == ag.getType())</span>
+<span class="nc" id="L367">                        .findFirst()</span>
+<span class="nc" id="L368">                        .orElse(null);</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">                if (maxConsumption != null) {</span>
+<span class="nc" id="L370">                    final int deficitAmount = maxConsumption.getAmount() - ag.getAmount();</span>
+<span class="nc" id="L371">                    deficits.put(ag.getType(), deficitAmount);</span>
+                }
+<span class="nc" id="L373">            }</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">            for (AbstractGoods ag : pi.getProduction()) {</span>
+<span class="nc" id="L375">                final Integer oldAmount = production.get(ag.getType().getStoredAs());</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">                final int amount = ((oldAmount != null) ? oldAmount : 0) + ag.getAmount();</span>
+<span class="nc" id="L377">                production.put(ag.getType().getStoredAs(), amount);</span>
+<span class="nc" id="L378">            }</span>
+<span class="nc" id="L379">        }</span>
+       
+<span class="nc bnc" id="L381" title="All 2 branches missed.">        for (AbstractGoods g : getAutoProduction(centerTile)) {</span>
+<span class="nc" id="L382">            final Integer oldAmount = production.get(g.getType().getStoredAs());</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">            final int amount = ((oldAmount != null) ? oldAmount : 0) + g.getAmount();</span>
+<span class="nc" id="L384">            production.put(g.getType().getStoredAs(), amount);</span>
+<span class="nc" id="L385">        }</span>
+        
+<span class="nc" id="L387">        return new TentativeProduction(production, deficits);</span>
+    }
+
+    private static MaximumPotentialProduction getMaximumUnattendedProduction(Tile centerTile) {
+<span class="nc" id="L391">        final AbstractGoods foodType = centerTile.getMaximumPotentialUnattendedFoodProduction();</span>
+<span class="nc" id="L392">        final TileProductionCalculator tpc = new TileProductionCalculator(null, 2);</span>
+<span class="nc" id="L393">        final MaximumPotentialProduction maximumPotentialProduction = tpc.getMaximumPotentialProduction(foodType.getType(), centerTile, null);</span>
+<span class="nc" id="L394">        return maximumPotentialProduction;</span>
+    }
+
+    public Map&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; getBuildingWorkerPlansByType() {
+<span class="nc" id="L398">        final Map&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; buildings = tentativeBuildingPlans.stream()</span>
+<span class="nc" id="L399">                .collect(Collectors.groupingBy(wp -&gt; wp.getPlannedWorkLocation().getBuildingType()));</span>
+<span class="nc" id="L400">        return buildings;</span>
+    }
+    
+    public boolean canConstructBuildings() {
+<span class="nc" id="L404">        return determineTentativeProduction().stream()</span>
+<span class="nc bnc" id="L405" title="All 4 branches missed.">            .filter(ag -&gt; ag.getType().isBuildingMaterial() &amp;&amp; !ag.getType().isStorable())</span>
+<span class="nc bnc" id="L406" title="All 2 branches missed.">            .anyMatch(ag -&gt; ag.getAmount() &gt; 0);</span>
+    }
+
+
+    private List&lt;BuildingType&gt; getBuildingTypesToBuild() {
+<span class="nc" id="L411">        return buildables.stream().filter(b -&gt; (b instanceof BuildingType)).map(b -&gt; (BuildingType) b).collect(Collectors.toList());</span>
+    }
+    
+    public int determineFoodSurplus() {
+<span class="nc" id="L415">        return determineTentativeProduction().stream()</span>
+<span class="nc" id="L416">            .filter(g -&gt; g.getType().isFoodType())</span>
+<span class="nc" id="L417">            .findFirst()</span>
+<span class="nc" id="L418">            .get()</span>
+<span class="nc" id="L419">            .getAmount();</span>
+    }
+    
+    public int determinePossibleVacantTileFoodSurplusAfterAddingOrReplacing(Collection&lt;TentativeColonyTilePlan&gt; plansToAdd) {
+<span class="nc" id="L423">        final Set&lt;Tile&gt; takenTiles = plansToAdd.stream()</span>
+<span class="nc" id="L424">                .map(TentativeColonyTilePlan::getTile)</span>
+<span class="nc" id="L425">                .filter(Objects::nonNull)</span>
+<span class="nc" id="L426">                .collect(Collectors.toSet());</span>
+        
+<span class="nc" id="L428">        final Map&lt;Tile, TentativeColonyTilePlan&gt; newColonyTilePlans = new IdentityHashMap&lt;&gt;();</span>
+<span class="nc" id="L429">        getTentativeColonyTilePlans().stream()</span>
+<span class="nc bnc" id="L430" title="All 2 branches missed.">                .filter(tctp -&gt; !takenTiles.contains(tctp.getTile()))</span>
+<span class="nc" id="L431">                .forEach(tctp -&gt; newColonyTilePlans.put(tctp.getTile(), tctp));</span>
+        
+<span class="nc bnc" id="L433" title="All 2 branches missed.">        for (TentativeColonyTilePlan planToAdd : plansToAdd) {</span>
+<span class="nc" id="L434">            newColonyTilePlans.put(planToAdd.getTile(), planToAdd);</span>
+<span class="nc" id="L435">        }</span>
+        
+<span class="nc bnc" id="L437" title="All 2 branches missed.">        for (Tile extraFoodTile : prioritizeTilesForFoodProduction(unassignedExcept(takenTiles))) {</span>
+<span class="nc" id="L438">            final AbstractGoods foodGoods = extraFoodTile.getBestFoodProduction();</span>
+<span class="nc" id="L439">            newColonyTilePlans.put(extraFoodTile, TentativeColonyTilePlan.expertProduction(extraFoodTile, foodGoods.getType()));</span>
+<span class="nc" id="L440">        }</span>
+        
+<span class="nc" id="L442">        final TentativeProduction production = determineTentativeProductionAndDeficits(getSpecification(),</span>
+                centerTile,
+                newColonyTilePlans,
+<span class="nc" id="L445">                getBuildingWorkerPlansByType(),</span>
+<span class="nc" id="L446">                getBuildingTypesToBuild());</span>
+        
+<span class="nc" id="L448">        return production.getAmountProduced(getSpecification().getPrimaryFoodType());</span>
+    }
+    
+    private static List&lt;Tile&gt; getWorkTiles(Tile centerTile) {
+<span class="nc" id="L452">        return centerTile.getSurroundingTiles(1, 1);</span>
+    }
+    
+    private static List&lt;AbstractGoods&gt; getAutoProduction(Tile centerTile) {
+<span class="nc" id="L456">        return getMaximumUnattendedProduction(centerTile).getProductionInfo().getProduction();</span>
+    }
+    
+    public Set&lt;GoodsType&gt; determineRawMaterialTypesProduced() {
+<span class="nc" id="L460">        return tentativeColonyTilePlans.values().stream()</span>
+<span class="nc" id="L461">                .filter(Objects::nonNull)</span>
+<span class="nc" id="L462">                .map(TentativeColonyTilePlan::getProduction)</span>
+<span class="nc" id="L463">                .filter(Objects::nonNull)</span>
+<span class="nc" id="L464">                .flatMap(List::stream)</span>
+<span class="nc" id="L465">                .map(AbstractGoods::getType)</span>
+<span class="nc" id="L466">                .filter(Objects::nonNull)</span>
+<span class="nc" id="L467">                .collect(Collectors.toSet());</span>
+    }
+    
+    public static final class TentativeColonyTilePlan {
+        
+        private Tile tile;
+        private WorkerPlan workerPlan;
+        private List&lt;TileImprovementType&gt; tileImprovements;
+        private List&lt;AbstractGoods&gt; production;
+        
+<span class="nc" id="L477">        private TentativeColonyTilePlan(Tile tile, WorkerPlan workerPlan) {</span>
+<span class="nc" id="L478">            this.tile = tile;</span>
+<span class="nc" id="L479">            this.workerPlan = workerPlan;</span>
+            
+<span class="nc" id="L481">            final GoodsType goodsType = Objects.requireNonNull(workerPlan.getProductionTypes().get(0), &quot;goodsType&quot;);</span>
+<span class="nc" id="L482">            final UnitType unitType = Objects.requireNonNull(workerPlan.getUnitType(), &quot;unitType&quot;);</span>
+            
+<span class="nc" id="L484">            this.tileImprovements = determineTileImprovements(tile, goodsType, unitType);</span>
+<span class="nc" id="L485">            this.production = List.of(new AbstractGoods(goodsType, tile.getMaximumPotential(goodsType, unitType)));</span>
+<span class="nc" id="L486">        }</span>
+        
+        public Tile getTile() {
+<span class="nc" id="L489">            return tile;</span>
+        }
+        
+        public WorkerPlan getWorkerPlan() {
+<span class="nc" id="L493">            return workerPlan;</span>
+        }
+        
+        public List&lt;AbstractGoods&gt; getProduction() {
+<span class="nc" id="L497">            return production;</span>
+        }
+        
+        public List&lt;TileImprovementType&gt; getTileImprovements() {
+<span class="nc" id="L501">            return tileImprovements;</span>
+        }
+
+        private List&lt;TileImprovementType&gt; determineTileImprovements(Tile tile, final GoodsType goodsType, final UnitType unitType) {
+            /*
+             * TODO: Use the same logic as tile.getMaximumPotential
+             */
+<span class="nc" id="L508">            final TileProductionCalculator tpc = new TileProductionCalculator(null, 2);</span>
+<span class="nc" id="L509">            final MaximumPotentialProduction maximumPotentialProduction = tpc.getMaximumPotentialProduction(goodsType, tile, unitType);</span>
+<span class="nc" id="L510">            return maximumPotentialProduction.getTileImprovementType();</span>
+        }
+        
+        
+        public static TentativeColonyTilePlan expertProduction(Tile tile, GoodsType goodsType) {
+<span class="nc" id="L515">            final Specification s = tile.getSpecification();</span>
+<span class="nc" id="L516">            final UnitType expertUnitType = s.getExpertForProducing(goodsType);</span>
+<span class="nc" id="L517">            final WorkerPlan wp = new WorkerPlan(expertUnitType, new PlannedWorkLocation(tile), List.of(goodsType));</span>
+<span class="nc" id="L518">            return new TentativeColonyTilePlan(tile, wp);</span>
+        }
+        
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

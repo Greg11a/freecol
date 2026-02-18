@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MapViewerState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.mapviewer</a> &gt; <span class="el_source">MapViewerState.java</span></div><h1>MapViewerState.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.mapviewer;
+
+import java.awt.event.ActionListener;
+import java.util.List;
+
+import net.sf.freecol.client.gui.GUI.ViewMode;
+import net.sf.freecol.client.gui.SwingGUI;
+import net.sf.freecol.common.model.PathNode;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+
+/**
+ * Internal state for the {@link MapViewer}.
+ * 
+ * Methods in this class should only be used by {@link SwingGUI},
+ * {@link net.sf.freecol.client.gui.Canvas} or {@link MapViewer}.
+ */
+public final class MapViewerState {
+
+    /** The cursor for the selected tile. */
+    private TerrainCursor cursor;
+
+    /** A path for a current goto order. */
+<span class="nc" id="L43">    private PathNode gotoPath = null;</span>
+
+    /** A path for the active unit. */
+<span class="nc" id="L46">    private PathNode unitPath = null;</span>
+
+    /** The view mode in use. */
+<span class="nc" id="L49">    private ViewMode viewMode = ViewMode.MOVE_UNITS;</span>
+    
+    /** The selected tile, for ViewMode.TERRAIN. */
+    private Tile selectedTile;
+    
+    /** The active unit, for ViewMode.MOVE_UNITS. */
+    private Unit activeUnit;
+    
+<span class="nc" id="L57">    private boolean rangedAttackMode = false;</span>
+
+    /** The chat message area. */
+    private final ChatDisplay chatDisplay;
+    
+    private final UnitAnimator unitAnimator;
+
+    
+<span class="nc" id="L65">    MapViewerState(ChatDisplay chatDisplay, UnitAnimator unitAnimator, ActionListener al) {</span>
+<span class="nc" id="L66">        this.cursor = new TerrainCursor();</span>
+<span class="nc" id="L67">        this.cursor.addActionListener(al);</span>
+<span class="nc" id="L68">        this.chatDisplay = chatDisplay;</span>
+<span class="nc" id="L69">        this.unitAnimator = unitAnimator;</span>
+<span class="nc" id="L70">    }</span>
+
+    
+    public void setRangedAttackMode(boolean rangedAttackMode) {
+<span class="nc" id="L74">        this.rangedAttackMode = rangedAttackMode;</span>
+<span class="nc" id="L75">    }</span>
+    
+    public boolean isRangedAttackMode() {
+<span class="nc" id="L78">        return rangedAttackMode;</span>
+    }
+    
+    /**
+     * Sets if the cursor should be blinking.
+     * 
+     * @param cursorBlinking The cursor will start blinking if set to {@code true},
+     *      and stop if set to {@code false}
+     */
+    public void setCursorBlinking(boolean cursorBlinking) {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        if (cursorBlinking) {</span>
+<span class="nc" id="L89">            cursor.startBlinking();</span>
+        } else {
+<span class="nc" id="L91">            cursor.stopBlinking();</span>
+        }
+<span class="nc" id="L93">    }</span>
+    
+    /**
+     * Add a chat message.
+     *
+     * @param message The chat message.
+     */
+    public void displayChat(GUIMessage message) {
+<span class="nc" id="L101">        this.chatDisplay.addMessage(message);</span>
+<span class="nc" id="L102">    }</span>
+    
+    /**
+     * Gets the unit that should be displayed on the given tile.
+     *
+     * Used mostly by displayMap, but public for SwingGUI.clickAt.
+     *
+     * @param unitTile The {@code Tile} to check.
+     * @return The {@code Unit} to display or null if none found.
+     */
+    public Unit findUnitInFront(Tile unitTile) {
+        Unit result;
+
+<span class="nc bnc" id="L115" title="All 4 branches missed.">        if (unitTile == null || unitTile.isEmpty()) {</span>
+<span class="nc" id="L116">            result = null;</span>
+
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        } else if (this.activeUnit != null</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">            &amp;&amp; this.activeUnit.getTile() == unitTile</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            &amp;&amp; !unitAnimator.isOutForAnimation(this.activeUnit)) {</span>
+<span class="nc" id="L121">            result = this.activeUnit;</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        } else if (unitTile.hasSettlement()) {</span>
+<span class="nc" id="L123">            result = null;</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        } else if (this.activeUnit != null</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            &amp;&amp; this.activeUnit.isOffensiveUnit()) {</span>
+<span class="nc" id="L126">            result = unitTile.getDefendingUnit(this.activeUnit);</span>
+        } else {
+            // Find the unit with the most moves left, preferring active units.
+<span class="nc" id="L129">            result = null;</span>
+<span class="nc" id="L130">            List&lt;Unit&gt; units = unitTile.getUnitList();</span>
+<span class="nc" id="L131">            int bestScore = -1;</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">            while (!units.isEmpty()) {</span>
+<span class="nc" id="L133">                Unit u = units.remove(0);</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">                if (unitAnimator.isOutForAnimation(u)) continue;</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">                boolean active = u.getState() == Unit.UnitState.ACTIVE;</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                int score = u.getMovesLeft() + ((active) ? 10000 : 0);</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">                if (bestScore &lt; score) {</span>
+<span class="nc" id="L138">                    bestScore = score;</span>
+<span class="nc" id="L139">                    result = u;</span>
+                }
+<span class="nc" id="L141">            }</span>
+        }
+<span class="nc" id="L143">        return result;</span>
+    }
+    
+    // Path wrangling, path variables are in MapViewer for displayMap
+    
+    /**
+     * Change the goto path.
+     * 
+     * @param gotoPath The new goto {@code PathNode}.
+     * @return True if the goto path was changed.
+     */
+    public boolean changeGotoPath(PathNode gotoPath) {
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (this.gotoPath == gotoPath) return false;</span>
+<span class="nc" id="L156">        this.gotoPath = gotoPath;</span>
+<span class="nc" id="L157">        this.rangedAttackMode = false;</span>
+<span class="nc" id="L158">        return true;</span>
+    }
+
+    /**
+     * Get the current goto path.
+     *
+     * @return The goto {@code PathNode}.
+     */
+    public PathNode getGotoPath() {
+<span class="nc" id="L167">        return this.gotoPath;</span>
+    }
+
+    /**
+     * Set the current active unit path.
+     *
+     * @param path The new {@code PathNode}.
+     */
+    public void setUnitPath(PathNode path) {
+<span class="nc" id="L176">        this.unitPath = path;</span>
+<span class="nc" id="L177">        this.rangedAttackMode = false;</span>
+<span class="nc" id="L178">    }</span>
+    
+ // View Mode and associates
+
+    /**
+     * Get the view mode.
+     *
+     * @return The view mode.
+     */
+    public ViewMode getViewMode() {
+<span class="nc" id="L188">        return this.viewMode;</span>
+    }
+
+    /**
+     * Set the view mode.
+     *
+     * @param vm The new {@code ViewMode}.
+     */
+    public void setViewMode(ViewMode vm) {
+<span class="nc" id="L197">        this.viewMode = vm;</span>
+<span class="nc" id="L198">        this.rangedAttackMode = false;</span>
+<span class="nc" id="L199">    }</span>
+    
+    /**
+     * Gets the active unit.
+     *
+     * @return The {@code Unit}.
+     */
+    public Unit getActiveUnit() {
+<span class="nc" id="L207">        return this.activeUnit;</span>
+    }
+
+    /**
+     * Sets the active unit.
+     *
+     * @param activeUnit The new active {@code Unit}.
+     */
+    public void setActiveUnit(Unit activeUnit) {
+<span class="nc" id="L216">        this.activeUnit = activeUnit;</span>
+<span class="nc" id="L217">        this.rangedAttackMode = false;</span>
+<span class="nc" id="L218">    }</span>
+
+    /**
+     * Gets the selected tile.
+     *
+     * @return The {@code Tile} selected.
+     */
+    public Tile getSelectedTile() {
+<span class="nc" id="L226">        return this.selectedTile;</span>
+    }
+
+    /**
+     * Sets the selected tile.
+     *
+     * @param tile The new selected {@code Tile}.
+     */
+    public void setSelectedTile(Tile tile) {
+<span class="nc" id="L235">        this.selectedTile = tile;</span>
+<span class="nc" id="L236">        this.rangedAttackMode = false;</span>
+<span class="nc" id="L237">    }</span>
+
+    /**
+     * Get the tile with a cursor on it.
+     *
+     * @return The {@code Tile} found.
+     */
+    public Tile getCursorTile() {
+<span class="nc" id="L245">        Tile ret = null;</span>
+<span class="nc bnc" id="L246" title="All 3 branches missed.">        switch (this.viewMode) {</span>
+        case MOVE_UNITS:
+<span class="nc bnc" id="L248" title="All 2 branches missed.">            if (this.activeUnit != null) ret = this.activeUnit.getTile();</span>
+            break;
+        case TERRAIN:
+<span class="nc" id="L251">            ret = this.selectedTile;</span>
+<span class="nc" id="L252">            break;</span>
+        default:
+            break;
+        }
+<span class="nc" id="L256">        return ret;</span>
+    }
+
+    public UnitAnimator getUnitAnimator() {
+<span class="nc" id="L260">        return unitAnimator;</span>
+    }
+    
+    ChatDisplay getChatDisplay() {
+<span class="nc" id="L264">        return chatDisplay;</span>
+    }
+    
+    PathNode getUnitPath() {
+<span class="nc" id="L268">        return unitPath;</span>
+    }
+
+    TerrainCursor getCursor() {
+<span class="nc" id="L272">        return cursor;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

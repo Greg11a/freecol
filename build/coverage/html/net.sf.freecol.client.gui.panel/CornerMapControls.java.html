@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CornerMapControls.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">CornerMapControls.java</span></div><h1>CornerMapControls.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Image;
+import java.awt.Point;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import javax.swing.JComponent;
+import javax.swing.JInternalFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.resources.PropertyList;
+import net.sf.freecol.common.resources.ResourceManager;
+
+
+/**
+ * A collection of panels and buttons that are used to provide the
+ * user with a more detailed view of certain elements on the map and
+ * also to provide a means of input in case the user can't use the
+ * keyboard.
+ */
+public final class CornerMapControls extends MapControls {
+
+    private class MiniMapPanelSkin extends JPanel {
+        
+<span class="nc" id="L59">        MiniMapPanelSkin() {</span>
+<span class="nc" id="L60">            setOpaque(false);</span>
+<span class="nc" id="L61">        }</span>
+        
+        @Override
+        public void paintComponent(Graphics graphics) {
+<span class="nc" id="L65">            super.paintComponent(graphics);</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">            if (miniMapSkin != null) {</span>
+<span class="nc" id="L67">                graphics.drawImage(miniMapSkin, 0, 0, null);</span>
+            }
+<span class="nc" id="L69">        }</span>
+    }
+
+    /** The image library. */
+    private final ImageLibrary lib;
+    
+    /** The compass rose graphic. */
+    private final JLabel compassRose;
+
+    /** The mini map has its own panel. */
+    private final JPanel miniMapPanel;
+
+    /** A skin for the mini map. */
+    private Image miniMapSkin;
+
+    private MiniMapPanelSkin miniMapPanelSkin;
+    
+<span class="nc" id="L86">    private boolean oldUseSkin = false;</span>
+    
+<span class="nc" id="L88">    private boolean forceUpdate = false;</span>
+    
+    
+    /**
+     * The basic constructor.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public CornerMapControls(final FreeColClient freeColClient) {
+<span class="nc" id="L97">        super(freeColClient);</span>
+
+<span class="nc" id="L99">        this.lib = freeColClient.getGUI().getFixedImageLibrary();</span>
+<span class="nc" id="L100">        this.compassRose = this.lib.getCompassRose();</span>
+<span class="nc" id="L101">        this.compassRose.setFocusable(false);</span>
+<span class="nc" id="L102">        this.compassRose.setSize(this.compassRose.getPreferredSize());</span>
+<span class="nc" id="L103">        this.compassRose.addMouseListener(new MouseAdapter() {</span>
+                /**
+                 * {@inheritDoc}
+                 */
+                @Override
+                public void mouseClicked(MouseEvent e) {
+<span class="nc" id="L109">                    Unit unit = getGUI().getActiveUnit();</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                    if (unit == null) return;</span>
+<span class="nc" id="L111">                    int x = e.getX() - compassRose.getWidth()/2;</span>
+<span class="nc" id="L112">                    int y = e.getY() - compassRose.getHeight()/2;</span>
+<span class="nc" id="L113">                    double theta = Math.atan2(y, x) + Math.PI/2 + Math.PI/8;</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">                    if (theta &lt; 0) {</span>
+<span class="nc" id="L115">                        theta += 2*Math.PI;</span>
+                    }
+<span class="nc" id="L117">                    igc().moveUnit(unit, Direction.angleToDirection(theta));</span>
+<span class="nc" id="L118">                }</span>
+            });
+    
+<span class="nc" id="L121">        this.miniMapPanel = new MiniMapFreeColPanel(freeColClient);</span>
+<span class="nc" id="L122">        this.miniMapPanelSkin = new MiniMapPanelSkin();</span>
+        
+        // Add buttons:
+<span class="nc" id="L125">        this.miniMapPanel.add(this.miniMapToggleBorders);</span>
+<span class="nc" id="L126">        this.miniMapPanel.add(this.miniMapToggleFogOfWarButton);</span>
+<span class="nc" id="L127">        this.miniMapPanel.add(this.miniMapZoomInButton);</span>
+<span class="nc" id="L128">        this.miniMapPanel.add(this.miniMapZoomOutButton);</span>
+<span class="nc" id="L129">        this.miniMapPanel.add(this.miniMapPanelSkin);</span>
+<span class="nc" id="L130">        this.miniMapPanel.add(this.miniMap);</span>
+        
+<span class="nc" id="L132">        updateLayoutIfNeeded();</span>
+<span class="nc" id="L133">    }</span>
+
+            
+    // Implement MapControls
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void updateLayoutIfNeeded() {
+<span class="nc" id="L143">        super.updateLayoutIfNeeded();</span>
+        
+<span class="nc" id="L145">        BufferedImage newMinimapSkin = this.lib.getMiniMapSkin();</span>
+<span class="nc bnc" id="L146" title="All 8 branches missed.">        if (!forceUpdate &amp;&amp; oldUseSkin == isUseSkin() &amp;&amp; (!oldUseSkin || this.miniMapSkin == newMinimapSkin)) {</span>
+            // No update necessary.
+<span class="nc" id="L148">            return;</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        } else if (!isUseSkin()) {</span>
+<span class="nc" id="L150">            newMinimapSkin = null;</span>
+<span class="nc" id="L151">            final MigLayout layout = new MigLayout(&quot;ins 0 0 0 0, gap 0 0&quot;);</span>
+<span class="nc" id="L152">            this.miniMapPanel.setLayout(layout);</span>
+<span class="nc" id="L153">            layout.addLayoutComponent(this.miniMap, &quot;newline, grow, shrink, span, w 100%, h 100%&quot;);</span>
+<span class="nc" id="L154">        } else {</span>
+<span class="nc" id="L155">            this.miniMapPanel.setLayout(null);</span>
+        }
+
+<span class="nc" id="L158">        this.oldUseSkin = isUseSkin();</span>
+<span class="nc" id="L159">        this.miniMapSkin = newMinimapSkin;</span>
+<span class="nc" id="L160">        this.forceUpdate = false;</span>
+        
+        
+<span class="nc" id="L163">        int width = this.lib.scaleInt(MINI_MAP_WIDTH);</span>
+<span class="nc" id="L164">        int height = this.lib.scaleInt(MINI_MAP_HEIGHT);</span>
+<span class="nc" id="L165">        this.miniMap.setSize(new Dimension(width, height));</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (this.miniMapSkin != null) {</span>
+<span class="nc" id="L167">            width = this.miniMapSkin.getWidth(null);</span>
+<span class="nc" id="L168">            height = this.miniMapSkin.getHeight(null);</span>
+            //this.miniMapPanel.setBorder(null);
+<span class="nc" id="L170">            this.miniMapPanel.setSize(width, height);</span>
+<span class="nc" id="L171">            this.miniMapPanelSkin.setLocation(0, 0);</span>
+<span class="nc" id="L172">            this.miniMapPanelSkin.setSize(width, height);</span>
+<span class="nc" id="L173">            this.miniMapPanel.setOpaque(false);</span>
+        } else {
+<span class="nc" id="L175">            this.miniMapPanel.setOpaque(true);</span>
+            //this.miniMap.setBorder(new BevelBorder(BevelBorder.RAISED));
+        }
+
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (isUseSkin()) {</span>
+<span class="nc" id="L180">            final PropertyList pl = ResourceManager.getPropertyList(&quot;image.skin.MiniMap.properties&quot;);</span>
+<span class="nc" id="L181">            this.miniMap.setLocation(</span>
+<span class="nc" id="L182">                    this.lib.scaleInt(pl.getInt(&quot;minimap.x&quot;)),</span>
+<span class="nc" id="L183">                    this.lib.scaleInt(pl.getInt(&quot;minimap.y&quot;)));</span>
+<span class="nc" id="L184">            this.miniMap.setSize(</span>
+<span class="nc" id="L185">                    this.lib.scaleInt(pl.getInt(&quot;minimap.width&quot;)),</span>
+<span class="nc" id="L186">                    this.lib.scaleInt(pl.getInt(&quot;minimap.height&quot;)));</span>
+            
+<span class="nc" id="L188">            centerComponentOnCoordinate(miniMapToggleBorders, pl, &quot;politicalButton&quot;);</span>
+<span class="nc" id="L189">            centerComponentOnCoordinate(miniMapToggleFogOfWarButton, pl, &quot;fogOfWarButton&quot;);</span>
+<span class="nc" id="L190">            centerComponentOnCoordinate(miniMapZoomInButton, pl, &quot;zoomInButton&quot;);</span>
+<span class="nc" id="L191">            centerComponentOnCoordinate(miniMapZoomOutButton, pl, &quot;zoomOutButton&quot;);</span>
+<span class="nc" id="L192">        } else {</span>
+<span class="nc" id="L193">            this.miniMapPanel.setPreferredSize(new Dimension(width, height));</span>
+<span class="nc" id="L194">            getGUI().restoreSavedSize(this.miniMapPanel, new Dimension(width, height));</span>
+        }
+
+<span class="nc" id="L197">        miniMapPanel.revalidate();</span>
+<span class="nc" id="L198">        miniMapPanel.repaint();</span>
+<span class="nc" id="L199">    }</span>
+    
+    private void centerComponentOnCoordinate(JComponent component, PropertyList pl, String key) {
+<span class="nc" id="L202">        final int x = this.lib.scaleInt(pl.getInt(key + &quot;.x&quot;));</span>
+<span class="nc" id="L203">        final int y = this.lib.scaleInt(pl.getInt(key + &quot;.y&quot;));</span>
+<span class="nc" id="L204">        component.setLocation(x - component.getWidth() / 2, y - component.getHeight() / 2);</span>
+<span class="nc" id="L205">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;JComponent&gt; getComponentsToAdd(Dimension newSize) {
+<span class="nc" id="L212">        List&lt;JComponent&gt; ret = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        if (getGame() == null) return ret;</span>
+        
+<span class="nc" id="L215">        final int cw = newSize.width;</span>
+<span class="nc" id="L216">        final int ch = newSize.height;</span>
+        
+<span class="nc bnc" id="L218" title="All 4 branches missed.">        if (!this.infoPanel.isShowing() &amp;&amp; !this.miniMapPanel.isShowing()) {</span>
+<span class="nc" id="L219">            forceUpdate = true;</span>
+<span class="nc" id="L220">            updateLayoutIfNeeded();</span>
+            
+<span class="nc bnc" id="L222" title="All 2 branches missed.">            if (!this.getFreeColClient().isMapEditor()) {</span>
+<span class="nc" id="L223">                this.infoPanel.setLocation(cw - this.infoPanel.getWidth(), ch - this.infoPanel.getHeight());</span>
+<span class="nc" id="L224">                this.miniMapPanel.setLocation(0, ch - this.miniMapPanel.getHeight());</span>
+            }
+<span class="nc" id="L226">            this.infoPanel.refresh();</span>
+<span class="nc" id="L227">            ret.add(this.infoPanel);</span>
+<span class="nc" id="L228">            ret.add(this.miniMapPanel);</span>
+        }
+        
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (!this.getFreeColClient().isMapEditor()) {</span>
+<span class="nc" id="L232">            final boolean rose = getClientOptions()</span>
+<span class="nc" id="L233">                .getBoolean(ClientOptions.DISPLAY_COMPASS_ROSE);</span>
+<span class="nc bnc" id="L234" title="All 4 branches missed.">            if (rose &amp;&amp; !this.compassRose.isShowing()) {</span>
+<span class="nc" id="L235">                this.compassRose.setLocation(cw - this.compassRose.getWidth() - 20, 20);</span>
+<span class="nc" id="L236">                ret.add(this.compassRose);</span>
+            }
+            
+<span class="nc bnc" id="L239" title="All 2 branches missed.">            ret.addAll(this.unitButtons.stream().filter(b -&gt; !b.isShowing()).collect(Collectors.toList()));</span>
+    
+<span class="nc bnc" id="L241" title="All 2 branches missed.">            if (!this.unitButtons.isEmpty()) {</span>
+<span class="nc" id="L242">                final int UNSCALED_SPACE_BETWEEN_BUTTONS = 5;</span>
+<span class="nc" id="L243">                final int spaceBetweenButtons = lib.scaleInt(UNSCALED_SPACE_BETWEEN_BUTTONS);</span>
+<span class="nc" id="L244">                final Dimension buttonsDimension = calculateTotalDimension(unitButtons, spaceBetweenButtons);</span>
+                
+<span class="nc" id="L246">                final int totalWidth = buttonsDimension.width + this.miniMapPanel.getWidth() + this.infoPanel.getWidth();</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">                if (totalWidth &lt; newSize.width) {</span>
+<span class="nc" id="L248">                    final Point firstButtonPoint = calculateFirstPosition(newSize, unitButtons, spaceBetweenButtons, buttonsDimension);</span>
+<span class="nc" id="L249">                    layoutUnitButtons(unitButtons, buttonsDimension, firstButtonPoint, spaceBetweenButtons);</span>
+<span class="nc" id="L250">                } else {</span>
+<span class="nc" id="L251">                    final int numberInTopRow = this.unitButtons.size() / 2;</span>
+                    
+<span class="nc" id="L253">                    final List&lt;UnitButton&gt; bottomRowButtons = unitButtons.subList(numberInTopRow, unitButtons.size());</span>
+<span class="nc" id="L254">                    final Dimension buttonsBottomRowDimension = calculateTotalDimension(bottomRowButtons, spaceBetweenButtons);</span>
+<span class="nc" id="L255">                    final Point firstButtonBottomRowPoint = calculateFirstPosition(newSize, bottomRowButtons, spaceBetweenButtons, buttonsBottomRowDimension);</span>
+<span class="nc" id="L256">                    layoutUnitButtons(bottomRowButtons,buttonsDimension, firstButtonBottomRowPoint, spaceBetweenButtons);</span>
+    
+<span class="nc" id="L258">                    final List&lt;UnitButton&gt; topRowButtons = unitButtons.subList(0, numberInTopRow);</span>
+<span class="nc" id="L259">                    final Dimension buttonsTopRowDimension = calculateTotalDimension(topRowButtons, spaceBetweenButtons);</span>
+<span class="nc" id="L260">                    final Point firstButtonTopRowPoint = calculateFirstPosition(newSize, bottomRowButtons, spaceBetweenButtons, buttonsTopRowDimension);</span>
+<span class="nc" id="L261">                    layoutUnitButtons(topRowButtons, buttonsDimension, new Point(firstButtonTopRowPoint.x, firstButtonBottomRowPoint.y - buttonsTopRowDimension.height - spaceBetweenButtons), spaceBetweenButtons);</span>
+                }
+            }
+        }
+<span class="nc" id="L265">        return ret;</span>
+    }
+    
+    private static Dimension calculateTotalDimension(List&lt;UnitButton&gt; unitButtons, int spaceBetweenButtons) {
+<span class="nc" id="L269">        int width = -spaceBetweenButtons, height = 0;</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        for (UnitButton ub : unitButtons) {</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            if (ub.isShowing()) continue;</span>
+<span class="nc" id="L272">            height = Math.max(height, ub.getHeight());</span>
+<span class="nc" id="L273">            width += spaceBetweenButtons + ub.getWidth();</span>
+<span class="nc" id="L274">        }</span>
+<span class="nc" id="L275">        return new Dimension(width, height);</span>
+    }
+    
+    private Point calculateFirstPosition(Dimension newSize, List&lt;UnitButton&gt; unitButtons, int spaceBetweenButtons, Dimension buttonsDimension) {
+<span class="nc" id="L279">        final int x = this.miniMapPanel.getWidth() + 1</span>
+<span class="nc" id="L280">                + (this.infoPanel.getX() - this.miniMapPanel.getWidth() - buttonsDimension.width) / 2;</span>
+<span class="nc" id="L281">        final int y = newSize.height - buttonsDimension.height - spaceBetweenButtons;</span>
+<span class="nc" id="L282">        return new Point(x, y);</span>
+    }
+
+    private void layoutUnitButtons(List&lt;UnitButton&gt; unitButtons, final Dimension buttonsDimension, Point firstButtonPoint, final int spaceBetweenButtons) {
+<span class="nc" id="L286">        int x = firstButtonPoint.x;</span>
+<span class="nc" id="L287">        final int y = firstButtonPoint.y;</span>
+        
+<span class="nc bnc" id="L289" title="All 2 branches missed.">        for (UnitButton ub : unitButtons) {</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">            if (ub.isShowing()) continue;</span>
+<span class="nc" id="L291">            ub.setLocation(x, y);</span>
+<span class="nc" id="L292">            x += spaceBetweenButtons + ub.getWidth();</span>
+<span class="nc" id="L293">            ub.refreshAction();</span>
+<span class="nc" id="L294">        }</span>
+<span class="nc" id="L295">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;JComponent&gt; getComponentsPresent() {
+<span class="nc" id="L302">        List&lt;JComponent&gt; ret = new ArrayList&lt;&gt;();</span>
+        
+<span class="nc bnc" id="L304" title="All 2 branches missed.">        if (isShowingOrIconified(this.infoPanel)) {</span>
+<span class="nc" id="L305">            ret.add(this.infoPanel);</span>
+        }
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        if (isShowingOrIconified(this.miniMapPanel)) {</span>
+<span class="nc" id="L308">            ret.add(this.miniMapPanel);</span>
+        }
+<span class="nc" id="L310">        final boolean rose = getClientOptions()</span>
+<span class="nc" id="L311">            .getBoolean(ClientOptions.DISPLAY_COMPASS_ROSE);</span>
+<span class="nc bnc" id="L312" title="All 4 branches missed.">        if (rose &amp;&amp; this.compassRose.isShowing()) ret.add(this.compassRose);</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">        for (UnitButton ub : this.unitButtons) {</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">            if (ub.isShowing()) ret.add(ub);</span>
+<span class="nc" id="L315">        }</span>
+<span class="nc" id="L316">        return ret;</span>
+    }
+        
+    private boolean isShowingOrIconified(JComponent panel) {
+<span class="nc" id="L320">        final JInternalFrame f = (JInternalFrame) SwingUtilities.getAncestorOfClass(JInternalFrame.class, panel);</span>
+<span class="nc bnc" id="L321" title="All 4 branches missed.">        if (f != null &amp;&amp; f.isIcon()) {</span>
+<span class="nc" id="L322">            return true;</span>
+        }
+<span class="nc" id="L324">        return panel.isShowing();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

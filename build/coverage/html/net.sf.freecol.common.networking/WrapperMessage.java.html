@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WrapperMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">WrapperMessage.java</span></div><h1>WrapperMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * A wrapper message.  That is a message with just a reply identifier
+ * attribute to be matched, and the underlying real message.
+ */
+public abstract class WrapperMessage extends AttributeMessage {
+
+    public static final String REPLY_ID_TAG = &quot;networkReplyId&quot;;
+
+    /** The encapsulated message. */
+<span class="fc" id="L42">    private Message message = null;</span>
+
+
+    /**
+     * Create a new {@code WrapperMessage} of a given type.
+     *
+     * @param tag The actual message tag.
+     * @param replyId The reply id.
+     * @param message The {@code Message} to encapsulate.
+     */
+    protected WrapperMessage(String tag, int replyId, Message message) {
+<span class="fc" id="L53">        super(tag, REPLY_ID_TAG, String.valueOf(replyId));</span>
+
+<span class="fc" id="L55">        this.message = message;</span>
+<span class="fc" id="L56">    }</span>
+
+    /**
+     * Create a new {@code WrapperMessage} from a stream.
+     *
+     * @param tag The actual message tag.
+     * @param game The {@code Game} to read within.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     * @exception FreeColException if the internal message can not be read.
+     */
+    protected WrapperMessage(String tag, Game game, FreeColXMLReader xr)
+        throws XMLStreamException, FreeColException {
+<span class="fc" id="L69">        super(tag, REPLY_ID_TAG, xr.getAttribute(REPLY_ID_TAG, (String)null));</span>
+
+<span class="fc" id="L71">        this.message = null;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        while (xr.moreTags()) {</span>
+<span class="fc" id="L73">            final String mt = xr.getLocalName();</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">            if (this.message == null) {</span>
+<span class="fc" id="L75">                this.message = Message.read(game, xr);</span>
+<span class="fc" id="L76">                xr.expectTag(mt);</span>
+            } else {
+<span class="nc" id="L78">                xr.expectTag(tag);</span>
+            }
+<span class="fc" id="L80">        }</span>
+<span class="fc" id="L81">        xr.expectTag(tag);</span>
+<span class="fc" id="L82">    }</span>
+        
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean isEmpty() {
+<span class="nc bnc" id="L89" title="All 4 branches missed.">        return this.message == null &amp;&amp; super.isEmpty();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void clientHandler(FreeColClient freeColClient)
+        throws FreeColException {
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        if (this.message != null) {</span>
+<span class="nc" id="L98">            this.message.clientHandler(freeColClient);</span>
+        }
+<span class="nc" id="L100">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        return (this.message == null) ? null</span>
+<span class="nc" id="L109">            : this.message.serverHandler(freeColServer, serverPlayer);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        if (this.message != null) {</span>
+<span class="fc" id="L118">            this.message.toXML(xw);</span>
+        }
+<span class="fc" id="L120">    }</span>
+    
+
+    // Public interface
+
+    /**
+     * Get the wrapped message.
+     *
+     * @return The {@code Message}.
+     */
+    public Message getMessage() {
+<span class="fc" id="L131">        return this.message;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getSubType() {
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        return (this.message == null) ? null : this.message.getType();</span>
+    }
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L149">        StringBuilder sb = new StringBuilder(64);</span>
+<span class="nc" id="L150">        sb.append('[');</span>
+<span class="nc" id="L151">        pretty(sb, getType(), getStringAttributeMap(), null);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (this.message != null) sb.append(' ').append(this.message);</span>
+<span class="nc" id="L153">        sb.append(']');</span>
+<span class="nc" id="L154">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

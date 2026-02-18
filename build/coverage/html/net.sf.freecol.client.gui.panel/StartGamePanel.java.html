@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StartGamePanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">StartGamePanel.java</span></div><h1>StartGamePanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import static net.sf.freecol.common.util.CollectionUtils.count;
+
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+
+import javax.swing.AbstractAction;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.ScrollPaneConstants;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.FontLibrary;
+import net.sf.freecol.client.gui.GUI;
+import net.sf.freecol.client.gui.panel.FreeColButton.ButtonStyle;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Game.LogoutReason;
+import net.sf.freecol.common.model.NationOptions;
+import net.sf.freecol.common.model.NationOptions.NationState;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.option.GameOptions;
+import net.sf.freecol.common.option.MapGeneratorOptions;
+
+
+/**
+ * The panel where you choose your nation and color and connected players are
+ * shown.
+ */
+public final class StartGamePanel extends FreeColPanel {
+
+    private boolean singlePlayerGame;
+
+    private JCheckBox readyBox;
+
+    private JTextField chat;
+
+    private JTextArea chatArea;
+
+    private JButton start, cancel, gameOptions, mapGeneratorOptions;
+
+    private PlayersTable table;
+
+<span class="nc" id="L69">    private final ActionListener startCmd = ae -&gt; {</span>
+<span class="nc" id="L70">        int row = table.getSelectedRow();</span>
+<span class="nc" id="L71">        int col = table.getSelectedColumn();</span>
+<span class="nc bnc" id="L72" title="All 4 branches missed.">        if (row &gt; -1 &amp;&amp; col &gt; -1){</span>
+<span class="nc" id="L73">            table.getCellEditor(row, col).stopCellEditing();</span>
+        }
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        if (!checkVictoryConditions()) return;</span>
+        // The ready flag was set to false for single player
+        // mode in order to allow the player to change
+        // whatever he wants.
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (singlePlayerGame) getMyPlayer().setReady(true);</span>
+<span class="nc" id="L80">        getFreeColClient().getPreGameController().requestLaunch();</span>
+<span class="nc" id="L81">    };</span>
+
+<span class="nc" id="L83">    private final ActionListener cancelCmd = ae -&gt; {</span>
+<span class="nc" id="L84">        final GUI gui = getGUI();</span>
+        
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (getFreeColClient().isLoggedIn()) {</span>
+<span class="nc" id="L87">            getFreeColClient().getConnectController().requestLogout(LogoutReason.NEW_GAME);</span>
+        }
+<span class="nc" id="L89">        getFreeColClient().stopServer();</span>
+<span class="nc" id="L90">        gui.removeComponent(this);</span>
+<span class="nc" id="L91">        gui.showNewPanel();</span>
+<span class="nc" id="L92">    };</span>
+
+<span class="nc" id="L94">    private final ActionListener readyBoxCmd = ae -&gt; {</span>
+<span class="nc" id="L95">        getFreeColClient().getPreGameController().setReady(readyBox.isSelected());</span>
+<span class="nc" id="L96">        refreshPlayersTable();</span>
+<span class="nc" id="L97">    };</span>
+
+<span class="nc" id="L99">    private final ActionListener chatCmd = ae -&gt; {</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (!chat.getText().isEmpty()) {</span>
+<span class="nc" id="L101">            getFreeColClient().getPreGameController().sendChat(chat.getText());</span>
+<span class="nc" id="L102">            displayChat(getMyPlayer().getName(), chat.getText(), false);</span>
+<span class="nc" id="L103">            chat.setText(&quot;&quot;);</span>
+        }
+<span class="nc" id="L105">    };</span>
+
+<span class="nc" id="L107">    private final ActionListener gameOptionsCmd = ae -&gt; {</span>
+<span class="nc" id="L108">        final FreeColClient fcc = getFreeColClient();</span>
+<span class="nc" id="L109">        getGUI().showGameOptionsDialog(fcc.isAdmin(), (gameOptions) -&gt; {</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">            if (gameOptions != null) {</span>
+<span class="nc" id="L111">                fcc.getGame().setGameOptions(gameOptions);</span>
+<span class="nc" id="L112">                fcc.getPreGameController().updateGameOptions();                </span>
+            }
+<span class="nc" id="L114">        });</span>
+<span class="nc" id="L115">    };</span>
+
+<span class="nc" id="L117">    private final ActionListener mapGeneratorOptionsCmd = ae -&gt; {</span>
+<span class="nc" id="L118">        final FreeColClient fcc = getFreeColClient();</span>
+<span class="nc" id="L119">        getGUI().showMapGeneratorOptionsDialog(fcc.isAdmin(), mgo -&gt; {</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            if (mgo != null) {</span>
+<span class="nc" id="L121">                fcc.getGame().setMapGeneratorOptions(mgo);</span>
+<span class="nc" id="L122">                fcc.getPreGameController().updateMapGeneratorOptions();</span>
+            }
+<span class="nc" id="L124">        });</span>
+<span class="nc" id="L125">    };</span>
+
+    /**
+     * Create the panel from which to start a game.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public StartGamePanel(FreeColClient freeColClient) {
+<span class="nc" id="L133">        super(freeColClient, null, new MigLayout(&quot;fill&quot;, &quot;&quot;, &quot;[grow][][]&quot;));</span>
+<span class="nc" id="L134">    }</span>
+
+
+    public void initialize(boolean singlePlayer) {
+<span class="nc" id="L138">        removeAll();</span>
+<span class="nc" id="L139">        this.singlePlayerGame = singlePlayer;</span>
+
+<span class="nc bnc" id="L141" title="All 4 branches missed.">        if (singlePlayer || getMyPlayer().isAdmin()) {</span>
+<span class="nc" id="L142">            getSpecification().updateGameAndMapOptions();</span>
+        }
+
+<span class="nc" id="L145">        NationOptions nationOptions = getGame().getNationOptions();</span>
+<span class="nc" id="L146">        cancel = Utility.localizedButton(&quot;cancel&quot;);</span>
+<span class="nc" id="L147">        JScrollPane chatScroll = null, tableScroll;</span>
+<span class="nc" id="L148">        table = new PlayersTable(getFreeColClient(), nationOptions,</span>
+<span class="nc" id="L149">                                 getMyPlayer());</span>
+
+<span class="nc" id="L151">        start = new FreeColButton(Messages.message(&quot;startGame&quot;)).withButtonStyle(ButtonStyle.IMPORTANT);</span>
+
+<span class="nc" id="L153">        gameOptions = Utility.localizedButton(Messages</span>
+<span class="nc" id="L154">            .nameKey(GameOptions.TAG));</span>
+
+<span class="nc" id="L156">        mapGeneratorOptions = Utility.localizedButton(Messages</span>
+<span class="nc" id="L157">            .nameKey(MapGeneratorOptions.TAG));</span>
+
+<span class="nc" id="L159">        readyBox = new JCheckBox(Messages.message(&quot;startGamePanel.iAmReady&quot;));</span>
+
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (singlePlayerGame) {</span>
+            // If we set the ready flag to false then the player will
+            // be able to change the settings as he likes.
+<span class="nc" id="L164">            getMyPlayer().setReady(false);</span>
+            // Pretend as if the player is ready.
+<span class="nc" id="L166">            readyBox.setSelected(true);</span>
+        } else {
+<span class="nc" id="L168">            readyBox.setSelected(getMyPlayer().isReady());</span>
+<span class="nc" id="L169">            chat = new JTextField();</span>
+<span class="nc" id="L170">            chatArea = new JTextArea();</span>
+<span class="nc" id="L171">            chatScroll = new JScrollPane(chatArea, ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,</span>
+                                         ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        }
+
+<span class="nc" id="L175">        refreshPlayersTable();</span>
+<span class="nc" id="L176">        tableScroll = new JScrollPane(table, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,</span>
+<span class="nc" id="L177">                                      ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER) {</span>
+            @Override
+            public Dimension getPreferredSize() {
+<span class="nc" id="L180">                final int tableWidth = getImageLibrary().scaleInt(600);</span>
+<span class="nc" id="L181">                final int tableHeight =  getImageLibrary().scaleInt(300);</span>
+<span class="nc" id="L182">                return new Dimension(tableWidth, tableHeight);</span>
+            }
+        };
+<span class="nc" id="L185">        tableScroll.getViewport().setOpaque(false);</span>
+<span class="nc" id="L186">        add(tableScroll, &quot;grow&quot;);</span>
+<span class="nc" id="L187">        tableScroll.setSize(getPreferredSize());</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        if (!singlePlayerGame) {</span>
+<span class="nc" id="L189">            final int chatHeight = (int) (FontLibrary.getFontScaling() * 100);</span>
+<span class="nc" id="L190">            add(chatScroll, &quot;newline, height &quot; + chatHeight + &quot;px:,growx&quot;);</span>
+<span class="nc" id="L191">            add(chat, &quot;newline, growx&quot;);</span>
+        }
+<span class="nc" id="L193">        add(mapGeneratorOptions, &quot;newline, split 2, growx, top, sg&quot;);</span>
+<span class="nc" id="L194">        add(gameOptions, &quot;growx, top, sg&quot;);</span>
+<span class="nc" id="L195">        add(readyBox, &quot;newline, span, split 3, tag left, gaptop unrelated&quot;);</span>
+<span class="nc" id="L196">        add(start, &quot;tag ok&quot;);</span>
+<span class="nc" id="L197">        add(cancel, &quot;tag cancel&quot;);</span>
+
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        if (!singlePlayerGame) {</span>
+<span class="nc" id="L200">            chat.addActionListener(chatCmd);</span>
+<span class="nc" id="L201">            chatArea.setEditable(false);</span>
+<span class="nc" id="L202">            chatArea.setLineWrap(true);</span>
+<span class="nc" id="L203">            chatArea.setWrapStyleWord(true);</span>
+<span class="nc" id="L204">            chatArea.setText(&quot;&quot;);</span>
+        }
+
+<span class="nc" id="L207">        start.addActionListener(startCmd);</span>
+<span class="nc" id="L208">        cancel.addActionListener(cancelCmd);</span>
+<span class="nc" id="L209">        readyBox.addActionListener(readyBoxCmd);</span>
+<span class="nc" id="L210">        gameOptions.addActionListener(gameOptionsCmd);</span>
+<span class="nc" id="L211">        mapGeneratorOptions.addActionListener(mapGeneratorOptionsCmd);</span>
+
+<span class="nc" id="L213">        setEscapeAction(new AbstractAction() {</span>
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L216">                cancel.doClick();</span>
+<span class="nc" id="L217">            }</span>
+        });
+        
+<span class="nc" id="L220">        setEnabled(true);</span>
+<span class="nc" id="L221">    }</span>
+
+    /**
+     * Check that the user has not specified degenerate victory conditions
+     * that are automatically true.
+     *
+     * @return True if the victory conditions are sensible.
+     */
+    private boolean checkVictoryConditions() {
+<span class="nc" id="L230">        Specification spec = getSpecification();</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (singlePlayerGame</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">            &amp;&amp; spec.getBoolean(GameOptions.VICTORY_DEFEAT_EUROPEANS)</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">            &amp;&amp; !spec.getBoolean(GameOptions.VICTORY_DEFEAT_REF)) {</span>
+<span class="nc" id="L234">            int n = count(getGame().getNationOptions().getNations().entrySet(),</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">                          e -&gt; (e.getKey().getType().isEuropean()</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">                              &amp;&amp; !e.getKey().isUnknownEnemy()</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">                              &amp;&amp; e.getValue() != NationState.NOT_AVAILABLE));</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            if (n == 0) {</span>
+<span class="nc" id="L239">                getGUI().showInformationPanel(&quot;info.noEuropeans&quot;);</span>
+<span class="nc" id="L240">                return false;</span>
+            }
+        }
+<span class="nc" id="L243">        return true;</span>
+    }
+
+    /**
+     * Displays a chat message to the user.
+     *
+     * @param senderName The name of the player who sent the chat
+     *     message to the server.
+     * @param message The chat message.
+     * @param privateChat 'true' if the message is a private one, 'false'
+     *     otherwise.
+     */
+    public void displayChat(String senderName, String message,
+                            boolean privateChat) {
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        if (privateChat) {</span>
+<span class="nc" id="L258">            chatArea.append(senderName + &quot; (&quot; + Messages.message(&quot;private&quot;)</span>
+                + &quot;): &quot; + message + '\n');
+        } else {
+<span class="nc" id="L261">            chatArea.append(senderName + &quot;: &quot; + message + '\n');</span>
+        }
+<span class="nc" id="L263">    }</span>
+
+    /**
+     * Refreshes the table that displays the players and the choices that
+     * they've made.
+     */
+    public void refreshPlayersTable() {
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (table != null) table.update();</span>
+<span class="nc" id="L271">    }</span>
+
+
+    // Override Component
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void removeNotify() {
+        // Do not propagate to superclass.  This panel is reused so
+        // avoid the destructive cleanups in FreeColPanel.removeNotify.
+
+<span class="nc" id="L284">        start.removeActionListener(startCmd);</span>
+<span class="nc" id="L285">        cancel.removeActionListener(cancelCmd);</span>
+<span class="nc" id="L286">        readyBox.removeActionListener(readyBoxCmd);</span>
+<span class="nc" id="L287">        gameOptions.removeActionListener(gameOptionsCmd);</span>
+<span class="nc" id="L288">        mapGeneratorOptions.removeActionListener(mapGeneratorOptionsCmd);</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">        if (chat != null) chat.removeActionListener(chatCmd);</span>
+<span class="nc" id="L290">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void requestFocus() {
+<span class="nc" id="L297">        start.requestFocus();</span>
+<span class="nc" id="L298">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setEnabled(boolean enabled) {
+<span class="nc" id="L305">        super.setEnabled(enabled);</span>
+
+<span class="nc" id="L307">        Component[] components = getComponents();</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        for (Component component : components) {</span>
+<span class="nc" id="L309">            component.setEnabled(enabled);</span>
+        }
+
+<span class="nc bnc" id="L312" title="All 4 branches missed.">        if (singlePlayerGame &amp;&amp; enabled) {</span>
+<span class="nc" id="L313">            readyBox.setEnabled(false);</span>
+        }
+
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        if (enabled) {</span>
+<span class="nc" id="L317">            start.setEnabled(getFreeColClient().isAdmin());</span>
+        }
+
+<span class="nc" id="L320">        gameOptions.setEnabled(enabled);</span>
+<span class="nc" id="L321">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

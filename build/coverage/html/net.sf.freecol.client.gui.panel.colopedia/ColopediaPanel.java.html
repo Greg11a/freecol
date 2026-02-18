@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColopediaPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel.colopedia</a> &gt; <span class="el_source">ColopediaPanel.java</span></div><h1>ColopediaPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel.colopedia;
+
+import java.awt.Dimension;
+import java.awt.event.ActionEvent;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.logging.Logger;
+
+import javax.swing.AbstractAction;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTree;
+import javax.swing.event.HyperlinkEvent;
+import javax.swing.event.HyperlinkListener;
+import javax.swing.event.TreeSelectionEvent;
+import javax.swing.event.TreeSelectionListener;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.TreePath;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.panel.FreeColPanel;
+import net.sf.freecol.client.gui.panel.MigPanel;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.FreeColObject;
+
+
+/**
+ * This panel displays the Colopedia.
+ */
+public final class ColopediaPanel extends FreeColPanel
+    implements HyperlinkListener, TreeSelectionListener {
+
+<span class="nc" id="L58">    private static final Logger logger = Logger.getLogger(ColopediaPanel.class.getName());</span>
+
+    private JPanel listPanel;
+
+    private JPanel detailPanel;
+
+    private JTree tree;
+
+<span class="nc" id="L66">    private Map&lt;String, DefaultMutableTreeNode&gt; nodeMap = new HashMap&lt;&gt;();</span>
+
+
+    /**
+     * The constructor that will add the items to this panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param id The object identifier of the item to select.
+     */
+    public ColopediaPanel(FreeColClient freeColClient, String id) {
+<span class="nc" id="L76">        super(freeColClient, &quot;ColopediaPanelUI&quot;,</span>
+              new MigLayout(&quot;fill&quot;, &quot;[grow, fill]&quot;,
+                            &quot;[][grow, fill][]&quot;));
+
+<span class="nc" id="L80">        add(Utility.localizedHeader(&quot;colopedia&quot;, Utility.FONTSPEC_TITLE),</span>
+            &quot;span, align center&quot;);
+
+<span class="nc" id="L83">        listPanel = new MigPanel(new MigLayout(&quot;fill&quot;));</span>
+<span class="nc" id="L84">        listPanel.setOpaque(true);</span>
+        
+<span class="nc" id="L86">        tree = buildTree();</span>
+<span class="nc" id="L87">        listPanel.add(tree, &quot;grow&quot;);</span>
+        
+<span class="nc" id="L89">        JScrollPane sl = new JScrollPane(listPanel,</span>
+                                         JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+<span class="nc" id="L91">                                         JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED) {</span>
+            @Override
+            public Dimension getPreferredSize() {
+<span class="nc" id="L94">                final Dimension preferredSize = listPanel.getPreferredSize();</span>
+<span class="nc" id="L95">                return new Dimension(preferredSize.width + 32, preferredSize.height);</span>
+            }
+        };
+
+<span class="nc" id="L99">        sl.getViewport().setOpaque(false);</span>
+
+<span class="nc" id="L101">        detailPanel = new MigPanel(&quot;ColopediaPanelUI&quot;);</span>
+<span class="nc" id="L102">        detailPanel.setOpaque(true);</span>
+<span class="nc" id="L103">        JScrollPane detail = new JScrollPane(detailPanel,</span>
+                                             JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                                             JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+<span class="nc" id="L106">        detail.getViewport().setOpaque(false);</span>
+        
+<span class="nc" id="L108">        select(id);</span>
+
+<span class="nc" id="L110">        final int width = getImageLibrary().scaleInt(1050);</span>
+<span class="nc" id="L111">        final int height = getImageLibrary().scaleInt(725);</span>
+<span class="nc" id="L112">        getGUI().restoreSavedSize(this, new Dimension(width, height));</span>
+        
+<span class="nc" id="L114">        final JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, sl, detail);</span>
+
+<span class="nc" id="L116">        add(splitPane, &quot;grow&quot;);</span>
+<span class="nc" id="L117">        add(okButton, &quot;newline, span, tag ok&quot;);</span>
+        
+<span class="nc" id="L119">        setEscapeAction(new AbstractAction() {</span>
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L122">                okButton.doClick();</span>
+<span class="nc" id="L123">            }</span>
+        });
+<span class="nc" id="L125">    }</span>
+
+    /**
+     * Creates a new {@code ColopediaPanel} instance suitable
+     * only for the construction of ColopediaDetailPanels.
+     *
+     * FIXME: find a more elegant solution.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public ColopediaPanel(FreeColClient freeColClient) {
+<span class="nc" id="L136">        super(freeColClient);</span>
+<span class="nc" id="L137">    }</span>
+
+
+    /**
+     * Builds the JTree which represents the navigation menu and then returns it
+     *
+     * @return The navigation tree.
+     */
+    private JTree buildTree() {
+<span class="nc" id="L146">        String name = Messages.message(&quot;colopedia&quot;);</span>
+<span class="nc" id="L147">        DefaultMutableTreeNode root</span>
+            = new DefaultMutableTreeNode(new ColopediaTreeItem(null, null, name, null));
+
+<span class="nc" id="L150">        FreeColClient fcc = getFreeColClient();</span>
+<span class="nc" id="L151">        new TerrainDetailPanel(fcc, this).addSubTrees(root);</span>
+<span class="nc" id="L152">        new ResourcesDetailPanel(fcc, this).addSubTrees(root);</span>
+<span class="nc" id="L153">        new GoodsDetailPanel(fcc, this).addSubTrees(root);</span>
+<span class="nc" id="L154">        new UnitDetailPanel(fcc, this).addSubTrees(root);</span>
+<span class="nc" id="L155">        new BuildingDetailPanel(fcc, this).addSubTrees(root);</span>
+<span class="nc" id="L156">        new FatherDetailPanel(fcc, this).addSubTrees(root);</span>
+<span class="nc" id="L157">        new NationDetailPanel(fcc, this).addSubTrees(root);</span>
+<span class="nc" id="L158">        new NationTypeDetailPanel(fcc, this).addSubTrees(root);</span>
+<span class="nc" id="L159">        new ConceptDetailPanel(fcc, this).addSubTrees(root);</span>
+
+<span class="nc" id="L161">        DefaultTreeModel treeModel = new DefaultTreeModel(root);</span>
+<span class="nc" id="L162">        tree = new JTree(treeModel);</span>
+<span class="nc" id="L163">        tree.setRootVisible(false);</span>
+<span class="nc" id="L164">        tree.setCellRenderer(new ColopediaTreeCellRenderer(this, getImageLibrary()));</span>
+<span class="nc" id="L165">        tree.setOpaque(false);</span>
+<span class="nc" id="L166">        tree.addTreeSelectionListener(this);</span>
+
+<span class="nc" id="L168">        Enumeration&lt;?&gt; allNodes = root.depthFirstEnumeration();</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        while (allNodes.hasMoreElements()) {</span>
+<span class="nc" id="L170">            DefaultMutableTreeNode node = (DefaultMutableTreeNode) allNodes.nextElement();</span>
+<span class="nc" id="L171">            ColopediaTreeItem item = (ColopediaTreeItem) node.getUserObject();</span>
+<span class="nc" id="L172">            nodeMap.put(item.getId(), node);</span>
+<span class="nc" id="L173">        }</span>
+<span class="nc" id="L174">        return tree;</span>
+    }
+    
+    /**
+     * Gets the preferred size for the list item images in the colopedia tree.
+     *
+     * @return The {@code Dimension} to use.
+     */
+    public Dimension getListItemIconSize() {
+<span class="nc" id="L183">        final int width = getImageLibrary().scaleInt(ImageLibrary.ICON_SIZE.width * 3 / 2);</span>
+<span class="nc" id="L184">        final int height = getImageLibrary().scaleInt(ImageLibrary.ICON_SIZE.height);</span>
+        
+<span class="nc" id="L186">        return new Dimension(width, height);</span>
+    }
+
+    /**
+     * This function analyzes a tree selection event and calls the
+     * right methods to take care of building the requested unit's
+     * details.
+     *
+     * @param event The incoming {@code TreeSelectionEvent}.
+     */
+    @Override
+    public void valueChanged(TreeSelectionEvent event) {
+<span class="nc" id="L198">        DefaultMutableTreeNode node</span>
+<span class="nc" id="L199">            = (DefaultMutableTreeNode)tree.getLastSelectedPathComponent();</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (node != null) {</span>
+<span class="nc" id="L201">            showDetails((ColopediaTreeItem)node.getUserObject());</span>
+        }
+<span class="nc" id="L203">    }</span>
+
+    private void showDetails(ColopediaTreeItem nodeItem) {
+<span class="nc" id="L206">        detailPanel.removeAll();</span>
+<span class="nc bnc" id="L207" title="All 4 branches missed.">        if (nodeItem.getPanelType() != null &amp;&amp; nodeItem.getId() != null) {</span>
+<span class="nc" id="L208">            nodeItem.getPanelType().buildDetail(nodeItem.getId(), detailPanel);</span>
+        }
+<span class="nc" id="L210">        detailPanel.revalidate();</span>
+<span class="nc" id="L211">        detailPanel.repaint();</span>
+<span class="nc" id="L212">    }</span>
+
+    private void select(String id) {
+<span class="nc" id="L215">        DefaultMutableTreeNode node = nodeMap.get(id);</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (node == null) {</span>
+<span class="nc" id="L217">            logger.warning(&quot;Unable to find node with id '&quot; + id + &quot;'.&quot;);</span>
+        } else {
+<span class="nc" id="L219">            TreePath oldPath = tree.getSelectionPath();</span>
+<span class="nc bnc" id="L220" title="All 4 branches missed.">            if (oldPath != null &amp;&amp; oldPath.getParentPath() != null) {</span>
+<span class="nc" id="L221">                tree.collapsePath(oldPath.getParentPath());</span>
+            }
+<span class="nc" id="L223">            TreePath newPath = new TreePath(node.getPath());</span>
+<span class="nc" id="L224">            tree.scrollPathToVisible(newPath);</span>
+<span class="nc" id="L225">            tree.expandPath(newPath);</span>
+<span class="nc" id="L226">            showDetails((ColopediaTreeItem) node.getUserObject());</span>
+        }
+<span class="nc" id="L228">    }</span>
+
+    @Override
+    public void hyperlinkUpdate(HyperlinkEvent e) {
+<span class="nc" id="L232">        HyperlinkEvent.EventType type = e.getEventType();</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        if (type == HyperlinkEvent.EventType.ACTIVATED) {</span>
+<span class="nc" id="L234">            String[] path = e.getURL().getPath().split(&quot;/&quot;);</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">            if (null != path[1]) {</span>
+<span class="nc bnc" id="L236" title="All 3 branches missed.">                switch (path[1]) {</span>
+                case FreeColObject.ID_ATTRIBUTE_TAG:
+<span class="nc" id="L238">                    select(path[2]);</span>
+<span class="nc" id="L239">                    break;</span>
+                case &quot;action&quot;:
+<span class="nc" id="L241">                    getFreeColClient().getActionManager()</span>
+<span class="nc" id="L242">                        .getFreeColAction(path[2]).actionPerformed(null);</span>
+<span class="nc" id="L243">                    break;</span>
+                default:
+                    break;
+                }
+            }
+        }
+<span class="nc" id="L249">    }</span>
+
+    // Interface ActionListener
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L258">        final String command = ae.getActionCommand();</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">        if (OK.equals(command)) {</span>
+<span class="nc" id="L260">            getGUI().removeComponent(this);</span>
+        } else {
+<span class="nc" id="L262">            select(command);</span>
+        }
+<span class="nc" id="L264">    }</span>
+
+
+    // Override Component
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void removeNotify() {
+<span class="nc" id="L274">        super.removeNotify();</span>
+
+<span class="nc" id="L276">        removeAll();</span>
+<span class="nc" id="L277">        detailPanel = null;</span>
+<span class="nc" id="L278">        listPanel = null;</span>
+<span class="nc" id="L279">        tree = null;</span>
+<span class="nc" id="L280">        nodeMap = null;</span>
+<span class="nc" id="L281">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

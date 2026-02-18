@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConstructionPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">ConstructionPanel.java</span></div><h1>ConstructionPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import static net.sf.freecol.common.util.StringUtils.getBreakingPoint;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Image;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+
+import javax.swing.ImageIcon;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.FontLibrary;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.BuildableType;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.StringTemplate;
+
+
+/**
+ * This panel shows the progress of constructing a building or
+ * unit in a colony.
+ */
+public class ConstructionPanel extends MigPanel
+    implements PropertyChangeListener {
+
+<span class="nc" id="L57">    public static final String EVENT</span>
+<span class="nc" id="L58">        = Colony.ColonyChangeEvent.BUILD_QUEUE_CHANGE.toString();</span>
+
+    /** The enclosing client. */
+    private final FreeColClient freeColClient;
+
+    /** Should a mouse click open the build queue? */
+    private final boolean openBuildQueue;
+
+    /** The colony performing the construction. */
+    private Colony colony;
+
+    /** The text to display if buildable == null. */
+<span class="nc" id="L70">    private StringTemplate defaultLabel</span>
+<span class="nc" id="L71">        = StringTemplate.key(&quot;constructionPanel.clickToBuild&quot;);</span>
+
+
+    /**
+     * Creates a ConstructionPanel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param colony The {@code Colony} whose construction is to be
+     *     modified.
+     * @param openBuildQueue True if the build queue should be immediately
+     *     shown.
+     */
+    public ConstructionPanel(FreeColClient freeColClient,
+                             Colony colony, boolean openBuildQueue) {
+<span class="nc" id="L85">        super(&quot;ConstructionPanelUI&quot;,</span>
+            new MigLayout(&quot;fill, ins 0 0 0 0, gapy 0, wrap 2&quot;, &quot;push[]10[center]push&quot;, &quot;[center]&quot;));
+
+<span class="nc" id="L88">        this.freeColClient = freeColClient;</span>
+<span class="nc" id="L89">        this.colony = colony;</span>
+<span class="nc" id="L90">        this.openBuildQueue = openBuildQueue;</span>
+
+<span class="nc" id="L92">        setOpaque(false);</span>
+<span class="nc" id="L93">    }</span>
+
+
+    /**
+     * Add a listener for button presses on this panel to show the BuildQueuePanel
+     */
+    public void initialize() {
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (colony != null) {</span>
+            // we are interested in changes to the build queue, as well as
+            // changes to the warehouse and the colony's production bonus
+<span class="nc" id="L103">            colony.addPropertyChangeListener(EVENT, this);</span>
+                
+<span class="nc bnc" id="L105" title="All 2 branches missed.">            if (openBuildQueue) {</span>
+<span class="nc" id="L106">                addMouseListener(new MouseAdapter() {</span>
+                        @Override
+                        public void mousePressed(MouseEvent e) {
+<span class="nc" id="L109">                            freeColClient.getGUI().showBuildQueuePanel(colony);</span>
+<span class="nc" id="L110">                        }</span>
+                    });
+            }
+        }
+<span class="nc" id="L114">        update();</span>
+<span class="nc" id="L115">    }</span>
+
+    /**
+     * Removes PropertyChangeListeners and MouseListeners
+     */
+    public void cleanup() {
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (colony != null) {</span>
+<span class="nc" id="L122">            colony.removePropertyChangeListener(EVENT, this);</span>
+        }
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        for (MouseListener listener : getMouseListeners()) {</span>
+<span class="nc" id="L125">            removeMouseListener(listener);</span>
+        }
+<span class="nc" id="L127">    }</span>
+
+    /**
+     * This method updates the Construction Panel.
+     *
+     * With zero arguments, the update() method can only be
+     * run on what a given colony is currently building.
+     */
+    public void update() {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        update((colony == null) ? null : colony.getCurrentlyBuilding());</span>
+<span class="nc" id="L137">    }</span>
+
+    /**
+     * This method updates the Construction Panel.
+     *
+     * With one argument, the update() method can be called
+     * to update the panel based on a called {@code BuildableType}
+     * This method is used when a change to to the
+     * {@code BuildQueuePanel} are made.
+     *
+     * @param buildable The BuildableType object to update.
+     *
+     * @see BuildQueuePanel for the only use of the one-argument method.
+     */
+    public void update(BuildableType buildable) {
+<span class="nc" id="L152">        removeAll();</span>
+<span class="nc" id="L153">        final ImageLibrary lib = this.freeColClient.getGUI()</span>
+<span class="nc" id="L154">            .getFixedImageLibrary();</span>
+        
+<span class="nc" id="L156">        Font font = FontLibrary.getScaledFont(&quot;normal-plain-smaller&quot;, null);</span>
+<span class="nc" id="L157">        Font fontTitle = FontLibrary.getScaledFont(&quot;normal-plain-smaller&quot;, null);</span>
+<span class="nc" id="L158">        final int maxFontSize = lib.scaleInt(17);</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        if (font.getSize() &gt; maxFontSize) {</span>
+<span class="nc" id="L160">            font = font.deriveFont((float) maxFontSize);</span>
+<span class="nc" id="L161">            fontTitle = fontTitle.deriveFont((float) maxFontSize);</span>
+        }
+
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        if (buildable == null) {</span>
+<span class="nc" id="L165">            String clickToBuild = Messages.message(getDefaultLabel());</span>
+<span class="nc" id="L166">            int breakingPoint = getBreakingPoint(clickToBuild);</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">            if (breakingPoint &gt; 0) {</span>
+<span class="nc" id="L168">                JLabel label0 = new JLabel(</span>
+<span class="nc" id="L169">                    clickToBuild.substring(0, breakingPoint));</span>
+<span class="nc" id="L170">                label0.setFont(font);</span>
+<span class="nc" id="L171">                label0.setForeground(getForeground());</span>
+<span class="nc" id="L172">                add(label0, &quot;span, align center bottom&quot;);</span>
+<span class="nc" id="L173">                JLabel label1 = new JLabel(</span>
+<span class="nc" id="L174">                    clickToBuild.substring(breakingPoint + 1));</span>
+<span class="nc" id="L175">                label1.setFont(font);</span>
+<span class="nc" id="L176">                label1.setForeground(getForeground());</span>
+<span class="nc" id="L177">                add(label1, &quot;span, align center top&quot;);</span>
+<span class="nc" id="L178">            } else {</span>
+<span class="nc" id="L179">                JLabel label = new JLabel(clickToBuild);</span>
+<span class="nc" id="L180">                label.setFont(font);</span>
+<span class="nc" id="L181">                label.setForeground(getForeground());</span>
+<span class="nc" id="L182">                add(label, &quot;span, align center&quot;);</span>
+            }
+<span class="nc" id="L184">        } else {</span>
+<span class="nc" id="L185">            final JPanel infoPanel = new JPanel(new MigLayout(&quot;wrap 1&quot;, &quot;[center]&quot;));</span>
+<span class="nc" id="L186">            infoPanel.setOpaque(false);</span>
+            
+<span class="nc" id="L188">            final Image image = lib.getSmallBuildableTypeImageWithWithSize(buildable, colony.getOwner(), new Dimension(lib.scaleInt(100), lib.scaleInt(96)));</span>
+<span class="nc" id="L189">            add(new JLabel(new ImageIcon(image)), &quot;spany&quot;);</span>
+            
+<span class="nc" id="L191">            final JLabel label0 = Utility.localizedLabel(buildable.getCurrentlyBuildingLabel());</span>
+<span class="nc" id="L192">            label0.setFont(fontTitle);</span>
+<span class="nc" id="L193">            label0.setForeground(getForeground());</span>
+<span class="nc" id="L194">            infoPanel.add(label0);</span>
+
+<span class="nc bnc" id="L196" title="All 2 branches missed.">            for (AbstractGoods ag : buildable.getRequiredGoodsList()) {</span>
+<span class="nc" id="L197">                int amountNeeded = ag.getAmount();</span>
+<span class="nc" id="L198">                int amountAvailable = colony.getGoodsCount(ag.getType());</span>
+<span class="nc" id="L199">                int amountProduced = colony.getAdjustedNetProductionOf(ag.getType());</span>
+<span class="nc" id="L200">                infoPanel.add(new FreeColProgressBar(this.freeColClient, ag.getType(), 0,</span>
+                                           amountNeeded, amountAvailable, amountProduced),
+                    &quot;height 20:&quot;);
+<span class="nc" id="L203">            }</span>
+<span class="nc" id="L204">            add(infoPanel);</span>
+        }
+
+<span class="nc" id="L207">        revalidate();</span>
+<span class="nc" id="L208">        repaint();</span>
+<span class="nc" id="L209">    }</span>
+
+
+    /**
+     * @return A {@code StringTemplate} of the ConstructionPanel's Label
+     */
+    private final StringTemplate getDefaultLabel() {
+<span class="nc" id="L216">        return defaultLabel;</span>
+    }
+
+    /**
+     * Set the ConstructionPanel's Label as a {@code StringTemplate}
+     *
+     * @param newDefaultLabel The default StringTemplate label of the panel.
+     */
+    public final void setDefaultLabel(final StringTemplate newDefaultLabel) {
+<span class="nc" id="L225">        this.defaultLabel = newDefaultLabel;</span>
+<span class="nc" id="L226">    }</span>
+
+
+    // Interface PropertyChangeListener
+
+    /**
+     * {@inheritDoc}
+     *
+     * Upon a change to a bound parameter, call the {@link #update()} method.
+     */
+    @Override
+    public void propertyChange(PropertyChangeEvent event) {
+<span class="nc" id="L238">        update();</span>
+<span class="nc" id="L239">    }</span>
+    
+    @Override
+    protected void paintComponent(Graphics g) {
+<span class="nc" id="L243">        super.paintComponent(g);</span>
+        
+<span class="nc" id="L245">        final Color oldColor = g.getColor();</span>
+<span class="nc" id="L246">        g.setColor(new Color(0, 0, 0, 128));</span>
+<span class="nc" id="L247">        final Dimension size = getSize();</span>
+<span class="nc" id="L248">        g.fillRect(0, 0, size.width, size.height);</span>
+<span class="nc" id="L249">        g.setColor(oldColor);</span>
+<span class="nc" id="L250">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

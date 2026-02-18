@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HistoryEvent.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">HistoryEvent.java</span></div><h1>HistoryEvent.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.util.Utils;
+import static net.sf.freecol.common.util.StringUtils.*;
+
+
+/**
+ * A notable event in the history of a game.
+ */
+public class HistoryEvent extends StringTemplate {
+
+    public static final String TAG = &quot;historyEvent&quot;;
+
+<span class="fc" id="L38">    public static enum HistoryEventType implements Named {</span>
+<span class="fc" id="L39">        DISCOVER_NEW_WORLD,</span>
+<span class="fc" id="L40">        DISCOVER_REGION,</span>
+<span class="fc" id="L41">        MEET_NATION,</span>
+<span class="fc" id="L42">        CITY_OF_GOLD,</span>
+<span class="fc" id="L43">        FOUND_COLONY,</span>
+<span class="fc" id="L44">        ABANDON_COLONY,</span>
+<span class="fc" id="L45">        CONQUER_COLONY,       // You conquer a colony</span>
+<span class="fc" id="L46">        COLONY_DESTROYED,</span>
+<span class="fc" id="L47">        COLONY_CONQUERED,     // Your colony is conquered</span>
+<span class="fc" id="L48">        DESTROY_SETTLEMENT,</span>
+<span class="fc" id="L49">        DESTROY_NATION,       // Native nation that is</span>
+<span class="fc" id="L50">        FOUNDING_FATHER,</span>
+<span class="fc" id="L51">        DECLARE_INDEPENDENCE,</span>
+<span class="fc" id="L52">        INDEPENDENCE,</span>
+<span class="fc" id="L53">        SPANISH_SUCCESSION,</span>
+<span class="fc" id="L54">        DECLARE_WAR,</span>
+<span class="fc" id="L55">        CEASE_FIRE,</span>
+<span class="fc" id="L56">        MAKE_PEACE,</span>
+<span class="fc" id="L57">        FORM_ALLIANCE,</span>
+        // FIXME: This is badly named, it should be NATION_WITHDRAWN
+        // as it is used when a European nation permanently leaves the
+        // New World
+<span class="fc" id="L61">        NATION_DESTROYED;</span>
+
+        /**
+         * Get the stem key.
+         *
+         * @return The stem key for this history event type.
+         */
+        private String getKey() {
+<span class="fc" id="L69">            return &quot;historyEventType.&quot; + getEnumKey(this);</span>
+        }
+
+        public String getDescriptionKey() {
+<span class="fc" id="L73">            return Messages.descriptionKey(&quot;model.&quot; + getKey());</span>
+        }
+        
+        // Implement Named
+
+        /**
+         * {@inheritDoc}
+         */
+        public String getNameKey() {
+<span class="nc" id="L82">            return Messages.nameKey(&quot;model.&quot; + getKey());</span>
+        }
+    }
+
+
+    /** The turn in which the event took place */
+    private Turn turn;
+
+    /** The type of event. */
+    private HistoryEventType eventType;
+
+    /** Which player gets credit for the event, if any. */
+    private String playerId;
+
+    /** Points for this event, if any. */
+    private int score;
+
+
+    /**
+     * Trivial constructor to allow creation with Game.newInstance.
+     */
+<span class="nc" id="L103">    public HistoryEvent() {}</span>
+
+    /**
+     * Create a new history event of given turn and type.
+     *
+     * @param turn The {@code Turn} of the event.
+     * @param eventType The {@code EventType}.
+     * @param player An optional {@code Player} responsible for
+     *     this event.
+     */
+    public HistoryEvent(Turn turn, HistoryEventType eventType, Player player) {
+<span class="fc" id="L114">        super(eventType.getDescriptionKey(), null, TemplateType.TEMPLATE);</span>
+<span class="fc" id="L115">        this.turn = turn;</span>
+<span class="fc" id="L116">        this.eventType = eventType;</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        this.playerId = (player == null) ? null : player.getId();</span>
+<span class="fc" id="L118">        this.score = 0;</span>
+<span class="fc" id="L119">    }</span>
+
+    /**
+     * Create a new history event by reading a stream.
+     *
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+<span class="nc" id="L127">    public HistoryEvent(FreeColXMLReader xr) throws XMLStreamException {</span>
+<span class="nc" id="L128">        readFromXML(xr);</span>
+<span class="nc" id="L129">    }</span>
+
+    /**
+     * Get the turn of this history event.
+     *
+     * @return The turn.
+     */
+    public final Turn getTurn() {
+<span class="nc" id="L137">        return turn;</span>
+    }
+
+    /**
+     * Get the type of this history event.
+     *
+     * @return The event type.
+     */
+    public final HistoryEventType getEventType() {
+<span class="nc" id="L146">        return eventType;</span>
+    }
+
+    /**
+     * Given a new stance, get the appropriate event type.
+     *
+     * @param stance The new {@code Stance}.
+     * @return The corresponding event type.
+     */
+    public static final HistoryEventType getEventTypeFromStance(Stance stance) {
+<span class="pc bpc" id="L156" title="2 of 5 branches missed.">        switch (stance) {</span>
+        case WAR:
+<span class="fc" id="L158">            return HistoryEventType.DECLARE_WAR;</span>
+        case CEASE_FIRE:
+<span class="fc" id="L160">            return HistoryEventType.CEASE_FIRE;</span>
+        case PEACE:
+<span class="fc" id="L162">            return HistoryEventType.MAKE_PEACE;</span>
+        case ALLIANCE:
+<span class="nc" id="L164">            return HistoryEventType.FORM_ALLIANCE;</span>
+        default:
+            break;
+        }
+<span class="nc" id="L168">        return null;</span>
+    }
+
+    /**
+     * Get the id for the player that is credited with this event, if any.
+     *
+     * @return The credited {@code Player} id.
+     */
+    public final String getPlayerId() {
+<span class="nc" id="L177">        return playerId;</span>
+    }
+
+    /**
+     * Set the id for the player to credit for this event.
+     *
+     * @param playerId The new credited {@code Player} id.
+     */
+    public void setPlayerId(String playerId) {
+<span class="nc" id="L186">        this.playerId = playerId;</span>
+<span class="nc" id="L187">    }</span>
+
+    /**
+     * Get the score for this event.
+     *
+     * @return The score.
+     */
+    public final int getScore() {
+<span class="nc" id="L195">        return score;</span>
+    }
+
+    /**
+     * Set the score for this event.
+     *
+     * @param score The new score for this event.
+     */
+    public void setScore(int score) {
+<span class="nc" id="L204">        this.score = score;</span>
+<span class="nc" id="L205">    }</span>
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L215">        HistoryEvent o = copyInCast(other, HistoryEvent.class);</span>
+<span class="nc bnc" id="L216" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L217">        this.turn = o.getTurn();</span>
+<span class="nc" id="L218">        this.eventType = o.getEventType();</span>
+<span class="nc" id="L219">        this.playerId = o.getPlayerId();</span>
+<span class="nc" id="L220">        this.score = o.getScore();</span>
+<span class="nc" id="L221">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String EVENT_TYPE_TAG = &quot;eventType&quot;;
+    private static final String PLAYER_ID_TAG = &quot;playerId&quot;;
+    private static final String SCORE_TAG = &quot;score&quot;;
+    private static final String TURN_TAG = &quot;turn&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L238">        super.writeAttributes(xw);</span>
+
+<span class="nc" id="L240">        xw.writeAttribute(TURN_TAG, this.turn.getNumber());</span>
+
+<span class="nc" id="L242">        xw.writeAttribute(EVENT_TYPE_TAG, this.eventType);</span>
+
+<span class="nc bnc" id="L244" title="All 2 branches missed.">        if (playerId != null) xw.writeAttribute(PLAYER_ID_TAG, this.playerId);</span>
+
+<span class="nc" id="L246">        xw.writeAttribute(SCORE_TAG, this.score);</span>
+<span class="nc" id="L247">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L254">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L256">        turn = new Turn(xr.getAttribute(TURN_TAG, 0));</span>
+
+<span class="nc" id="L258">        eventType = xr.getAttribute(EVENT_TYPE_TAG,</span>
+                                    HistoryEventType.class, (HistoryEventType)null);
+<span class="nc" id="L260">        playerId = xr.getAttribute(PLAYER_ID_TAG, (String)null);</span>
+
+<span class="nc" id="L262">        score = xr.getAttribute(SCORE_TAG, 0);</span>
+<span class="nc" id="L263">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="nc" id="L268">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L278" title="All 2 branches missed.">        if (this == o) return true;</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">        if (o instanceof HistoryEvent) {</span>
+<span class="nc" id="L280">            HistoryEvent other = (HistoryEvent)o;</span>
+<span class="nc bnc" id="L281" title="All 6 branches missed.">            return turn == other.turn &amp;&amp; eventType == other.eventType</span>
+                &amp;&amp; score == other.score
+<span class="nc bnc" id="L283" title="All 2 branches missed.">                &amp;&amp; Utils.equals(playerId, other.playerId)</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">                &amp;&amp; super.equals(other);</span>
+        }
+<span class="nc" id="L286">        return false;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="nc" id="L294">        int hash = super.hashCode();</span>
+<span class="nc" id="L295">        hash = 31 * hash + this.turn.hashCode();</span>
+<span class="nc" id="L296">        hash = 31 * hash + this.eventType.ordinal();</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">        if (this.playerId != null) hash = 31 * hash + this.playerId.hashCode();</span>
+<span class="nc" id="L298">        hash = 31 * hash + this.score;</span>
+<span class="nc" id="L299">        return hash;</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L307">        StringBuilder sb = new StringBuilder(32);</span>
+<span class="nc" id="L308">        sb.append('[').append(getId())</span>
+<span class="nc" id="L309">            .append(' ').append(eventType)</span>
+<span class="nc" id="L310">            .append(&quot; (&quot;).append(turn.getYear()).append(')');</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">        if (playerId != null) {</span>
+<span class="nc" id="L312">            sb.append(&quot; playerId=&quot;).append(playerId)</span>
+<span class="nc" id="L313">                .append(&quot; score=&quot;).append(score);</span>
+        }
+<span class="nc" id="L315">        sb.append(' ').append(super.toString()).append(']');</span>
+<span class="nc" id="L316">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

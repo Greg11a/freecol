@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SetColorMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">SetColorMessage.java</span></div><h1>SetColorMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import java.awt.Color;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Nation;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message that changes the player color.
+ */
+public class SetColorMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;setColor&quot;;
+    private static final String COLOR_TAG = &quot;color&quot;;
+    private static final String NATION_TAG = &quot;nation&quot;;
+    
+
+    /**
+     * Create a new {@code SetColorMessage}.
+     *
+     * @param nation The {@code Nation} that is changing color.
+     * @param color The new {@code Color}.
+     */
+    public SetColorMessage(Nation nation, Color color) {
+<span class="nc" id="L52">        super(TAG, NATION_TAG, nation.getId(),</span>
+<span class="nc" id="L53">              COLOR_TAG, String.valueOf(color.getRGB()));</span>
+<span class="nc" id="L54">    }</span>
+
+    /**
+     * Create a new {@code SetAvailableMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to (null here).
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public SetColorMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L65">        super(TAG, xr, NATION_TAG, COLOR_TAG);</span>
+<span class="nc" id="L66">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L74">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L82">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L83">        final Specification spec = game.getSpecification();</span>
+<span class="nc" id="L84">        final Nation nation = getNation(spec);</span>
+<span class="nc" id="L85">        final Color color = getColor();</span>
+      
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (nation == null) {</span>
+<span class="nc" id="L88">            logger.warning(&quot;Invalid nation: &quot; + toString());</span>
+<span class="nc" id="L89">            return;</span>
+        }
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if (color == null) {</span>
+<span class="nc" id="L92">            logger.warning(&quot;Invalid color: &quot; + toString());</span>
+<span class="nc" id="L93">            return;</span>
+        }
+
+<span class="nc" id="L96">        pgc(freeColClient).setColorHandler(nation, color);</span>
+<span class="nc" id="L97">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        if (serverPlayer == null) {</span>
+<span class="nc" id="L106">            logger.warning(&quot;setColor from unknown connection&quot;);</span>
+        }
+        
+<span class="nc" id="L109">        final Specification spec = freeColServer.getGame().getSpecification();</span>
+<span class="nc" id="L110">        final Nation nation = getNation(spec);</span>
+<span class="nc" id="L111">        final Color color = getColor();</span>
+
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        if (nation == null) {</span>
+<span class="nc" id="L114">            return serverPlayer.clientError(&quot;Invalid nation: &quot; + this.toString());</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        } else if (color == null) {</span>
+<span class="nc" id="L116">            return serverPlayer.clientError(&quot;Invalid color: &quot; + this.toString());</span>
+        }
+
+<span class="nc" id="L119">        return pgc(freeColServer)</span>
+<span class="nc" id="L120">            .setColor(serverPlayer, nation, color);</span>
+    }
+
+
+    // Public interface
+
+    /**
+     * Get the nation whose color is changing.
+     *
+     * @param spec The {@code Specification} to look up the nation in.
+     * @return The {@code Nation}.
+     */
+    public Nation getNation(Specification spec) {
+<span class="nc" id="L133">        return spec.getNation(getStringAttribute(NATION_TAG));</span>
+    }
+
+    /**
+     * Get the color.
+     *
+     * @return The new {@code Color}.
+     */
+    public Color getColor() {
+<span class="nc" id="L142">        Color color = null;</span>
+        try {
+<span class="nc" id="L144">            int rgb = getIntegerAttribute(COLOR_TAG, 0);</span>
+<span class="nc" id="L145">            color = new Color(rgb);</span>
+<span class="nc" id="L146">        } catch (NumberFormatException nfe) {}</span>
+<span class="nc" id="L147">        return color;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,1029 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkLocation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">WorkLocation.java</span></div><h1>WorkLocation.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.function.ToIntFunction;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.util.LogBuilder;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import net.sf.freecol.common.util.Utils;
+
+
+/**
+ * The {@code WorkLocation} is a place in a {@link Colony} where
+ * {@code Units} can work.  The unit capacity of a WorkLocation
+ * is likely to be limited.  ColonyTiles can only hold a single
+ * worker, and Buildings can hold no more than three workers, for
+ * example.  WorkLocations do not store any Goods.  They take any
+ * Goods they consume from the Colony, and put all Goods they produce
+ * there, too.  Although the WorkLocation implements {@link Ownable},
+ * its owner can not be changed directly, as it is always owned by the
+ * owner of the Colony.
+ */
+public abstract class WorkLocation extends UnitLocation
+    implements Ownable {
+
+<span class="fc" id="L55">    private static final Logger logger = Logger.getLogger(WorkLocation.class.getName());</span>
+
+<span class="fc" id="L57">    public static final List&lt;AbstractGoods&gt; EMPTY_LIST</span>
+<span class="fc" id="L58">        = Collections.&lt;AbstractGoods&gt;emptyList();</span>
+
+    /** Container class to suggest a better use of a unit. */
+    public static class Suggestion {
+
+<span class="nc" id="L63">        public static final Comparator&lt;Suggestion&gt; descendingAmountComparator</span>
+<span class="nc" id="L64">            = Comparator.comparingInt(Suggestion::getAmount).reversed()</span>
+<span class="nc" id="L65">                .thenComparing(Suggestion::getGoodsType,</span>
+                               GoodsType.goodsTypeComparator)
+<span class="nc" id="L67">                .thenComparing(Suggestion::getNewUnitType);</span>
+                    
+        public final WorkLocation workLocation;
+        public final UnitType oldType;
+        public final UnitType newType;
+        public final GoodsType goodsType;
+        public final int amount;
+
+
+        /**
+         * Suggest that work done by (optional) {@code oldType}
+         * would be better done by {@code newType} because it
+         * could produce {@code amount} more
+         * {@code goodsType}.
+         *
+         * @param workLocation The {@code WorkLocation} to add
+         *     a unit to.
+         * @param oldType The optional {@code UnitType} currently
+         *     doing the work.
+         * @param newType A new {@code UnitType} to do the work.
+         * @param goodsType The {@code GoodsType} to produce.
+         * @param amount The extra goods that would be produced if the
+         *     suggestion is taken.
+         */
+        public Suggestion(WorkLocation workLocation, UnitType oldType,
+<span class="nc" id="L92">                          UnitType newType, GoodsType goodsType, int amount) {</span>
+<span class="nc" id="L93">            this.workLocation = workLocation;</span>
+<span class="nc" id="L94">            this.oldType = oldType;</span>
+<span class="nc" id="L95">            this.newType = newType;</span>
+<span class="nc" id="L96">            this.goodsType = goodsType;</span>
+<span class="nc" id="L97">            this.amount = amount;</span>
+<span class="nc" id="L98">        }</span>
+
+        public UnitType getNewUnitType() {
+<span class="nc" id="L101">            return this.newType;</span>
+        }
+        
+        public GoodsType getGoodsType() {
+<span class="nc" id="L105">            return this.goodsType;</span>
+        }
+        
+        public int getAmount() {
+<span class="nc" id="L109">            return this.amount;</span>
+        }
+    };
+
+    /** The colony that contains this work location. */
+    protected Colony colony;
+
+    /** The production type of this WorkLocation. */
+    private ProductionType productionType;
+
+
+    /**
+     * Constructor for ServerWorkLocation.
+     *
+     * @param game The enclosing {@code Game}.
+     */
+    protected WorkLocation(Game game) {
+<span class="fc" id="L126">        super(game);</span>
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * Creates a new {@code WorkLocation} with the given identifier.
+     *
+     * The object should be initialized later.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param id The object identifier.
+     */
+    public WorkLocation(Game game, String id) {
+<span class="fc" id="L138">        super(game, id);</span>
+<span class="fc" id="L139">    }</span>
+
+
+    public void setColony(Colony colony) {
+<span class="nc" id="L143">        this.colony = colony;</span>
+<span class="nc" id="L144">    }</span>
+
+    /**
+     * Get the production type.
+     *
+     * @return The {@code ProductionType} for this work location.
+     */
+    public final ProductionType getProductionType() {
+<span class="fc" id="L152">        return this.productionType;</span>
+    }
+
+    /**
+     * Set the prodution type.
+     *
+     * @param newProductionType The new {@code ProductionType} value.
+     */
+    public final void setProductionType(final ProductionType newProductionType) {
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (!Utils.equals(newProductionType, this.productionType)) {</span>
+<span class="fc" id="L162">            this.productionType = newProductionType;</span>
+<span class="fc" id="L163">            getColony().invalidateCache();</span>
+<span class="fc" id="L164">            logger.fine(&quot;Production type at &quot; + this</span>
+                + &quot; is now: &quot; + newProductionType);
+        }
+<span class="fc" id="L167">    }</span>
+
+    /**
+     * Get the current work type of any unit present.
+     *
+     * This assumes that all units in a work location are doing the same
+     * work, which is true for now.
+     *
+     * @return The current {@code GoodsType} being produced, or
+     *     null if none.
+     */
+    public GoodsType getCurrentWorkType() {
+<span class="fc" id="L179">        Unit unit = getFirstUnit();</span>
+<span class="pc bpc" id="L180" title="1 of 4 branches missed.">        return (unit != null &amp;&amp; unit.getType() != null) ? unit.getWorkType()</span>
+<span class="fc" id="L181">            : null;</span>
+    }
+
+    /**
+     * Update production type on the basis of the current work
+     * location type (which might change due to an upgrade) and the
+     * work type of units present.
+     */
+    public void updateProductionType() {
+<span class="fc" id="L190">        setProductionType(getBestProductionType(isEmpty(),</span>
+<span class="fc" id="L191">                getCurrentWorkType()));</span>
+<span class="fc" id="L192">    }</span>
+
+    /**
+     * Get the best available production type at this work location.
+     *
+     * @param unattended Whether to require unattended production.
+     * @param workType An optional work type to require.
+     * @return The best available {@code ProductionType} given the
+     *     argument constraints.
+     */
+    public ProductionType getBestProductionType(boolean unattended,
+                                                GoodsType workType) {
+<span class="fc" id="L204">        return ProductionType.getBestProductionType(workType,</span>
+<span class="fc" id="L205">            getAvailableProductionTypes(unattended));</span>
+    }
+
+    /**
+     * Gets the best occupation for a given unit at this work location.
+     *
+     * @param unit The {@code Unit} to find an
+     *     {@code Occupation} for.
+     * @param userMode If a user requested this, favour the current
+     *     work type, if not favour goods that the unit requires.
+     * @return An {@code Occupation} for the given unit, or
+     *     null if none found.
+     */
+    public Occupation getOccupation(Unit unit, boolean userMode) {
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">        LogBuilder lb = new LogBuilder((getColony().getOccupationTrace()) ? 64 : 0);</span>
+<span class="fc" id="L220">        lb.add(getColony().getName(), &quot;/&quot;, this, &quot;.getOccupation(&quot;, unit, &quot;)&quot;);</span>
+
+<span class="fc" id="L222">        Occupation best = new Occupation(null, null, null);</span>
+<span class="fc" id="L223">        int bestAmount = 0;</span>
+        for (Collection&lt;GoodsType&gt; types
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                 : getColony().getWorkTypeChoices(unit, userMode)) {</span>
+<span class="fc" id="L226">            lb.add(&quot;\n  &quot;);</span>
+<span class="fc" id="L227">            logFreeColObjects(types, lb);</span>
+<span class="fc" id="L228">            bestAmount = best.improve(unit, this, bestAmount, types, lb);</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">            if (best.workType != null) {</span>
+<span class="fc" id="L230">                lb.add(&quot;\n  =&gt; &quot;, best);</span>
+<span class="fc" id="L231">                break;</span>
+            }
+<span class="fc" id="L233">        }</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        if (best.workType == null) lb.add(&quot;\n  FAILED&quot;);</span>
+<span class="fc" id="L235">        lb.log(logger, Level.WARNING);</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        return (best.workType == null) ? null : best;</span>
+    }
+
+    /**
+     * Gets the best occupation for a given unit type at this work location.
+     *
+     * @param unitType An optional {@code UnitType} to find an
+     *     {@code Occupation} for.  If null, use the default unit type.
+     * @return An {@code Occupation} for the given unit, or
+     *     null if none found.
+     */
+    public Occupation getOccupation(UnitType unitType) {
+<span class="nc" id="L248">        final Specification spec = getSpecification();</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        if (unitType == null) {</span>
+<span class="nc" id="L250">            unitType = spec.getDefaultUnitType(getOwner().getNationType());</span>
+        }
+        
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        LogBuilder lb = new LogBuilder((getColony().getOccupationTrace()) ? 64 : 0);</span>
+<span class="nc" id="L254">        lb.add(getColony().getName(), &quot;/&quot;, this, &quot;.getOccupation(&quot;,</span>
+<span class="nc" id="L255">               unitType.getSuffix(), &quot;)&quot;);</span>
+
+<span class="nc" id="L257">        Collection&lt;GoodsType&gt; types = spec.getGoodsTypeList();</span>
+<span class="nc" id="L258">        Occupation best = new Occupation(null, null, null);</span>
+<span class="nc" id="L259">        lb.add(&quot;\n  &quot;);</span>
+<span class="nc" id="L260">        logFreeColObjects(types, lb);</span>
+<span class="nc" id="L261">        int bestAmount = best.improve(unitType, this, 0, types, lb);</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        if (best.workType != null) {</span>
+<span class="nc" id="L263">            lb.add(&quot;\n  =&gt; &quot;, best, &quot;/&quot;, bestAmount);</span>
+        } else {
+<span class="nc" id="L265">            lb.add(&quot;\n  FAILED&quot;);</span>
+        }
+<span class="nc" id="L267">        lb.log(logger, Level.WARNING);</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">        return (best.workType == null) ? null : best;</span>
+    }
+        
+    /**
+     * Get the best work type for a unit at this work location, favouring
+     * the existing work.
+     *
+     * @param unit The {@code Unit} to find a work type for.
+     * @return The best work {@code GoodsType} for the unit, or null
+     *     if none found.
+     */
+    public GoodsType getWorkFor(Unit unit) {
+<span class="nc" id="L280">        Occupation occupation = getOccupation(unit, true);</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">        return (occupation == null) ? null : occupation.workType;</span>
+    }
+
+    /**
+     * Install a unit at the best occupation for it at this work location.
+     *
+     * @param unit The {@code Unit} to install.
+     * @return True if the installation succeeds.
+     */
+    public boolean setWorkFor(Unit unit) {
+<span class="fc" id="L291">        Occupation occupation = getOccupation(unit, false);</span>
+<span class="pc bpc" id="L292" title="1 of 4 branches missed.">        return occupation != null &amp;&amp; occupation.install(unit);</span>
+    }
+
+    /**
+     * Is it a good idea to produce a goods type at this work location
+     * using a better unit type?
+     *
+     * @param unit The {@code Unit} that is doing the job at
+     *     present, which may be null if none is at work.
+     * @param productionType The {@code ProductionType} to use.
+     * @param goodsType The {@code GoodsType} to produce.
+     * @return A {@code Suggestion} for a better worker, or null if
+     *     improvement is not worthwhile.
+     */
+    private Suggestion getSuggestion(Unit unit, ProductionType productionType,
+                                     GoodsType goodsType) {
+        // Check first if there is space.
+<span class="nc bnc" id="L309" title="All 6 branches missed.">        if (productionType == null</span>
+            || goodsType == null
+<span class="nc bnc" id="L311" title="All 4 branches missed.">            || ((unit == null || !contains(unit)) &amp;&amp; isFull())) return null;</span>
+
+<span class="nc" id="L313">        final Specification spec = getSpecification();</span>
+<span class="nc" id="L314">        final Player owner = getOwner();</span>
+<span class="nc" id="L315">        final UnitType expert = spec.getExpertForProducing(goodsType);</span>
+        
+        // Require there be a better unit to do this work, and that it
+        // would actually improve production.
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        final UnitType better = (expert != null) ? expert</span>
+<span class="nc" id="L320">            : spec.getDefaultUnitType(owner);</span>
+<span class="nc bnc" id="L321" title="All 4 branches missed.">        if (unit != null &amp;&amp; better == unit.getType()) return null;</span>
+<span class="nc" id="L322">        int delta = getPotentialProduction(goodsType, better);</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">        if (unit != null) {</span>
+<span class="nc" id="L324">            delta -= getPotentialProduction(goodsType, unit.getType());</span>
+        }
+        // Do we have a chance of satisfying the inputs?
+<span class="nc" id="L327">        final ToIntFunction&lt;AbstractGoods&gt; prod = ag -&gt;</span>
+<span class="nc" id="L328">            getColony().getNetProductionOf(ag.getType());</span>
+<span class="nc" id="L329">        delta = Math.min(delta, min(productionType.getInputs(), prod));</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        if (delta &lt;= 0) return null;</span>
+
+        // Is the production actually a good idea?  Not if we are independent
+        // and have maximized liberty, or for immigration.
+<span class="nc bnc" id="L334" title="All 2 branches missed.">        if (owner.getPlayerType() == Player.PlayerType.INDEPENDENT</span>
+<span class="nc bnc" id="L335" title="All 4 branches missed.">            &amp;&amp; ((goodsType.isLibertyType() &amp;&amp; getColony().getSonsOfLiberty() &gt;= 100)</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">                || goodsType.isImmigrationType())) </span>
+<span class="nc" id="L337">            return null;</span>
+        
+<span class="nc" id="L339">        final Boolean ok = goodSuggestionCheck(better,unit, goodsType);</span>
+<span class="nc bnc" id="L340" title="All 2 branches missed.">        return (!ok) ? null</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">            : new Suggestion(this, (unit == null) ? null : unit.getType(),</span>
+                             better, goodsType, delta);
+    }
+
+
+    /**
+     * Determines whether a {@code WorkLocation} is a good suggestion
+     *
+     * @param unitType The type of {@code Unit} to check.
+     * @param unit The Unit itself.
+     * @param goodsType The {@code GoodsType} to check.
+     *
+     * @return True or false, depending on whether the suggestion is valid.
+     */
+    protected boolean goodSuggestionCheck(UnitType unitType, Unit unit, GoodsType goodsType) {
+<span class="nc" id="L356">        return goodSuggestionCheck(unitType, unit, goodsType, this);</span>
+    }
+
+    /**
+     * Determines whether a {@code WorkLocation} is a good suggestion
+     *
+     * @param unitType The type of {@code Unit} to check.
+     * @param unit The Unit itself.
+     * @param goodsType The {@code GoodsType} to check.
+     * @param workLocation The {@code WorkLocation} to check. This can
+     *     be overloaded with a default parameter of &quot;this&quot; to call
+     *     the WorkLocation instance currently in in reference.
+     * @return True or false, depending on whether the suggestion is valid.
+     */
+    protected boolean goodSuggestionCheck(UnitType unitType, Unit unit,
+                                          GoodsType goodsType,
+                                          WorkLocation workLocation) {
+<span class="nc" id="L373">        return false;</span>
+    }
+
+    /**
+     * Get a map of suggestions for better or additional units.
+     *
+     * @return A mapping of either existing units or null (denoting
+     *     adding a unit) to a {@code Suggestion}.
+     */
+    public java.util.Map&lt;Unit, Suggestion&gt; getSuggestions() {
+<span class="nc" id="L383">        java.util.Map&lt;Unit, Suggestion&gt; result = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L384" title="All 4 branches missed.">        if (!canBeWorked() || canTeach()) return result;</span>
+        
+<span class="nc" id="L386">        Occupation occ = getOccupation(null);</span>
+        GoodsType work;
+        Suggestion sug;
+        // Check if the existing non-student units can be improved.
+<span class="nc bnc" id="L390" title="All 2 branches missed.">        for (Unit u : transform(getUnits(), isNull(Unit::getTeacher))) {</span>
+<span class="nc bnc" id="L391" title="All 2 branches missed.">            if ((work = u.getWorkType()) == null) {</span>
+<span class="nc bnc" id="L392" title="All 2 branches missed.">                if (occ != null) work = occ.workType;</span>
+            }
+<span class="nc bnc" id="L394" title="All 2 branches missed.">            if ((sug = getSuggestion(u, getProductionType(), work)) != null) {</span>
+<span class="nc" id="L395">                result.put(u, sug);</span>
+            }
+<span class="nc" id="L397">        }</span>
+        // Check for a suggestion for an extra worker if there is space.
+<span class="nc bnc" id="L399" title="All 4 branches missed.">        if (occ != null &amp;&amp; (work = occ.workType) != null</span>
+<span class="nc bnc" id="L400" title="All 2 branches missed.">            &amp;&amp; !isFull()</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">            &amp;&amp; (sug = getSuggestion(null, occ.productionType, work)) != null) {</span>
+<span class="nc" id="L402">            result.put(null, sug);</span>
+        }
+<span class="nc" id="L404">        return result;</span>
+    }
+            
+    /**
+     * Get the {@code AbstractGoods} consumed by this work location.
+     *
+     * @return A stream of {@code AbstractGoods} consumed.
+     */
+    public Stream&lt;AbstractGoods&gt; getInputs() {
+<span class="fc bfc" id="L413" title="All 2 branches covered.">        return (productionType == null) ? Stream.&lt;AbstractGoods&gt;empty()</span>
+<span class="fc" id="L414">            : productionType.getInputs();</span>
+    }
+
+    /**
+     * Get the {@code AbstractGoods} produced by this work location.
+     *
+     * @return A stream of {@code AbstractGoods} produced.
+     */
+    public Stream&lt;AbstractGoods&gt; getOutputs() {
+<span class="fc bfc" id="L423" title="All 2 branches covered.">        return (productionType == null) ? Stream.&lt;AbstractGoods&gt;empty()</span>
+<span class="fc" id="L424">            : productionType.getOutputs();</span>
+    }
+
+    /**
+     * Does this work location produce a given type of goods?
+     *
+     * @param goodsType The {@code GoodsType} to check.
+     * @return True if this {@code WorkLocation} produces the
+     *     given {@code GoodsType}.
+     */
+    public boolean produces(GoodsType goodsType) {
+<span class="fc" id="L435">        return any(getOutputs(), AbstractGoods.matches(goodsType));</span>
+    }
+
+    /**
+     * Does this work location have any inputs.
+     *
+     * @return True if there are any inputs.
+     */
+    public boolean hasInputs() {
+<span class="nc" id="L444">        return any(getInputs());</span>
+    }
+
+    /**
+     * Does this work location have any outputs.
+     *
+     * @return True if there are any outputs.
+     */
+    public boolean hasOutputs() {
+<span class="nc bnc" id="L453" title="All 2 branches missed.">        return this.productionType != null</span>
+<span class="nc bnc" id="L454" title="All 2 branches missed.">            &amp;&amp; any(this.productionType.getOutputs());</span>
+    }
+
+    /**
+     * Checks if this work location can actually be worked.
+     *
+     * @return True if the work location can be worked.
+     */
+    public boolean canBeWorked() {
+<span class="pc bpc" id="L463" title="1 of 2 branches missed.">        return getNoWorkReason() == NoAddReason.NONE;</span>
+    }
+
+    /**
+     * Does this work location have teaching capability?
+     *
+     * @return True if this is a teaching location.
+     * @see Ability#TEACH
+     */
+    public boolean canTeach() {
+<span class="fc" id="L473">        return hasAbility(Ability.TEACH);</span>
+    }
+
+    /**
+     * Gets the ProductionInfo for this WorkLocation from the Colony's
+     * cache.
+     *
+     * @return The work location {@code ProductionInfo}.
+     */
+    public ProductionInfo getProductionInfo() {
+<span class="fc" id="L483">        return getColony().getProductionInfo(this);</span>
+    }
+
+    /**
+     * Gets the production at this work location.
+     *
+     * @return The work location production.
+     */
+    public List&lt;AbstractGoods&gt; getProduction() {
+<span class="fc" id="L492">        ProductionInfo info = getProductionInfo();</span>
+<span class="fc bfc" id="L493" title="All 2 branches covered.">        return (info == null) ? EMPTY_LIST : info.getProduction();</span>
+    }
+
+    /**
+     * Gets the total production of a specified goods type at this
+     * work location.
+     *
+     * @param goodsType The {@code GoodsType} to check.
+     * @return The amount of production.
+     */
+    public int getTotalProductionOf(GoodsType goodsType) {
+<span class="pc bpc" id="L504" title="1 of 2 branches missed.">        if (goodsType == null) {</span>
+<span class="nc" id="L505">            throw new RuntimeException(&quot;Null GoodsType: &quot; + this);</span>
+        }
+<span class="fc" id="L507">        return AbstractGoods.getCount(goodsType, getProduction());</span>
+    }
+
+    /**
+     * Gets the maximum production of this work location for a given
+     * goods type, assuming the current workers and input goods.
+     *
+     * @param goodsType The {@code GoodsType} to check.
+     * @return The maximum production of the goods at this work location.
+     */
+    public int getMaximumProductionOf(GoodsType goodsType) {
+<span class="fc" id="L518">        ProductionInfo info = getProductionInfo();</span>
+<span class="pc bpc" id="L519" title="1 of 2 branches missed.">        if (info == null) return 0;</span>
+<span class="fc" id="L520">        List&lt;AbstractGoods&gt; production = info.getMaximumProduction();</span>
+<span class="pc bpc" id="L521" title="1 of 2 branches missed.">        if (production != null) {</span>
+<span class="fc" id="L522">            AbstractGoods ag = find(production, AbstractGoods.matches(goodsType));</span>
+<span class="fc bfc" id="L523" title="All 2 branches covered.">            if (ag != null) return ag.getAmount();</span>
+        }
+<span class="fc" id="L525">        return getTotalProductionOf(goodsType);</span>
+    }
+
+    /**
+     * Gets the unit type that is the expert for this work location
+     * using its first output for which an expert type can be found.
+     *
+     * @return The expert {@code UnitType} or null if none found.
+     */
+    public UnitType getExpertUnitType() {
+<span class="fc" id="L535">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L536">        ProductionType pt = getBestProductionType(false, null);</span>
+<span class="pc bpc" id="L537" title="1 of 2 branches missed.">        return (pt == null) ? null</span>
+<span class="fc" id="L538">            : find(map(pt.getOutputs(),</span>
+<span class="fc" id="L539">                       ag -&gt; spec.getExpertForProducing(ag.getType())),</span>
+<span class="fc" id="L540">                   isNotNull());</span>
+    }
+
+    /**
+     * Get the potential production of a given goods type using the
+     * default unit.  This is useful for planning.
+     *
+     * @param goodsType The {@code GoodsType} to check.
+     * @return The potential production.
+     */
+    public int getGenericPotential(GoodsType goodsType) {
+<span class="fc" id="L551">        return getPotentialProduction(goodsType,</span>
+<span class="fc" id="L552">            getSpecification().getDefaultUnitType(getOwner()));</span>
+    }
+
+    /**
+     * Gets the productivity of a unit working in this work location,
+     * considering *only* the contribution of the unit, exclusive of
+     * that of the work location.
+     *
+     * Used below, only public for the test suite.
+     *
+     * @param unit The {@code Unit} to check.
+     * @param goodsType The {@code GoodsType} to check the production of.
+     * @return The maximum return from this unit.
+     */
+    public int getUnitProduction(Unit unit, GoodsType goodsType) {
+<span class="pc bpc" id="L567" title="2 of 4 branches missed.">        if (unit == null || unit.getWorkType() != goodsType) return 0;</span>
+<span class="fc" id="L568">        final UnitType unitType = unit.getType();</span>
+<span class="fc" id="L569">        final Turn turn = getGame().getTurn();</span>
+<span class="fc" id="L570">        return Math.max(0,</span>
+<span class="fc" id="L571">                        (int)applyModifiers(getBaseProduction(getProductionType(), goodsType, unitType),</span>
+                                            turn,
+<span class="fc" id="L573">                                            getProductionModifiers(goodsType, unitType)));</span>
+    }
+
+    /**
+     * Gets the production of a unit of the given type of goods.
+     *
+     * @param unit The unit to do the work.
+     * @param goodsType The type of goods to get the production of.
+     * @return The production of the given type of goods.
+     */
+    public int getProductionOf(Unit unit, GoodsType goodsType) {
+<span class="pc bpc" id="L584" title="1 of 2 branches missed.">        if (unit == null) throw new RuntimeException(&quot;Null unit: &quot; + this);</span>
+<span class="fc bfc" id="L585" title="All 2 branches covered.">        return (!produces(goodsType)) ? 0</span>
+<span class="fc" id="L586">            : Math.max(0, getPotentialProduction(goodsType, unit.getType()));</span>
+    }
+
+    /**
+     * Get the potential production of a given goods type at this
+     * location.  An optional unit type to do the production may be
+     * specified, however if null the unattended production will be
+     * calculated.
+     *
+     * Usually if a unit type is specified and a unit can not be added
+     * to the work location, zero production is returned.  However,
+     * this routine is intended to be used for planning purposes, so
+     * some exceptions are allowed --- the calculation proceeds:
+     *
+     *   - for unclaimed tiles
+     *   - when the location is currently full of units
+     *
+     * which are conditions that an AI might plausibly be able and
+     * willing to change (a case could be made for including the
+     * OCCUPIED_BY_ENEMY condition).
+     *
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType The optional {@code UnitType} to do the work.
+     * @return The potential production with the given goods type and
+     *     unit type.
+     */
+    public int getPotentialProduction(GoodsType goodsType,
+                                      UnitType unitType) {
+<span class="fc bfc" id="L614" title="All 2 branches covered.">        if (!canProduce(goodsType, unitType)) return 0;</span>
+
+<span class="fc bfc" id="L616" title="All 2 branches covered.">        if (unitType != null) {</span>
+<span class="pc bpc" id="L617" title="1 of 3 branches missed.">            switch (getNoWorkReason()) {</span>
+            case NONE: case ALREADY_PRESENT: case CLAIM_REQUIRED:
+<span class="fc" id="L619">                break;</span>
+            case CAPACITY_EXCEEDED:
+<span class="nc bnc" id="L621" title="All 2 branches missed.">                if (getUnitCapacity() &gt; 0) break; // Could work after reorg!</span>
+                // Fall through
+            case WRONG_TYPE: case OWNED_BY_ENEMY: case ANOTHER_COLONY:
+            case COLONY_CENTER: case MISSING_ABILITY: case MISSING_SKILL:
+            case MINIMUM_SKILL: case MAXIMUM_SKILL:
+            case OCCUPIED_BY_ENEMY: // Arguable!
+            default:
+                // Non-transient or inapplicable conditions.  Production
+                // is impossible.
+<span class="fc" id="L630">                return 0;</span>
+            }
+        }
+
+<span class="fc" id="L634">        int amount = getBaseProduction(null, goodsType, unitType);</span>
+<span class="fc" id="L635">        amount = (int)applyModifiers(amount, getGame().getTurn(),</span>
+<span class="fc" id="L636">                                     getProductionModifiers(goodsType, unitType));</span>
+<span class="fc bfc" id="L637" title="All 2 branches covered.">        return (amount &lt; 0) ? 0 : amount;</span>
+    }
+
+    /**
+     * Helper to get the production deficit for a type of goods.
+     *
+     * @param goodsType The {@code GoodsType} to check.
+     * @return The production deficit as {@code AbstractGoods}, or null
+     *     if not in deficit.
+     */
+    public AbstractGoods getProductionDeficit(GoodsType goodsType) {
+<span class="nc" id="L648">        ProductionInfo pi = getProductionInfo();</span>
+<span class="nc bnc" id="L649" title="All 2 branches missed.">        return (pi == null) ? null</span>
+<span class="nc" id="L650">            : find(pi.getProductionDeficit(), AbstractGoods.matches(goodsType));</span>
+    }
+ 
+   
+    // Interface Location
+    // Inherits:
+    //   FreeColObject.getId
+    //   UnitLocation.getLocationLabel
+    //   UnitLocation.contains
+    //   UnitLocation.canAdd
+    //   UnitLocation.getUnitCount
+    //   UnitLocation.getGoodsContainer
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getLocationLabelFor(Player player) {
+<span class="nc bnc" id="L668" title="All 2 branches missed.">        return (getOwner() == player) ? getLocationLabel()</span>
+<span class="nc" id="L669">            : getColony().getLocationLabelFor(player);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final Tile getTile() {
+<span class="fc" id="L677">        return getSettlement().getTile();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean add(final Locatable locatable) {
+<span class="fc" id="L685">        NoAddReason reason = getNoAddReason(locatable);</span>
+<span class="pc bpc" id="L686" title="2 of 3 branches missed.">        switch (reason) {</span>
+        case NONE:
+<span class="fc" id="L688">            break;</span>
+        case ALREADY_PRESENT:
+<span class="nc" id="L690">            return true;</span>
+        default:
+<span class="nc" id="L692">            throw new IllegalStateException(&quot;Can not add &quot; + locatable</span>
+                + &quot; to &quot; + this + &quot; because &quot; + reason);
+        }
+<span class="fc" id="L695">        Unit unit = (Unit)locatable;</span>
+<span class="pc bpc" id="L696" title="1 of 2 branches missed.">        if (!super.add(unit)) return false;</span>
+
+<span class="fc" id="L698">        unit.setState(Unit.UnitState.IN_COLONY);</span>
+<span class="fc" id="L699">        unit.setMovesLeft(0);</span>
+
+        // Choose a sensible work type, which should update production type.
+<span class="fc" id="L702">        setWorkFor(unit);</span>
+
+<span class="fc" id="L704">        getColony().invalidateCache();</span>
+<span class="fc" id="L705">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean remove(final Locatable locatable) {
+<span class="pc bpc" id="L713" title="1 of 2 branches missed.">        if (!(locatable instanceof Unit)) {</span>
+<span class="nc" id="L714">            throw new IllegalStateException(&quot;Not a unit: &quot; + locatable);</span>
+        }
+<span class="fc" id="L716">        Unit unit = (Unit)locatable;</span>
+<span class="pc bpc" id="L717" title="1 of 2 branches missed.">        if (!contains(unit)) return true;</span>
+<span class="pc bpc" id="L718" title="1 of 2 branches missed.">        if (!super.remove(unit)) return false;</span>
+
+<span class="fc" id="L720">        unit.setState(Unit.UnitState.ACTIVE);</span>
+<span class="fc" id="L721">        unit.setMovesLeft(0);</span>
+
+        // Switch to unattended production if possible.
+<span class="fc bfc" id="L724" title="All 2 branches covered.">        if (isEmpty()) updateProductionType();</span>
+
+<span class="fc" id="L726">        getColony().invalidateCache();</span>
+<span class="fc" id="L727">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final Settlement getSettlement() {
+<span class="fc" id="L735">        return this.colony;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final Colony getColony() {
+<span class="fc" id="L743">        return this.colony;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final int getRank() {
+<span class="nc" id="L751">        return Location.rankOf(getTile());</span>
+    }
+
+    
+    // Interface UnitLocation
+    // Inherits:
+    //   UnitLocation.getSpaceTaken
+    //   UnitLocation.moveToFront
+    //   UnitLocation.clearUnitList
+    //   UnitLocation.getUnitCapacity
+    //   UnitLocation.equipForRole
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public NoAddReason getNoAddReason(Locatable locatable) {
+<span class="pc bpc" id="L768" title="1 of 4 branches missed.">        if (locatable instanceof Unit &amp;&amp; ((Unit) locatable).isDamaged()) {</span>
+<span class="fc" id="L769">            return NoAddReason.WORKER_DAMAGED;</span>
+        }
+        
+<span class="pc bpc" id="L772" title="2 of 4 branches missed.">        return (locatable instanceof Unit &amp;&amp; ((Unit)locatable).isPerson())</span>
+<span class="fc" id="L773">            ? super.getNoAddReason(locatable)</span>
+<span class="nc" id="L774">            : NoAddReason.WRONG_TYPE;</span>
+    }
+
+
+    // Abstract and overrideable routines to be implemented by
+    // WorkLocation subclasses.
+
+    /**
+     * Get a description of the work location, with any expected extra
+     * detail.
+     *
+     * @return A label {@code StringTemplate} for this work location.
+     */
+    public abstract StringTemplate getLabel();
+
+    /**
+     * Is this work location available?
+     *
+     * @return True if the work location is either current or can be claimed.
+     */
+    public abstract boolean isAvailable();
+
+    /**
+     * Is this a current work location of this colony?
+     *
+     * @return True if the work location is current.
+     */
+    public abstract boolean isCurrent();
+
+    /**
+     * Checks if this work location is available to the colony to be
+     * worked.
+     *
+     * @return The reason why/not the work location can be worked.
+     */
+    public abstract NoAddReason getNoWorkReason();
+
+    /**
+     * Get an associated tile, if any.
+     *
+     * @return The underlying {@code Tile} which is worked, if any.
+     */
+    public abstract Tile getWorkTile();
+    
+    /**
+     * Get the &quot;level&quot; of this work location.
+     *
+     * Note: only meaningful for buildings at present.
+     *
+     * @return The work location level.
+     */
+    public abstract int getLevel();
+        
+    /**
+     * Can this work location can produce goods without workers?
+     *
+     * @return True if this work location can produce goods without
+     *     workers.
+     */
+    public abstract boolean canAutoProduce();
+
+    /**
+     * Can this work location produce a given goods type with
+     * an optional unit.
+     *
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType An optional {@code UnitType}, if null the
+     *     unattended production is considered.
+     * @return True if this location can produce the goods.
+     */
+    public abstract boolean canProduce(GoodsType goodsType,
+                                       UnitType unitType);
+
+    /**
+     * Gets the base production of a given goods type optionally using
+     * a unit of a given type in this work location.  That is, the
+     * production exclusive of any modifiers.  If no unit type is
+     * specified, the unattended production is calculated.
+     *
+     * @param productionType An optional {@code ProductionType} to use,
+     *     if null the best available one is used.
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType An optional {@code UnitType} to produce
+     *     the goods.
+     * @return The amount of goods potentially produced.
+     */
+    public abstract int getBaseProduction(ProductionType productionType,
+                                          GoodsType goodsType,
+                                          UnitType unitType);
+
+    /**
+     * Gets the production modifiers for the given type of goods and
+     * unit type.  If no unit is specified the unattended production
+     * is calculated.
+     *
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType The optional {@code UnitType} to produce them.
+     * @return A stream of the applicable modifiers.
+     */
+    public abstract Stream&lt;Modifier&gt; getProductionModifiers(GoodsType goodsType,
+                                                            UnitType unitType);
+
+    /**
+     * Get the production types available for this work location.
+     *
+     * @param unattended If true, get unattended production types.
+     * @return A list of suitable {@code ProductionType}s.
+     */
+    public abstract List&lt;ProductionType&gt; getAvailableProductionTypes(boolean unattended);
+
+    /**
+     * Get a work location specific factor to multiply any goods-specific
+     * unit production bonuses by.
+     *
+     * @return The competence factor.
+     */
+    public abstract float getCompetenceFactor();
+
+    /**
+     * Get a work location specific factor to multiply the colony
+     * rebel bonus by.
+     *
+     * @return The rebel factor.
+     */
+    public abstract float getRebelFactor();
+      
+    /**
+     * Evaluate this work location for a given player.
+     * To be overridden by subclasses.
+     *
+     * @param player The {@code Player} to evaluate for.
+     * @return A value for the player.
+     */
+    public int evaluateFor(Player player) {
+<span class="nc" id="L908">        int result = 0;</span>
+<span class="nc bnc" id="L909" title="All 2 branches missed.">        for (Unit u : getUnitList()) {</span>
+<span class="nc" id="L910">            int v = u.evaluateFor(player);</span>
+<span class="nc bnc" id="L911" title="All 2 branches missed.">            if (v == Integer.MIN_VALUE) return Integer.MIN_VALUE;</span>
+<span class="nc" id="L912">            result += v;</span>
+<span class="nc" id="L913">        }</span>
+<span class="nc" id="L914">        return result;</span>
+    }
+
+    /**
+     * Gets a template describing whether this work location can/needs-to
+     * be claimed.  To be overridden by classes where this is meaningful.
+     *
+     * This is a default null implementation.
+     *
+     * @return A suitable template.
+     */
+    public StringTemplate getClaimTemplate() {
+<span class="nc" id="L926">        return StringTemplate.name(&quot;&quot;);</span>
+    }
+
+
+    // Interface Ownable
+
+    /**
+     * Gets the owner of this {@code Ownable}.
+     *
+     * @return The {@code Player} controlling this
+     *         {@link Ownable}.
+     */
+    @Override
+    public Player getOwner() {
+<span class="fc" id="L940">        final Colony colony = getColony(); // Defend against init-time NPE</span>
+<span class="pc bpc" id="L941" title="1 of 2 branches missed.">        return (colony == null) ? null : colony.getOwner();</span>
+    }
+
+    /**
+     * Sets the owner of this {@code Ownable}.  Do not call this
+     * method, ever.  The owner of this WorkLocation is the owner
+     * of the Colony, you must set the owner of the Colony instead.
+     *
+     * @param p The {@code Player} that should take ownership
+     *     of this {@link Ownable}.
+     * @exception UnsupportedOperationException is always thrown by
+     *     this method.
+     */
+    @Override
+    public void setOwner(Player p) {
+<span class="nc" id="L956">        throw new UnsupportedOperationException();</span>
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L967">        WorkLocation o = copyInCast(other, WorkLocation.class);</span>
+<span class="nc bnc" id="L968" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L969">        this.colony = getGame().updateRef(o.getColony());</span>
+<span class="nc" id="L970">        this.productionType = o.getProductionType();</span>
+<span class="nc" id="L971">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String COLONY_TAG = &quot;colony&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L985">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L987">        xw.writeAttribute(COLONY_TAG, this.colony);</span>
+<span class="fc" id="L988">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L995">        super.writeChildren(xw);</span>
+
+<span class="fc bfc" id="L997" title="All 2 branches covered.">        if (this.productionType != null) this.productionType.toXML(xw);</span>
+<span class="fc" id="L998">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L1005">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L1007">        this.colony = xr.findFreeColGameObject(getGame(), COLONY_TAG,</span>
+            Colony.class, (Colony)null, true);
+<span class="fc" id="L1009">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L1016">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L1017">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L1019" title="All 2 branches covered.">        if (ProductionType.TAG.equals(tag)) {</span>
+<span class="fc" id="L1020">            this.productionType = new ProductionType(xr, spec);</span>
+
+        } else {
+<span class="fc" id="L1023">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L1025">    }</span>
+
+    // getXMLTagName left to subclasses
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

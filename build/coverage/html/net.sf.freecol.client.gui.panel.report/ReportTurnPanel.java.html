@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportTurnPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel.report</a> &gt; <span class="el_source">ReportTurnPanel.java</span></div><h1>ReportTurnPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel.report;
+
+import java.awt.Font;
+import java.awt.Image;
+import java.awt.event.ActionEvent;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Hashtable;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JTextPane;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.FontLibrary;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Building;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Europe;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.FreeColObject;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Market;
+import net.sf.freecol.common.model.ModelMessage;
+import net.sf.freecol.common.model.Nameable;
+import net.sf.freecol.common.model.Named;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.option.BooleanOption;
+
+
+/**
+ * This panel displays the Turn Report.
+ */
+public final class ReportTurnPanel extends ReportPanel {
+
+<span class="nc" id="L70">    private static final Logger logger = Logger.getLogger(ReportTurnPanel.class.getName());</span>
+
+    /** Map message identifiers to label. */
+<span class="nc" id="L73">    private final Hashtable&lt;String, List&lt;JComponent&gt;&gt; labelsByMessage</span>
+        = new Hashtable&lt;&gt;();
+    /** Map message identifiers to text pane. */
+<span class="nc" id="L76">    private final Hashtable&lt;String, List&lt;JComponent&gt;&gt; textPanesByMessage</span>
+        = new Hashtable&lt;&gt;();
+    /** The messages to display. */
+<span class="nc" id="L79">    private final List&lt;ModelMessage&gt; messages = new ArrayList&lt;&gt;();</span>
+
+
+    /**
+     * Creates the turn report.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param messages The {@code ModelMessages} to display in the report.
+     */
+    public ReportTurnPanel(FreeColClient freeColClient,
+                           List&lt;ModelMessage&gt; messages) {
+<span class="nc" id="L90">        super(freeColClient, &quot;reportTurnAction&quot;);</span>
+
+        // Display Panel
+<span class="nc" id="L93">        reportPanel.setLayout(new MigLayout(&quot;wrap 4&quot;, &quot;[center][550!]:push[][]&quot;, &quot;&quot;));</span>
+<span class="nc" id="L94">        setMessages(messages);</span>
+<span class="nc" id="L95">    }</span>
+
+
+    /**
+     * Set the messages being displayed by this report.
+     *
+     * @param messages The {@code ModelMessages} to display in the report.
+     */
+    public void setMessages(List&lt;ModelMessage&gt; messages) {
+<span class="nc" id="L104">        reportPanel.removeAll();</span>
+<span class="nc" id="L105">        this.messages.clear();</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (messages != null) this.messages.addAll(messages);</span>
+<span class="nc" id="L107">        displayMessages();</span>
+<span class="nc" id="L108">    }</span>
+        
+    private void displayMessages() {
+<span class="nc" id="L111">        final Game game = getFreeColClient().getGame();</span>
+<span class="nc" id="L112">        final ClientOptions co = getClientOptions();</span>
+<span class="nc" id="L113">        final int groupBy = co.getInteger(ClientOptions.MESSAGES_GROUP_BY);</span>
+
+        // Sort if requested
+<span class="nc" id="L116">        final Comparator&lt;ModelMessage&gt; comparator</span>
+<span class="nc" id="L117">            = co.getModelMessageComparator(game);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (comparator != null) this.messages.sort(comparator);</span>
+
+<span class="nc" id="L120">        Object source = this;</span>
+<span class="nc" id="L121">        ModelMessage.MessageType type = null;</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        for (ModelMessage message : this.messages) {</span>
+            // Add headline if the grouping changed
+<span class="nc bnc" id="L124" title="All 3 branches missed.">            switch (groupBy) {</span>
+            case ClientOptions.MESSAGES_GROUP_BY_SOURCE:
+<span class="nc" id="L126">                FreeColGameObject messageSource = game.getMessageSource(message);</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                if (messageSource != source) {</span>
+<span class="nc" id="L128">                    source = messageSource;</span>
+<span class="nc" id="L129">                    reportPanel.add(getHeadline(messageSource), &quot;newline 20, skip&quot;);</span>
+                }
+                break;
+            case ClientOptions.MESSAGES_GROUP_BY_TYPE:
+<span class="nc bnc" id="L133" title="All 2 branches missed.">                if (message.getMessageType() != type) {</span>
+<span class="nc" id="L134">                    type = message.getMessageType();</span>
+<span class="nc" id="L135">                    JLabel headline = Utility.localizedHeaderLabel(type,</span>
+                        Utility.FONTSPEC_SUBTITLE);
+<span class="nc" id="L137">                    reportPanel.add(headline, &quot;newline 20, skip, span&quot;);</span>
+<span class="nc" id="L138">                }</span>
+                break;
+            default:
+                break;
+            }
+            
+<span class="nc" id="L144">            JComponent component = new JLabel();</span>
+<span class="nc" id="L145">            FreeColObject messageDisplay = game.getMessageDisplay(message);</span>
+<span class="nc" id="L146">            final ImageLibrary lib = getImageLibrary();</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">            if (messageDisplay != null) {</span>
+<span class="nc" id="L148">                Image image = lib.getObjectImage(messageDisplay);</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">                ImageIcon icon = (image == null) ? null : new ImageIcon(image);</span>
+<span class="nc bnc" id="L150" title="All 4 branches missed.">                if (messageDisplay instanceof Colony</span>
+                    || messageDisplay instanceof Europe) {
+<span class="nc" id="L152">                    JButton button = Utility.getLinkButton(null, icon,</span>
+<span class="nc" id="L153">                        messageDisplay.getId());</span>
+<span class="nc" id="L154">                    button.addActionListener(this);</span>
+<span class="nc" id="L155">                    component = button;</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">                } else if (messageDisplay instanceof Unit) {</span>
+<span class="nc" id="L157">                    JButton button = Utility.getLinkButton(null, icon,</span>
+<span class="nc" id="L158">                        ((Unit)messageDisplay).up().getId());</span>
+<span class="nc" id="L159">                    button.addActionListener(this);</span>
+<span class="nc" id="L160">                    component = button;</span>
+<span class="nc" id="L161">                } else { // includes Player</span>
+<span class="nc" id="L162">                    component = new JLabel(icon);</span>
+                }
+            }
+
+<span class="nc" id="L166">            reportPanel.add(component, &quot;newline&quot;);</span>
+
+<span class="nc" id="L168">            final JTextPane textPane = Utility.getDefaultTextPane();</span>
+            try {
+<span class="nc" id="L170">                insertMessage(textPane.getStyledDocument(), message,</span>
+<span class="nc" id="L171">                              getMyPlayer());</span>
+<span class="nc" id="L172">            } catch (BadLocationException ble) {</span>
+<span class="nc" id="L173">                logger.log(Level.WARNING, &quot;message insert fail&quot;, ble);</span>
+<span class="nc" id="L174">            }</span>
+<span class="nc" id="L175">            reportPanel.add(textPane);</span>
+
+<span class="nc" id="L177">            boolean ignore = false;</span>
+<span class="nc" id="L178">            final JComponent label = component;</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">            switch (message.getMessageType()) {</span>
+            case WAREHOUSE_CAPACITY:
+<span class="nc" id="L181">                JButton ignoreButton = new JButton(&quot;x&quot;);</span>
+<span class="nc" id="L182">                Utility.localizeToolTip(ignoreButton, </span>
+<span class="nc" id="L183">                    StringTemplate.copy(&quot;report.turn.ignore&quot;, message));</span>
+<span class="nc" id="L184">                final ModelMessage m = message;</span>
+<span class="nc" id="L185">                ignoreButton.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L186">                        boolean flag = label.isEnabled();</span>
+<span class="nc" id="L187">                        igc().ignoreMessage(m, flag);</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">                        textPane.setEnabled(!flag);</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">                        label.setEnabled(!flag);</span>
+<span class="nc" id="L190">                    });</span>
+<span class="nc" id="L191">                reportPanel.add(ignoreButton);</span>
+<span class="nc" id="L192">                ignore = true;</span>
+<span class="nc" id="L193">                break;</span>
+            default:
+                break;
+            }
+            
+            // Fill the message maps so that we can iterate through
+            // them by message identifier in the ActionListeners.
+<span class="nc" id="L200">            String id = message.getId();</span>
+            List&lt;JComponent&gt; components;
+<span class="nc bnc" id="L202" title="All 2 branches missed.">            if ((components = textPanesByMessage.get(id)) == null)</span>
+<span class="nc" id="L203">                textPanesByMessage.put(id,</span>
+                    components = new ArrayList&lt;JComponent&gt;());
+<span class="nc" id="L205">            components.add(textPane);</span>
+
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            if ((components = labelsByMessage.get(id)) == null)</span>
+<span class="nc" id="L208">                labelsByMessage.put(id,</span>
+                    components = new ArrayList&lt;JComponent&gt;());
+<span class="nc" id="L210">            components.add(label);</span>
+            
+            // Add filter button if option present.
+<span class="nc" id="L213">            final String msgKey = message.getOptionName();</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">            if (co.hasOption(msgKey, BooleanOption.class)) {</span>
+<span class="nc" id="L215">                JButton filterButton = new JButton(&quot;X&quot;);</span>
+<span class="nc" id="L216">                Utility.localizeToolTip(filterButton, StringTemplate</span>
+<span class="nc" id="L217">                    .template(&quot;report.turn.filter&quot;)</span>
+<span class="nc" id="L218">                    .addNamed(&quot;%type%&quot;, message.getMessageType()));</span>
+<span class="nc" id="L219">                final ModelMessage mess = message;</span>
+<span class="nc" id="L220">                filterButton.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L221">                        boolean flag = co.getBoolean(msgKey);</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">                        co.setBoolean(msgKey, !flag);</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">                        for (ModelMessage m : messages) {</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">                            if (m.getMessageType() != mess.getMessageType()) continue;</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">                            for (JComponent jc : textPanesByMessage.get(m.getId())) {</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">                                jc.setEnabled(!flag);</span>
+<span class="nc" id="L227">                            }</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">                            for (JComponent jc : labelsByMessage.get(m.getId())) {</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">                                jc.setEnabled(!flag);</span>
+<span class="nc" id="L230">                            }</span>
+<span class="nc" id="L231">                        }</span>
+<span class="nc" id="L232">                    });</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">                if (ignore) {</span>
+<span class="nc" id="L234">                    reportPanel.add(filterButton);</span>
+                } else {
+<span class="nc" id="L236">                    reportPanel.add(filterButton, &quot;skip&quot;);</span>
+                }
+            }
+<span class="nc" id="L239">        }</span>
+<span class="nc" id="L240">    }</span>
+
+    private JComponent getHeadline(FreeColGameObject source) {
+        String text;
+<span class="nc" id="L244">        String commandId = null;</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        if (source == null) {</span>
+<span class="nc" id="L246">            text = &quot;&quot;;</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        } else if (source instanceof Player) {</span>
+<span class="nc" id="L248">            Player player = (Player) source;</span>
+<span class="nc" id="L249">            StringTemplate template = StringTemplate</span>
+<span class="nc" id="L250">                .template(&quot;report.turn.playerNation&quot;)</span>
+<span class="nc" id="L251">                .addName(&quot;%player%&quot;, player.getName())</span>
+<span class="nc" id="L252">                .addStringTemplate(&quot;%nation%&quot;, player.getNationLabel());</span>
+<span class="nc" id="L253">            text = Messages.message(template);</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">        } else if (source instanceof Europe) {</span>
+<span class="nc" id="L255">            Europe europe = (Europe) source;</span>
+<span class="nc" id="L256">            text = Messages.getName(europe);</span>
+<span class="nc" id="L257">            commandId = europe.getId();</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        } else if (source instanceof Market) {</span>
+<span class="nc" id="L259">            Market market = (Market) source;</span>
+<span class="nc" id="L260">            StringTemplate template = market.getOwner().getMarketName();</span>
+<span class="nc" id="L261">            text = Messages.message(template);</span>
+<span class="nc" id="L262">            Europe europe = getMyPlayer().getEurope();</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">            commandId = (europe != null) ? europe.getId() : null;</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">        } else if (source instanceof Colony) {</span>
+<span class="nc" id="L265">            final Colony colony = (Colony) source;</span>
+<span class="nc" id="L266">            text = colony.getName();</span>
+<span class="nc" id="L267">            commandId = colony.getId();</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">        } else if (source instanceof Building) {</span>
+<span class="nc" id="L269">            final Colony colony = ((Building)source).getColony();</span>
+<span class="nc" id="L270">            text = colony.getName();</span>
+<span class="nc" id="L271">            commandId = colony.getId();</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        } else if (source instanceof Unit) {</span>
+<span class="nc" id="L273">            final Unit unit = (Unit) source;</span>
+<span class="nc" id="L274">            text = unit.getDescription(Unit.UnitLabelType.NATIONAL);</span>
+<span class="nc" id="L275">            commandId = unit.getLocation().getId();</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        } else if (source instanceof Tile) {</span>
+<span class="nc" id="L277">            final Tile tile = (Tile) source;</span>
+<span class="nc" id="L278">            StringTemplate template = tile.getLocationLabelFor(getMyPlayer());</span>
+<span class="nc" id="L279">            text = Messages.message(template);</span>
+<span class="nc" id="L280">            commandId = tile.getId();</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">        } else if (source instanceof Named) {</span>
+<span class="nc" id="L282">            text = Messages.message(((Named)source).getNameKey());</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">        } else if (source instanceof Nameable) {</span>
+<span class="nc" id="L284">            text = ((Nameable)source).getName();</span>
+        } else {
+<span class="nc" id="L286">            text = source.toString();</span>
+        }
+
+<span class="nc" id="L289">        Font font = FontLibrary.getScaledFont(Utility.FONTSPEC_SUBTITLE, text);</span>
+        JComponent headline;
+<span class="nc bnc" id="L291" title="All 2 branches missed.">        if (commandId != null) {</span>
+<span class="nc" id="L292">            JButton button = new JButton(text);</span>
+<span class="nc" id="L293">            button.addActionListener(this);</span>
+<span class="nc" id="L294">            button.setActionCommand(commandId);</span>
+<span class="nc" id="L295">            headline = button;</span>
+<span class="nc" id="L296">            headline.setForeground(Utility.getLinkColor());</span>
+<span class="nc" id="L297">        } else {</span>
+<span class="nc" id="L298">            headline = new JLabel(text);</span>
+        }
+<span class="nc" id="L300">        headline.setFont(font);</span>
+<span class="nc" id="L301">        headline.setOpaque(false);</span>
+<span class="nc" id="L302">        headline.setBorder(Utility.blankBorder(5, 0, 0, 0));</span>
+<span class="nc" id="L303">        return headline;</span>
+    }
+
+    private void insertMessage(StyledDocument document, ModelMessage message,
+                               Player player) throws BadLocationException {
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        for (Object o : message.splitLinks(player)) {</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">            if (o instanceof String) {</span>
+<span class="nc" id="L310">                document.insertString(document.getLength(), (String)o,</span>
+<span class="nc" id="L311">                                      document.getStyle(&quot;regular&quot;));</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">            } else if (o instanceof JButton) {</span>
+<span class="nc" id="L313">                JButton b = (JButton)o;</span>
+<span class="nc" id="L314">                b.addActionListener(this);</span>
+<span class="nc" id="L315">                StyleConstants.setComponent(document.getStyle(&quot;button&quot;), b);</span>
+<span class="nc" id="L316">                document.insertString(document.getLength(), &quot; &quot;,</span>
+<span class="nc" id="L317">                                      document.getStyle(&quot;button&quot;));</span>
+            }
+<span class="nc" id="L319">        }</span>
+<span class="nc" id="L320">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

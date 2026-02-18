@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DiplomacySession.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.model</a> &gt; <span class="el_source">DiplomacySession.java</span></div><h1>DiplomacySession.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.model;
+
+import java.util.function.Predicate;
+import java.util.logging.Logger;
+
+import net.sf.freecol.common.model.DiplomaticTrade;
+import net.sf.freecol.common.model.DiplomaticTrade.TradeStatus;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.Ownable;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.networking.ChangeSet;
+import net.sf.freecol.common.networking.ChangeSet.See;
+import net.sf.freecol.common.networking.CloseMessage;
+import net.sf.freecol.common.networking.DiplomacyMessage;
+
+
+/**
+ * A type of session to handle diplomacy.
+ *
+ * Diplomacy may involve human players, so it *must* be a TimedSession.
+ */
+public class DiplomacySession extends TimedSession {
+
+<span class="fc" id="L45">    private static final Logger logger = Logger.getLogger(DiplomacySession.class.getName());</span>
+
+    /** The agreement under consideration. */
+    private DiplomaticTrade agreement;
+
+    /** The initiating unit. */
+    private final Unit unit;
+
+    /** The other player's settlement. */
+    private final Settlement settlement;
+
+    /** The other player's unit (only non-null in first contact cases). */
+    private final Unit otherUnit;
+
+
+    /**
+     * Start a new diplomacy session with our unit and another player
+     * settlement.
+     *
+     * @param unit The {@code Unit} that is initiating diplomacy.
+     * @param settlement The {@code Settlement} that is contacted.
+     * @param timeout The amount of time to wait for a response.
+     */
+    public DiplomacySession(Unit unit, Settlement settlement, long timeout) {
+<span class="fc" id="L69">        super(makeDiplomacySessionKey(unit, settlement), timeout);</span>
+
+<span class="fc" id="L71">        this.agreement = null;</span>
+<span class="fc" id="L72">        this.unit = unit;</span>
+<span class="fc" id="L73">        this.settlement = settlement;</span>
+<span class="fc" id="L74">        this.otherUnit = null;</span>
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * Start a new diplomacy session with our unit and another player unit.
+     *
+     * @param unit The {@code Unit} that is initiating diplomacy.
+     * @param otherUnit The other {@code Unit} that is contacted.
+     * @param timeout The amount of time to wait for a response.
+     */
+    public DiplomacySession(Unit unit, Unit otherUnit, long timeout) {
+<span class="nc" id="L85">        super(makeDiplomacySessionKey(unit, otherUnit), timeout);</span>
+
+<span class="nc" id="L87">        this.agreement = null;</span>
+<span class="nc" id="L88">        this.unit = unit;</span>
+<span class="nc" id="L89">        this.settlement = null;</span>
+<span class="nc" id="L90">        this.otherUnit = otherUnit;</span>
+<span class="nc" id="L91">    }</span>
+
+    /**
+     * Make a diplomacy session key for the given ownables.
+     *
+     * @param o1 The first {@code Ownable}.
+     * @param o2 The second {@code Ownable}.
+     * @return A diplomacy session key.
+     */
+    public static String makeDiplomacySessionKey(Ownable o1, Ownable o2) {
+<span class="fc" id="L101">        return makeSessionKey(DiplomacySession.class,</span>
+<span class="fc" id="L102">                              o1.getOwner(), o2.getOwner());</span>
+    }
+
+
+    /**
+     * Get the game this session is in.
+     *
+     * @return The enclosing {@code ServerGame}.
+     */
+    private ServerGame getGame() {
+<span class="nc" id="L112">        return (ServerGame)this.unit.getGame();</span>
+    }
+
+    /**
+     * Get the session agreement.
+     *
+     * @return The {@code DiplomaticTrade} under negotiation.
+     */
+    public DiplomaticTrade getAgreement() {
+<span class="nc" id="L121">        return this.agreement;</span>
+    }
+
+    /**
+     * Set the session agreement.
+     *
+     * @param agreement The new {@code DiplomaticTrade} to negotiate.
+     */
+    public void setAgreement(DiplomaticTrade agreement) {
+<span class="fc" id="L130">        this.agreement = agreement;</span>
+<span class="fc" id="L131">    }</span>
+    
+    /**
+     * Get the initiating unit.
+     *
+     * @return The {@code Unit} that started the session.
+     */
+    public Unit getUnit() {
+<span class="nc" id="L139">        return this.unit;</span>
+    }
+
+    /**
+     * Get the settlement if any.
+     *
+     * @return The {@code Settlement} that is negotiating.
+     */
+    public Settlement getSettlement() {
+<span class="nc" id="L148">        return this.settlement;</span>
+    }
+
+    /**
+     * Get the other unit if any.
+     *
+     * @return The other {@code Unit} that is negotiating.
+     */
+    public Unit getOtherUnit() {
+<span class="nc" id="L157">        return this.otherUnit;</span>
+    }
+
+    /**
+     * Get the owner of the initiating unit.
+     *
+     * @return The {@code ServerPlayer} that owns the initiating unit.
+     */
+    private ServerPlayer getOwner() {
+<span class="nc" id="L166">        return (ServerPlayer)this.unit.getOwner();</span>
+    }
+
+    /**
+     * Get the owner of the other settlement or unit.
+     *
+     * @return The {@code ServerPlayer} that owns the other settlement or unit.
+     */
+    private ServerPlayer getOtherPlayer() {
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        return (ServerPlayer)((this.settlement != null)</span>
+<span class="nc" id="L176">            ? this.settlement.getOwner()</span>
+<span class="nc" id="L177">            : this.otherUnit.getOwner());</span>
+    }
+
+    /**
+     * Utility to find the other player in this session from a given one.
+     *
+     * @param serverPlayer The {@code ServerPlayer} *not* to find.
+     * @return The other {@code ServerPlayer}.
+     */
+    public ServerPlayer getOtherPlayer(ServerPlayer serverPlayer) {
+<span class="nc" id="L187">        ServerPlayer other = getOwner();</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        return (other != serverPlayer) ? other : getOtherPlayer();</span>
+    }
+        
+    /**
+     * Utility to create a message using the current session parameters and
+     * trade agreement, given a desired destination player.
+     *
+     * @param destination The {@code Player} to send the message to.
+     * @return A new {@code DiplomacyMessage} for the destination player.
+     */
+    public DiplomacyMessage getMessage(Player destination) {
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        return (destination.owns(this.unit))</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">            ? ((this.otherUnit == null)</span>
+<span class="nc" id="L201">                ? new DiplomacyMessage(this.unit, this.settlement, this.agreement)</span>
+<span class="nc" id="L202">                : new DiplomacyMessage(this.unit, this.otherUnit, this.agreement))</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">            : ((this.otherUnit == null)</span>
+<span class="nc" id="L204">                ? new DiplomacyMessage(this.settlement, this.unit, this.agreement)</span>
+<span class="nc" id="L205">                : new DiplomacyMessage(this.otherUnit, this.unit, this.agreement));</span>
+    }
+
+    /**
+     * Was this session started by the given objects?
+     *
+     * @param fcgo1 The first {@code FreeColGameObject}.
+     * @param fcgo2 The second {@code FreeColGameObject}.
+     * @return True if the objects started this session.
+     */
+    public boolean isCompatible(FreeColGameObject fcgo1,
+                                FreeColGameObject fcgo2) {
+<span class="nc bnc" id="L217" title="All 12 branches missed.">        return (fcgo1 == (FreeColGameObject)this.unit</span>
+            &amp;&amp; (fcgo2 == (FreeColGameObject)this.settlement
+                || fcgo2 == (FreeColGameObject)this.otherUnit))
+            || (fcgo2 == (FreeColGameObject)this.unit
+                &amp;&amp; (fcgo1 == (FreeColGameObject)this.settlement
+                    || fcgo1 == (FreeColGameObject)this.otherUnit));
+    }
+    
+    /**
+     * Find any contact session already underway between the owners of
+     * the given units.
+     *
+     * @param unit The first {@code Unit}.
+     * @param other The second {@code Unit}.
+     * @return Any {@code DiplomacySession} found.
+     */
+    public static DiplomacySession findContactSession(Unit unit, Unit other) {
+<span class="nc" id="L234">        return findContactSession(unit.getOwner(), other.getOwner());</span>
+    }
+
+    /**
+     * Find any contact session already underway between the owners of a 
+     * given unit and settlement.
+     *
+     * @param unit The {@code Unit}.
+     * @param settlement The {@code Settlement}.
+     * @return Any {@code DiplomacySession} found.
+     */
+    public static DiplomacySession findContactSession(Unit unit,
+                                                      Settlement settlement) {
+<span class="nc" id="L247">        return findContactSession(unit.getOwner(), settlement.getOwner());</span>
+    }
+
+    /**
+     * Find any contact session already underway between the given players.
+     *
+     * @param p1 The first {@code Player}.
+     * @param p2 The second {@code Player}.
+     * @return Any {@code DiplomacySession} found.
+     */
+    private static DiplomacySession findContactSession(Player p1, Player p2) {
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        final Predicate&lt;Session&gt; pred = s -&gt; (s instanceof DiplomacySession)</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">            &amp;&amp; ((DiplomacySession)s).getAgreement() != null</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">            &amp;&amp; (((DiplomacySession)s).getAgreement().getContext()</span>
+                == DiplomaticTrade.TradeContext.CONTACT)
+<span class="nc bnc" id="L262" title="All 2 branches missed.">            &amp;&amp; ((((DiplomacySession)s).getOwner() == p1</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">                    &amp;&amp; ((DiplomacySession)s).getOtherPlayer() == p2)</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">                || (((DiplomacySession)s).getOwner() == p2</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">                    &amp;&amp; ((DiplomacySession)s).getOtherPlayer() == p1));</span>
+<span class="nc" id="L266">        return (DiplomacySession)findSession(pred);</span>
+    }
+
+    /**
+     * Primitive level to finishing the session with the given result.
+     *
+     * @param result The result of the session.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    private void completeInternal(boolean result, ChangeSet cs) {
+<span class="nc" id="L276">        logger.info(&quot;Completing diplomacy session: &quot; + this);</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">        if (this.agreement != null) { // Agreement is null in first contact</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            if (result) {</span>
+<span class="nc" id="L279">                result = getGame().csAcceptTrade(this.agreement, this.unit,</span>
+                                                 this.settlement, cs);
+            }
+<span class="nc bnc" id="L282" title="All 2 branches missed.">            this.agreement.setStatus((result) ? TradeStatus.ACCEPT_TRADE</span>
+<span class="nc" id="L283">                                              : TradeStatus.REJECT_TRADE);</span>
+<span class="nc" id="L284">            Player sp = this.agreement.getSender();</span>
+<span class="nc" id="L285">            cs.add(See.only(sp), getMessage(sp));</span>
+<span class="nc" id="L286">            Player rp = this.agreement.getRecipient();</span>
+<span class="nc" id="L287">            cs.add(See.only(rp), getMessage(rp));</span>
+        }
+<span class="nc" id="L289">        this.unit.setMovesLeft(0);</span>
+<span class="nc" id="L290">        cs.add(See.only(getOwner()), this.unit);</span>
+<span class="nc" id="L291">    }</span>
+
+    /**
+     * Complete first contact session.
+     *
+     * Just do nothing but superclass action as we do not want the
+     * offer accept/reject messages, and the unit already has zero moves.
+     *
+     * @param cs A {@code ChangeSet} to update.
+     * @return Whether the session was already complete.
+     */
+    public boolean completeFirstContact(ChangeSet cs) {
+<span class="nc" id="L303">        return super.complete(cs);</span>
+    }
+
+    /**
+     * Explicit completion of the session with a given result.
+     *
+     * Called from the controller when the player returns a definite response.
+     *
+     * @param result Whether to accept or reject the demand.
+     * @param cs A {@code ChangeSet} to update.
+     * @return Whether the session was already complete.
+     */
+    public boolean complete(boolean result, ChangeSet cs) {
+<span class="nc" id="L316">        boolean ret = super.complete(cs);</span>
+<span class="nc bnc" id="L317" title="All 2 branches missed.">        if (!ret) {</span>
+<span class="nc" id="L318">            completeInternal(result, cs);</span>
+        }
+<span class="nc" id="L320">        return ret;</span>
+    }
+
+
+    // Implement TimedSession
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected boolean complete(boolean result) {
+<span class="nc" id="L331">        final String dialogName = &quot;net.sf.freecol.client.gui.dialog.NegotiationDialog&quot;;</span>
+<span class="nc" id="L332">        ChangeSet cs = new ChangeSet();</span>
+<span class="nc" id="L333">        boolean ret = complete(false, cs);</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">        if (!ret) { // Withdraw offer</span>
+<span class="nc" id="L335">            cs.add(See.only(this.agreement.getSender()),</span>
+                   new CloseMessage(dialogName));
+<span class="nc" id="L337">            cs.add(See.only(this.agreement.getRecipient()),</span>
+                   new CloseMessage(dialogName));
+        }
+<span class="nc" id="L340">        getGame().sendToAll(cs);</span>
+<span class="nc" id="L341">        return ret;</span>
+    }
+
+
+    // Override Session
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean complete(ChangeSet cs) {
+<span class="nc" id="L352">        return complete(false, cs);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

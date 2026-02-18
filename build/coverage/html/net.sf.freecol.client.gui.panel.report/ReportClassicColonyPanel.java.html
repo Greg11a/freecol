@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportClassicColonyPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel.report</a> &gt; <span class="el_source">ReportClassicColonyPanel.java</span></div><h1>ReportClassicColonyPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel.report;
+
+import static net.sf.freecol.common.util.CollectionUtils.sort;
+import static net.sf.freecol.common.util.CollectionUtils.sum;
+
+import java.awt.GridLayout;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JSeparator;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.label.ProductionLabel;
+import net.sf.freecol.client.gui.label.UnitLabel;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.BuildableType;
+import net.sf.freecol.common.model.Building;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.FreeColObject;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Unit;
+
+
+/**
+ * This panel displays the classic version of the colony report.
+ */
+public final class ReportClassicColonyPanel extends ReportPanel {
+
+    /**
+     * Compare buildings by their underlying type index (which reduces
+     * to the order in the spec), then the FCO order.
+     */
+<span class="nc" id="L62">    private static final Comparator&lt;Building&gt; buildingTypeComparator</span>
+<span class="nc" id="L63">        = Comparator.&lt;Building&gt;comparingInt(b -&gt; b.getType().getIndex())</span>
+<span class="nc" id="L64">            .thenComparing(FreeColObject.fcoComparator);</span>
+
+    private static final int COLONISTS_PER_ROW = 20;
+    private static final int UNITS_PER_ROW = 14;
+    private static final int GOODS_PER_ROW = 10;
+    private static final int BUILDINGS_PER_ROW = 8;
+
+<span class="nc" id="L71">    private final List&lt;Colony&gt; colonies = new ArrayList&lt;&gt;();</span>
+
+
+    /**
+     * Creates a colony report.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public ReportClassicColonyPanel(FreeColClient freeColClient) {
+<span class="nc" id="L80">        super(freeColClient, &quot;reportColonyAction&quot;);</span>
+        
+<span class="nc" id="L82">        this.colonies.addAll(freeColClient.getMyPlayer().getColonyList());</span>
+<span class="nc" id="L83">        update();</span>
+<span class="nc" id="L84">    }</span>
+
+    private void update() {
+<span class="nc" id="L87">        final Specification spec = getSpecification();</span>
+<span class="nc" id="L88">        final ImageLibrary lib = getImageLibrary();</span>
+        
+<span class="nc" id="L90">        reportPanel.removeAll();</span>
+<span class="nc" id="L91">        reportPanel.setLayout(new MigLayout(&quot;fill&quot;)); // Set the layout</span>
+        
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        for (Colony colony : this.colonies) {</span>
+            // Name
+<span class="nc" id="L95">            JButton button = Utility.getLinkButton(colony.getName(), null,</span>
+<span class="nc" id="L96">                colony.getId());</span>
+<span class="nc" id="L97">            button.addActionListener(this);</span>
+<span class="nc" id="L98">            reportPanel.add(button, &quot;newline, split 2&quot;);</span>
+<span class="nc" id="L99">            reportPanel.add(new JSeparator(JSeparator.HORIZONTAL), &quot;growx&quot;);</span>
+            
+            // Currently building
+<span class="nc" id="L102">            BuildableType currentType = colony.getCurrentlyBuilding();</span>
+<span class="nc" id="L103">            JLabel buildableLabel = null;</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">            if (currentType != null) {</span>
+<span class="nc" id="L105">                buildableLabel = new JLabel(new ImageIcon(lib</span>
+<span class="nc" id="L106">                        .getSmallBuildableTypeImage(currentType, colony.getOwner())));</span>
+<span class="nc" id="L107">                Utility.localizeToolTip(buildableLabel,</span>
+<span class="nc" id="L108">                    currentType.getCurrentlyBuildingLabel());</span>
+<span class="nc" id="L109">                buildableLabel.setIcon(buildableLabel.getDisabledIcon());</span>
+            }
+            
+            // Units
+<span class="nc" id="L113">            JPanel colonistsPanel</span>
+                = new JPanel(new GridLayout(0, COLONISTS_PER_ROW));
+<span class="nc" id="L115">            colonistsPanel.setOpaque(false);</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            for (Unit u : sort(colony.getUnits(), Unit.typeRoleComparator)) {</span>
+<span class="nc" id="L117">                colonistsPanel.add(new UnitLabel(getFreeColClient(), u,</span>
+                                                 true, true));
+<span class="nc" id="L119">            }</span>
+<span class="nc" id="L120">            JPanel unitsPanel = new JPanel(new GridLayout(0, UNITS_PER_ROW));</span>
+<span class="nc" id="L121">            unitsPanel.setOpaque(false);</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">            for (Unit u : sort(colony.getTile().getUnits(),</span>
+                               Unit.typeRoleComparator)) {
+<span class="nc" id="L124">                unitsPanel.add(new UnitLabel(getFreeColClient(), u,</span>
+                                             true, true));
+<span class="nc" id="L126">            }</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">            if (buildableLabel != null</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">                &amp;&amp; spec.getUnitTypeList().contains(currentType)) {</span>
+<span class="nc" id="L129">                unitsPanel.add(buildableLabel);</span>
+            }
+<span class="nc" id="L131">            reportPanel.add(colonistsPanel, &quot;newline, growx&quot;);</span>
+<span class="nc" id="L132">            reportPanel.add(unitsPanel, &quot;newline, growx&quot;);</span>
+            
+            // Production
+<span class="nc" id="L135">            int count = 0;</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">            for (GoodsType gt : sort(spec.getGoodsTypeList(),</span>
+                                     GoodsType.goodsTypeComparator)) {
+<span class="nc" id="L138">                int newValue = colony.getNetProductionOf(gt);</span>
+<span class="nc" id="L139">                int stockValue = colony.getGoodsCount(gt);</span>
+<span class="nc bnc" id="L140" title="All 4 branches missed.">                if (newValue != 0 || stockValue &gt; 0) {</span>
+<span class="nc" id="L141">                    int maxProduction</span>
+<span class="nc" id="L142">                        = sum(colony.getWorkLocationsForProducing(gt),</span>
+<span class="nc" id="L143">                              wl -&gt; wl.getMaximumProductionOf(gt));</span>
+<span class="nc" id="L144">                    ProductionLabel productionLabel</span>
+<span class="nc" id="L145">                        = new ProductionLabel(getFreeColClient(),</span>
+                            new AbstractGoods(gt, newValue),
+                                    maxProduction, stockValue, true);
+<span class="nc bnc" id="L148" title="All 2 branches missed.">                    if (count % GOODS_PER_ROW == 0) {</span>
+<span class="nc" id="L149">                        reportPanel.add(productionLabel,</span>
+                            &quot;newline, split &quot; + GOODS_PER_ROW);
+                    } else {
+<span class="nc" id="L152">                        reportPanel.add(productionLabel);</span>
+                    }
+<span class="nc" id="L154">                    count++;</span>
+                }
+<span class="nc" id="L156">            }</span>
+            
+            // Buildings
+<span class="nc" id="L159">            JPanel buildingsPanel</span>
+                = new JPanel(new GridLayout(0, BUILDINGS_PER_ROW));
+<span class="nc" id="L161">            buildingsPanel.setOpaque(false);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            for (Building building : sort(colony.getBuildings(),</span>
+                                          buildingTypeComparator)) {
+<span class="nc bnc" id="L164" title="All 2 branches missed.">                if (building.getType().isAutomaticBuild()) continue;</span>
+<span class="nc" id="L165">                JLabel buildingLabel = new JLabel(new ImageIcon(lib</span>
+<span class="nc" id="L166">                        .getSmallBuildingImage(building)));</span>
+<span class="nc" id="L167">                buildingLabel.setToolTipText(Messages.getName(building));</span>
+<span class="nc" id="L168">                buildingsPanel.add(buildingLabel);</span>
+<span class="nc" id="L169">            }</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">            if (buildableLabel != null</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">                &amp;&amp; spec.getBuildingTypeList().contains(currentType)) {</span>
+<span class="nc" id="L172">                buildingsPanel.add(buildableLabel);</span>
+            }
+<span class="nc" id="L174">            reportPanel.add(buildingsPanel, &quot;newline, growx&quot;);</span>
+<span class="nc" id="L175">        }</span>
+<span class="nc" id="L176">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

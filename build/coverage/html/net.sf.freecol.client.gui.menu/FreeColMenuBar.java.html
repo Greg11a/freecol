@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FreeColMenuBar.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.menu</a> &gt; <span class="el_source">FreeColMenuBar.java</span></div><h1>FreeColMenuBar.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.menu;
+
+import java.awt.Graphics;
+import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseMotionListener;
+import java.util.logging.Logger;
+
+import javax.swing.ButtonGroup;
+import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JRadioButtonMenuItem;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.action.AboutAction;
+import net.sf.freecol.client.gui.action.ActionManager;
+import net.sf.freecol.client.gui.action.ColopediaAction;
+import net.sf.freecol.client.gui.action.ColopediaAction.PanelType;
+import net.sf.freecol.client.gui.action.FreeColAction;
+import net.sf.freecol.client.gui.action.SelectableOptionAction;
+import net.sf.freecol.client.gui.panel.FreeColImageBorder;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.common.util.ImageUtils;
+
+
+/**
+ * The menu bar that is displayed on the top left corner of the
+ * {@code Canvas}.
+ */
+public abstract class FreeColMenuBar extends JMenuBar {
+
+<span class="nc" id="L54">    private static final Logger logger = Logger.getLogger(FreeColMenuBar.class.getName());</span>
+
+    protected final FreeColClient freeColClient;
+    private final MouseMotionListener listener;
+    protected final ActionManager am;
+
+
+    /**
+     * Creates a new {@code FreeColMenuBar}. This menu bar will include
+     * all of the submenus and items.
+     *
+     * @param f The main controller.
+     */
+    protected FreeColMenuBar(FreeColClient f, MouseMotionListener listener) {
+        // FIXME: FreeColClient should not have to be passed in to
+        // this class.  This is only a menu bar, it doesn't need a
+        // reference to the main controller. The only reason it has
+        // one now is because DebugMenu needs it. And DebugMenu needs
+        // it because it is using inner classes for ActionListeners
+        // and those inner classes use the reference.  If those inner
+        // classes were in seperate classes, when they were created,
+        // they could use the FreeColClient reference of the
+        // ActionManger. So DebugMenu needs to be refactored to remove
+        // inner classes so that this MenuBar can lose its unnecessary
+        // reference to the main controller.  See FreeColMenuTest.
+        //
+        // Okay, I lied.. the update() and paintComponent() methods in
+        // this MenuBar use freeColClient, too. But so what.  Move
+        // those to another class too. :)
+<span class="nc" id="L83">        super();</span>
+
+<span class="nc" id="L85">        setOpaque(false);</span>
+
+<span class="nc" id="L87">        this.freeColClient = f;</span>
+<span class="nc" id="L88">        this.listener = listener;</span>
+        
+<span class="nc" id="L90">        this.am = f.getActionManager();</span>
+        
+        // Add a mouse listener so that autoscrolling can happen here
+<span class="nc" id="L93">        this.addMouseMotionListener(listener);</span>
+
+<span class="nc" id="L95">        setBorder(FreeColImageBorder.menuBarBorder);</span>
+<span class="nc" id="L96">    }</span>
+
+    @Override
+    public JMenu add(JMenu c) {
+        // Add a mouse listener so that autoscrolling can happen here
+<span class="nc" id="L101">        c.addMouseMotionListener(listener);</span>
+        
+<span class="nc" id="L103">        return super.add(c);</span>
+    }
+
+    /**
+     * Resets this menu bar.
+     *
+     * &lt;br&gt;&lt;br&gt;
+     * &lt;b&gt;For subclasses:&lt;/b&gt;
+     * This method should reset both the texts and
+     * the accelerator keys used by the menu items.
+     */
+    public abstract void reset();
+
+    /**
+     * Creates a default FreeCol JMenuItem.
+     *
+     * @param actionId The identifier given to the
+     *      {@link ActionManager#getFreeColAction(String) action manager}.
+     * @return The menu item.
+     */
+    protected JMenuItem getMenuItem(String actionId) {
+<span class="nc" id="L124">        JMenuItem rtn = null;</span>
+<span class="nc" id="L125">        FreeColAction action = am.getFreeColAction(actionId);</span>
+
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (action != null) {</span>
+<span class="nc" id="L128">            rtn = new JMenuItem();</span>
+<span class="nc" id="L129">            rtn.setAction(action);</span>
+<span class="nc" id="L130">            rtn.setOpaque(false);</span>
+
+<span class="nc bnc" id="L132" title="All 2 branches missed.">            if (action.getMnemonic() != null) {</span>
+<span class="nc" id="L133">                rtn.addMenuKeyListener(action.getMenuKeyListener());</span>
+            }
+            
+<span class="nc" id="L136">            rtn.getInputMap().put(action.getAccelerator(), action.getId());</span>
+<span class="nc" id="L137">            rtn.getActionMap().put(action.getId(), action);</span>
+        } else {
+<span class="nc" id="L139">            logger.finest(&quot;Could not create menu item. [&quot; + actionId</span>
+                + &quot;] not found.&quot;);
+        }
+<span class="nc" id="L142">        return rtn;</span>
+    }
+
+    /**
+     * Creates a default FreeCol JMenuItem.
+     *
+     * @param actionId The identifier given to the
+     *      {@link ActionManager#getFreeColAction(String) action manager}.
+     * @param actionListener An {@code ActionListener} that will be
+     *      added to the menu item.
+     * @return The menu item with the {@code ActionListener} added.
+     */
+    protected JMenuItem getMenuItem(String actionId,
+                                    ActionListener actionListener) {
+<span class="nc" id="L156">        JMenuItem rtn = getMenuItem(actionId);</span>
+
+<span class="nc" id="L158">        rtn.addActionListener(actionListener);</span>
+
+<span class="nc" id="L160">        return rtn;</span>
+    }
+
+    /**
+     * Creates a default FreeCol {@code JCheckBoxMenuItem}.
+     *
+     * @param actionId The identifier given to the
+     *      {@link ActionManager#getFreeColAction(String) action manager}.
+     * @return The menu item.
+     */
+    protected JCheckBoxMenuItem getCheckBoxMenuItem(String actionId) {
+<span class="nc" id="L171">        JCheckBoxMenuItem rtn = null;</span>
+<span class="nc" id="L172">        FreeColAction action = am.getFreeColAction(actionId);</span>
+
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (action != null) {</span>
+<span class="nc" id="L175">            rtn = new JCheckBoxMenuItem();</span>
+<span class="nc" id="L176">            rtn.setAction(action);</span>
+<span class="nc" id="L177">            rtn.setOpaque(false);</span>
+
+<span class="nc" id="L179">            rtn.getInputMap().put(action.getAccelerator(), action.getId());</span>
+<span class="nc" id="L180">            rtn.getActionMap().put(action.getId(), action);</span>
+        } else {
+<span class="nc" id="L182">            logger.finest(&quot;Could not create menu item. [&quot; + actionId + &quot;] not found.&quot;);</span>
+        }
+
+<span class="nc" id="L185">        return rtn;</span>
+    }
+
+    /**
+     * Creates a default FreeCol {@code JRadioButtonMenuItem}.
+     *
+     * @param actionId The identifier given to the
+     *      {@link ActionManager#getFreeColAction(String) action manager}.
+     * @param group The {@code ButtonGroup} to add this item to
+     * @return The menu item.
+     */
+    protected JRadioButtonMenuItem getRadioButtonMenuItem(String actionId,
+                                                          ButtonGroup group) {
+<span class="nc" id="L198">        JRadioButtonMenuItem rtn = null;</span>
+<span class="nc" id="L199">        FreeColAction action = am.getFreeColAction(actionId);</span>
+
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        if (action != null) {</span>
+<span class="nc" id="L202">            rtn = new JRadioButtonMenuItem();</span>
+<span class="nc" id="L203">            rtn.setAction(action);</span>
+<span class="nc" id="L204">            rtn.setOpaque(false);</span>
+
+<span class="nc" id="L206">            rtn.setSelected(((SelectableOptionAction) am.getFreeColAction(actionId)).isSelected());</span>
+<span class="nc" id="L207">            group.add(rtn);</span>
+            
+<span class="nc" id="L209">            rtn.getInputMap().put(action.getAccelerator(), action.getId());</span>
+<span class="nc" id="L210">            rtn.getActionMap().put(action.getId(), action);</span>
+        } else {
+<span class="nc" id="L212">            logger.finest(&quot;Could not create menu item. [&quot; + actionId</span>
+                + &quot;] not found.&quot;);
+        }
+<span class="nc" id="L215">        return rtn;</span>
+    }
+
+
+    /**
+     * Updates this {@code FreeColMenuBar}.
+     */
+    public void update() {
+<span class="nc" id="L223">        revalidate();</span>
+<span class="nc" id="L224">        repaint();</span>
+<span class="nc" id="L225">    }</span>
+
+    /**
+     * When a {@code FreeColMenuBar} is disabled, it does not show the
+     * &quot;in game options&quot;.
+     */
+    @Override
+    public void setEnabled(boolean enabled) {
+        // Not implemented (and possibly not needed).
+
+<span class="nc" id="L235">        update();</span>
+<span class="nc" id="L236">    }</span>
+
+    protected void buildColopediaMenu() {
+        // --&gt; Colopedia
+
+<span class="nc" id="L241">        JMenu menu = Utility.localizedMenu(&quot;menuBar.colopedia&quot;);</span>
+<span class="nc" id="L242">        menu.setOpaque(false);</span>
+<span class="nc" id="L243">        menu.setMnemonic(KeyEvent.VK_C);</span>
+
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        for (PanelType type : PanelType.values()) {</span>
+<span class="nc" id="L246">            menu.add(getMenuItem(ColopediaAction.id + type.getKey()));</span>
+        }
+<span class="nc" id="L248">        menu.addSeparator();</span>
+<span class="nc" id="L249">        menu.add(getMenuItem(AboutAction.id));</span>
+
+<span class="nc" id="L251">        add(menu);</span>
+<span class="nc" id="L252">    }</span>
+
+    /**
+     * Paints the background and borders of the menubar.
+     */
+    @Override
+    public void paintComponent(Graphics g) {
+<span class="nc bnc" id="L259" title="All 2 branches missed.">        if (isOpaque()) {</span>
+<span class="nc" id="L260">            super.paintComponent(g);</span>
+        } else {
+<span class="nc" id="L262">            ImageUtils.drawTiledImage(ImageLibrary.getMenuBarBackground(),</span>
+<span class="nc" id="L263">                                      g, this, getInsets());</span>
+        }
+<span class="nc" id="L265">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

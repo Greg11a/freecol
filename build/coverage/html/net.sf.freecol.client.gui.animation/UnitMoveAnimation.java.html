@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnitMoveAnimation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.animation</a> &gt; <span class="el_source">UnitMoveAnimation.java</span></div><h1>UnitMoveAnimation.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.animation;
+
+import static net.sf.freecol.common.util.CollectionUtils.makeUnmodifiableList;
+import static net.sf.freecol.common.util.Utils.delay;
+import static net.sf.freecol.common.util.Utils.now;
+
+import java.awt.Point;
+
+import javax.swing.JLabel;
+
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+
+
+/**
+ * Class for the animation of units movement.
+ */
+final class UnitMoveAnimation extends Animation {
+
+    /**
+     * Display delay between one frame and another, in milliseconds.
+     * 33ms == 30 fps
+     */
+    private static final long ANIMATION_DELAY = 33L;
+
+    /** The animation speed client option. */
+    private final int speed;
+
+    /** The image scale. */
+    private final float scale;
+
+
+    /**
+     * Build a new movement animation.
+     *
+     * @param unit The {@code Unit} to be animated.
+     * @param sourceTile The {@code Tile} the unit is moving from.
+     * @param destinationTile The {@code Tile} the unit is moving to.
+     * @param speed The animation speed.
+     * @param scale The scale factor for the unit image.
+     */
+    public UnitMoveAnimation(Unit unit,
+                             Tile sourceTile, Tile destinationTile,
+                             int speed, float scale) {
+<span class="nc" id="L65">        super(unit, makeUnmodifiableList(sourceTile, destinationTile));</span>
+
+<span class="nc" id="L67">        this.speed = speed;</span>
+<span class="nc" id="L68">        this.scale = scale;</span>
+<span class="nc" id="L69">    }</span>
+    
+
+    // Implement Animation
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void executeWithLabel(JLabel unitLabel,
+                                 Animations.Procedure paintCallback) {
+<span class="nc" id="L80">        final int movementRatio = (int)(Math.pow(2, this.speed + 1)</span>
+            * this.scale);
+<span class="nc" id="L82">        final double xratio = ImageLibrary.TILE_SIZE.width</span>
+            / (double)ImageLibrary.TILE_SIZE.height;
+<span class="nc" id="L84">        final Point srcPoint = this.points.get(0);</span>
+<span class="nc" id="L85">        final Point dstPoint = this.points.get(1);</span>
+<span class="nc" id="L86">        final int stepX = (int)(Math.signum(dstPoint.getX() - srcPoint.getX())</span>
+            * xratio * movementRatio);
+<span class="nc" id="L88">        final int stepY = (int)(Math.signum(dstPoint.getY() - srcPoint.getY())</span>
+            * movementRatio);
+
+<span class="nc" id="L91">        Point point = srcPoint;</span>
+<span class="nc" id="L92">        long time = now(), dropFrames = 0;</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        while (!point.equals(dstPoint)) {</span>
+<span class="nc" id="L94">            point.x += stepX;</span>
+<span class="nc" id="L95">            point.y += stepY;</span>
+<span class="nc bnc" id="L96" title="All 8 branches missed.">            if ((stepX &lt; 0 &amp;&amp; point.x &lt; dstPoint.x)</span>
+                || (stepX &gt; 0 &amp;&amp; point.x &gt; dstPoint.x)) {
+<span class="nc" id="L98">                point.x = dstPoint.x;</span>
+            }
+<span class="nc bnc" id="L100" title="All 8 branches missed.">            if ((stepY &lt; 0 &amp;&amp; point.y &lt; dstPoint.y)</span>
+                || (stepY &gt; 0 &amp;&amp; point.y &gt; dstPoint.y)) {
+<span class="nc" id="L102">                point.y = dstPoint.y;</span>
+            }
+<span class="nc bnc" id="L104" title="All 2 branches missed.">            if (dropFrames &lt;= 0) {</span>
+<span class="nc" id="L105">                unitLabel.setLocation(point);</span>
+<span class="nc" id="L106">                paintCallback.execute(); // repaint now</span>
+<span class="nc" id="L107">                long newTime = now();</span>
+<span class="nc" id="L108">                long timeTaken = newTime - time;</span>
+<span class="nc" id="L109">                time = newTime;</span>
+<span class="nc" id="L110">                final long waitTime = ANIMATION_DELAY - timeTaken;</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">                if (waitTime &gt; 0) {</span>
+<span class="nc" id="L112">                    delay(waitTime, &quot;Animation interrupted.&quot;);</span>
+<span class="nc" id="L113">                    dropFrames = 0;</span>
+                } else {
+<span class="nc" id="L115">                    dropFrames = timeTaken / ANIMATION_DELAY - 1;</span>
+                }
+<span class="nc" id="L117">            } else {</span>
+<span class="nc" id="L118">                dropFrames--;</span>
+            }
+        }
+<span class="nc" id="L121">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

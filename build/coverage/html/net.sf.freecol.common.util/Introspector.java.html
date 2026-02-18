@@ -1,0 +1,449 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Introspector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.util</a> &gt; <span class="el_source">Introspector.java</span></div><h1>Introspector.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.util;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.stream.Collectors;
+
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import static net.sf.freecol.common.util.StringUtils.*;
+
+
+/**
+ * A class to allow access to the methods &quot;fooType getFoo()&quot; and
+ * &quot;void setFoo(fooType)&quot; conventionally seen in objects.
+ * Useful when Foo arrives as a run-time String, such as is the
+ * case in serialization to/from XML representations.
+ */
+public class Introspector {
+
+    public static class IntrospectorException extends ReflectiveOperationException {
+        public IntrospectorException(Throwable cause) {
+<span class="nc" id="L42">            super(cause);</span>
+<span class="nc" id="L43">        }</span>
+
+        public IntrospectorException(String err, Throwable cause) {
+<span class="fc" id="L46">            super(err, cause);</span>
+<span class="fc" id="L47">        }</span>
+    }
+    
+    /** The class whose field we are to operate on. */
+    private final Class&lt;?&gt; theClass;
+
+    /** The field whose get/set methods we wish to invoke. */
+    private final String field;
+
+
+    /**
+     * Build a new Introspector for the specified class and field name.
+     *
+     * @param theClass The {@code Class} of interest.
+     * @param field The field name within the class of interest.
+     */
+<span class="nc" id="L63">    public Introspector(Class&lt;?&gt; theClass, String field) {</span>
+<span class="nc bnc" id="L64" title="All 4 branches missed.">        if (field == null || field.isEmpty()) {</span>
+<span class="nc" id="L65">            throw new RuntimeException(&quot;Field may not be empty: &quot; + this);</span>
+        }
+<span class="nc" id="L67">        this.theClass = theClass;</span>
+<span class="nc" id="L68">        this.field = field;</span>
+<span class="nc" id="L69">    }</span>
+
+
+    /**
+     * Get a get-method for this Introspector.
+     *
+     * @return A {@code Method} representing getField().
+     * @exception IntrospectorException if the get-method is not available.
+     */
+    private Method getGetMethod() throws IntrospectorException {
+<span class="nc" id="L79">        String methodName = &quot;get&quot; + fromSnakeCase(field);</span>
+
+        try {
+<span class="nc" id="L82">            return theClass.getMethod(methodName);</span>
+<span class="nc" id="L83">        } catch (NoSuchMethodException | SecurityException ex) {</span>
+<span class="nc" id="L84">            throw new IntrospectorException(theClass.getName()</span>
+                + &quot;.&quot; + methodName, ex);
+        }
+    }
+
+    /**
+     * Get a set-method for this Introspector.
+     *
+     * @param argType A {@code Class} that is the argument to
+     *        the set-method
+     * @return A {@code Method} representing setField().
+     * @exception IntrospectorException if the set-method is not available.
+     */
+    private Method getSetMethod(Class&lt;?&gt; argType) throws IntrospectorException {
+<span class="nc" id="L98">        String methodName = &quot;set&quot; + fromSnakeCase(field);</span>
+
+        try {
+<span class="nc" id="L101">            return theClass.getMethod(methodName, argType);</span>
+<span class="nc" id="L102">        } catch (NoSuchMethodException | SecurityException e) {</span>
+<span class="nc" id="L103">            throw new IntrospectorException(theClass.getName()</span>
+                + &quot;.&quot; + methodName, e);
+        }
+    }
+    
+    private static String fromSnakeCase(String nameInSnakeCase) {
+<span class="nc" id="L109">        final StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        for (String s : nameInSnakeCase.split(&quot;-&quot;)) {</span>
+<span class="nc" id="L111">            sb.append(capitalize(s));</span>
+        }
+<span class="nc" id="L113">        return sb.toString();</span>
+    }
+
+    /**
+     * Get the return type from a {@code Method}.
+     *
+     * @param method The {@code Method} to examine.
+     * @return The method return type, or null on error.
+     * @exception IntrospectorException if the return type is not available.
+     */
+    private Class&lt;?&gt; getMethodReturnType(Method method)
+        throws IntrospectorException {
+        Class&lt;?&gt; ret;
+
+        try {
+<span class="nc" id="L128">            ret = method.getReturnType();</span>
+<span class="nc" id="L129">        } catch (Exception e) {</span>
+<span class="nc" id="L130">            throw new IntrospectorException(theClass.getName()</span>
+<span class="nc" id="L131">                + &quot;.&quot; + method.getName() + &quot; return type.&quot;, e);</span>
+<span class="nc" id="L132">        }</span>
+<span class="nc" id="L133">        return ret;</span>
+    }
+
+    /**
+     * Get a function that converts to String from a given class.
+     * We use Enum.name() for enums, and String.valueOf(argType) for the rest.
+     *
+     * @param argType A {@code Class} to find a converter for.
+     * @return A conversion function, or null on error.
+     * @exception NoSuchMethodException if no converter is found.
+     */
+    private Method getToStringConverter(Class&lt;?&gt; argType)
+        throws NoSuchMethodException {
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        return (argType.isEnum()) ? argType.getMethod(&quot;name&quot;)</span>
+<span class="nc" id="L147">            : String.class.getMethod(&quot;valueOf&quot;, argType);</span>
+    }
+
+    /**
+     * Get a function that converts from String to a given class.
+     * We use Enum.valueOf(Class, String) for enums, and
+     * argType.valueOf(String) for the rest, having first dodged
+     * the primitive types.
+     *
+     * @param argType A {@code Class} to find a converter for.
+     * @return A conversion function, or null on error.
+     */
+    private Method getFromStringConverter(Class&lt;?&gt; argType) {
+        Method method;
+
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        if (argType.isEnum()) {</span>
+            try {
+<span class="nc" id="L164">                method = Enum.class.getMethod(&quot;valueOf&quot;, Class.class, String.class);</span>
+<span class="nc" id="L165">            } catch (NoSuchMethodException|SecurityException e) {</span>
+<span class="nc" id="L166">                throw new RuntimeException(&quot;Enum.getMethod(valueOf(Class, String)): &quot; + argType, e);</span>
+<span class="nc" id="L167">            }</span>
+        } else {
+<span class="nc bnc" id="L169" title="All 2 branches missed.">            if (argType.isPrimitive()) {</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">                if (argType == Integer.TYPE) {</span>
+<span class="nc" id="L171">                    argType = Integer.class;</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">                } else if (argType == Boolean.TYPE) {</span>
+<span class="nc" id="L173">                    argType = Boolean.class;</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                } else if (argType == Float.TYPE) {</span>
+<span class="nc" id="L175">                    argType = Float.class;</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">                } else if (argType == Double.TYPE) {</span>
+<span class="nc" id="L177">                    argType = Double.class;</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">                } else if (argType == Character.TYPE) {</span>
+<span class="nc" id="L179">                    argType = Character.class;</span>
+                } else {
+<span class="nc" id="L181">                    throw new IllegalArgumentException(&quot;Need compatible class for primitive &quot; + argType.getName());</span>
+                }
+            }
+            try {
+<span class="nc" id="L185">                method = argType.getMethod(&quot;valueOf&quot;, String.class);</span>
+<span class="nc" id="L186">            } catch (NoSuchMethodException | SecurityException e) {</span>
+<span class="nc" id="L187">                throw new IllegalArgumentException(argType.getName()</span>
+                                                   + &quot;.getMethod(valueOf(String))&quot;, e);
+<span class="nc" id="L189">            }</span>
+        }
+<span class="nc" id="L191">        return method;</span>
+    }
+
+    /**
+     * Invoke the get-method for this Introspector.
+     *
+     * @param obj An {@code Object} (really of type theClass)
+     *        whose get-method is to be invoked.
+     * @return A {@code String} containing the result of invoking
+     *         the get-method.
+     * @exception IntrospectorException encompasses many failures.
+     */
+    public String getter(Object obj) throws IntrospectorException {
+<span class="nc" id="L204">        Method getMethod = getGetMethod();</span>
+<span class="nc" id="L205">        Class&lt;?&gt; fieldType = getMethodReturnType(getMethod);</span>
+
+<span class="nc bnc" id="L207" title="All 2 branches missed.">        if (fieldType == String.class) {</span>
+            try {
+<span class="nc" id="L209">                return (String) getMethod.invoke(obj);</span>
+<span class="nc" id="L210">            } catch (IllegalAccessException | IllegalArgumentException</span>
+                    | InvocationTargetException e) {
+<span class="nc" id="L212">                throw new IntrospectorException(getMethod.getName() + &quot;(obj)&quot;,</span>
+                    e);
+            }
+        } else {
+<span class="nc" id="L216">            Object result = null;</span>
+            try {
+<span class="nc" id="L218">                result = getMethod.invoke(obj);</span>
+<span class="nc" id="L219">            } catch (IllegalAccessException | IllegalArgumentException</span>
+                    | InvocationTargetException e) {
+<span class="nc" id="L221">                throw new IntrospectorException(getMethod.getName() + &quot;(obj)&quot;,</span>
+                    e);
+<span class="nc" id="L223">            }</span>
+            Method convertMethod;
+            try {
+<span class="nc" id="L226">                convertMethod = getToStringConverter(fieldType);</span>
+<span class="nc" id="L227">            } catch (NoSuchMethodException nsme) {</span>
+<span class="nc" id="L228">                throw new IntrospectorException(&quot;No String converter found for &quot;</span>
+                    + fieldType, nsme);
+<span class="nc" id="L230">            }</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">            if (Modifier.isStatic(convertMethod.getModifiers())) {</span>
+                try {
+<span class="nc" id="L233">                    return (String) convertMethod.invoke(null, result);</span>
+<span class="nc" id="L234">                } catch (IllegalAccessException | IllegalArgumentException</span>
+                        | InvocationTargetException e) {
+<span class="nc" id="L236">                    throw new IntrospectorException(convertMethod.getName()</span>
+                        + &quot;(null, result)&quot;, e);
+                }
+            } else {
+                try {
+<span class="nc" id="L241">                    return (String) convertMethod.invoke(result);</span>
+<span class="nc" id="L242">                } catch (IllegalAccessException | IllegalArgumentException</span>
+                        | InvocationTargetException e) {
+<span class="nc" id="L244">                    throw new IntrospectorException(convertMethod.getName()</span>
+                        + &quot;(result)&quot;, e);
+                }
+            }
+        }
+    }
+
+    /**
+     * Invoke the set-method provided by this Introspector.
+     *
+     * @param obj An {@code Object} (really of type theClass)
+     *        whose set-method is to be invoked.
+     * @param value A {@code String} containing the value to be set.
+     * @exception IntrospectorException encompasses many failures.
+     */
+    public void setter(Object obj, String value) throws IntrospectorException {
+<span class="nc" id="L260">        Method getMethod = getGetMethod();</span>
+<span class="nc" id="L261">        Class&lt;?&gt; fieldType = getMethodReturnType(getMethod);</span>
+<span class="nc" id="L262">        Method setMethod = getSetMethod(fieldType);</span>
+
+<span class="nc bnc" id="L264" title="All 2 branches missed.">        if (fieldType == String.class) {</span>
+            try {
+<span class="nc" id="L266">                setMethod.invoke(obj, value);</span>
+<span class="nc" id="L267">            } catch (IllegalAccessException | IllegalArgumentException</span>
+                    | InvocationTargetException e) {
+<span class="nc" id="L269">                throw new IntrospectorException(setMethod.getName()</span>
+                    + &quot;(obj, &quot; + value + &quot;)&quot;, e);
+<span class="nc" id="L271">            }</span>
+        } else {
+<span class="nc" id="L273">            Method convertMethod = getFromStringConverter(fieldType);</span>
+<span class="nc" id="L274">            Object result = null;</span>
+
+<span class="nc bnc" id="L276" title="All 2 branches missed.">            if (fieldType.isEnum()) {</span>
+                try {
+<span class="nc" id="L278">                    result = convertMethod.invoke(null, fieldType, value);</span>
+<span class="nc" id="L279">                } catch (IllegalAccessException | IllegalArgumentException</span>
+                        | InvocationTargetException e) {
+<span class="nc" id="L281">                    throw new IntrospectorException(convertMethod.getName()</span>
+<span class="nc" id="L282">                        + &quot;(null, &quot; + fieldType.getName()</span>
+                        + &quot;, &quot; + value + &quot;)&quot;, e);
+<span class="nc" id="L284">                }</span>
+            } else {
+                try {
+<span class="nc" id="L287">                    result = convertMethod.invoke(null, value);</span>
+<span class="nc" id="L288">                } catch (IllegalAccessException | IllegalArgumentException</span>
+                        | InvocationTargetException e) {
+<span class="nc" id="L290">                    throw new IntrospectorException(convertMethod.getName()</span>
+                        + &quot;(null, &quot; + value + &quot;)&quot;, e);
+<span class="nc" id="L292">                }</span>
+            }
+            try {
+<span class="nc" id="L295">                setMethod.invoke(obj, result);</span>
+<span class="nc" id="L296">            } catch (IllegalAccessException | IllegalArgumentException</span>
+                    | InvocationTargetException e) {
+<span class="nc" id="L298">                throw new IntrospectorException(setMethod.getName()</span>
+                    + &quot;(result)&quot;, e);
+<span class="nc" id="L300">            }</span>
+        }
+<span class="nc" id="L302">    }</span>
+
+    /**
+     * Get a class by name.
+     *
+     * @param name The class name to look for.
+     * @return The class found, or null if none available.
+     */
+    public static Class&lt;?&gt; getClassByName(String name) {
+        try {
+<span class="fc" id="L312">            return Class.forName(name);</span>
+<span class="nc" id="L313">        } catch (ClassNotFoundException ex) {</span>
+<span class="nc" id="L314">            return null;</span>
+        }
+    }       
+
+    /**
+     * Get a constructor for a given class and arguments.
+     *
+     * @param &lt;T&gt; The type to construct.
+     * @param cl The base class.
+     * @param types The types of the constructor arguments.
+     * @return The constructor found, or null on error.
+     */
+    public static &lt;T&gt; Constructor&lt;T&gt; getConstructor(Class&lt;T&gt; cl, Class&lt;?&gt;[] types) {
+        Constructor&lt;T&gt; constructor;
+        try {
+<span class="fc" id="L329">            constructor = cl.getDeclaredConstructor(types);</span>
+<span class="nc" id="L330">        } catch (NoSuchMethodException | SecurityException ex) {</span>
+<span class="nc" id="L331">            constructor = null;</span>
+<span class="fc" id="L332">        }</span>
+<span class="fc" id="L333">        return constructor;</span>
+    }
+
+    /**
+     * Construct a new instance.
+     *
+     * @param &lt;T&gt; The type to construct.
+     * @param constructor The {@code Constructor} to use.
+     * @param params The constructor parameters.
+     * @return The instance created, or null on error.
+     * @exception IntrospectorException if there is a FreeCol failure.
+     */
+    public static &lt;T&gt; T construct(Constructor&lt;T&gt; constructor, Object[] params)
+        throws IntrospectorException {
+        T instance;
+        try {
+<span class="fc" id="L349">            instance = constructor.newInstance(params);</span>
+<span class="nc" id="L350">        } catch (InvocationTargetException ite) {</span>
+<span class="nc" id="L351">            throw new IntrospectorException(ite);</span>
+<span class="nc" id="L352">        } catch (IllegalAccessException | InstantiationException ex) {</span>
+<span class="nc" id="L353">            instance = null;</span>
+<span class="fc" id="L354">        }</span>
+<span class="fc" id="L355">        return instance;</span>
+    }
+
+    /**
+     * Constructs a new instance of an object of a class specified by name,
+     * with supplied parameters.
+     *
+     * @param tag The name of the class to instantiate.
+     * @param types The argument types of the constructor to call.
+     * @param params The parameters to call the constructor with.
+     * @return The new object instance.
+     * @exception IntrospectorException wraps all exceptional conditions.
+     */
+    public static Object instantiate(String tag, Class&lt;?&gt;[] types, Object[] params)
+        throws IntrospectorException {
+        Class&lt;?&gt; messageClass;
+        try {
+<span class="nc" id="L372">            messageClass = Class.forName(tag);</span>
+<span class="nc" id="L373">        } catch (ClassNotFoundException ex) {</span>
+<span class="nc" id="L374">            throw new IntrospectorException(&quot;Unable to find class &quot; + tag, ex);</span>
+<span class="nc" id="L375">        }</span>
+<span class="nc" id="L376">        return instantiate(messageClass, types, params);</span>
+    }
+
+    /**
+     * Constructs a new instance of an object of a class specified by name,
+     * with supplied parameters.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param messageClass The class to instantiate.
+     * @param types The argument types of the constructor to call.
+     * @param params The parameters to call the constructor with.
+     * @return The new instance.
+     * @exception IntrospectorException wraps all exceptional conditions.
+     */
+    public static &lt;T&gt; T instantiate(Class&lt;T&gt; messageClass, Class&lt;?&gt;[] types, Object[] params)
+        throws IntrospectorException {
+<span class="fc" id="L392">        final String tag = messageClass.getName();</span>
+        Constructor&lt;T&gt; constructor;
+        try {
+<span class="fc" id="L395">            constructor = messageClass.getDeclaredConstructor(types);</span>
+<span class="fc" id="L396">        } catch (NoSuchMethodException | SecurityException ex) {</span>
+<span class="fc" id="L397">            throw new IntrospectorException(&quot;Unable to find constructor &quot;</span>
+<span class="fc" id="L398">                + lastPart(tag, &quot;.&quot;) + &quot;(&quot;</span>
+<span class="fc" id="L399">                + transform(types, alwaysTrue(), Class::getName,</span>
+<span class="fc" id="L400">                            Collectors.joining(&quot;,&quot;))</span>
+                + &quot;)&quot;, ex);
+<span class="fc" id="L402">        }</span>
+        T instance;
+        try {
+<span class="fc" id="L405">            instance = constructor.newInstance(params);</span>
+<span class="nc" id="L406">        } catch (IllegalAccessException | InstantiationException</span>
+                 | InvocationTargetException ex) {
+<span class="nc" id="L408">            throw new IntrospectorException(&quot;Failed to construct &quot;</span>
+<span class="nc" id="L409">                + lastPart(tag, &quot;.&quot;), ex);</span>
+<span class="fc" id="L410">        }</span>
+<span class="fc" id="L411">        return instance;</span>
+    }
+
+    /**
+     * Invoke an object method by name.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param object The base object.
+     * @param methodName The name of the method to invoke.
+     * @param returnClass The expected class to return.
+     * @return The result of invoking the method.
+     * @exception IllegalAccessException if the method exists but is hidden.
+     * @exception InvocationTargetException if the target can not be invoked.
+     * @exception NoSuchMethodException if the invocation fails.
+     */
+    public static &lt;T&gt; T invokeMethod(Object object, String methodName,
+                                     Class&lt;T&gt; returnClass)
+        throws IllegalAccessException, InvocationTargetException,
+               NoSuchMethodException {
+<span class="fc" id="L430">        return returnClass.cast(object.getClass().getMethod(methodName)</span>
+<span class="fc" id="L431">            .invoke(object));</span>
+    }
+
+    /**
+     * Invoke an object void method by name.
+     *
+     * @param object The base object.
+     * @param methodName The name of the method to invoke.
+     * @exception IllegalAccessException if the method exists but is hidden.
+     * @exception InvocationTargetException if the target can not be invoked.
+     * @exception NoSuchMethodException if the invocation fails.
+     */
+    public static void invokeVoidMethod(Object object, String methodName)
+        throws IllegalAccessException, InvocationTargetException,
+               NoSuchMethodException {
+<span class="nc" id="L446">        object.getClass().getMethod(methodName).invoke(object);</span>
+<span class="nc" id="L447">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

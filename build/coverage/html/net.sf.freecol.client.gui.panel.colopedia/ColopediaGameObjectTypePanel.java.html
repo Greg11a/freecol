@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColopediaGameObjectTypePanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel.colopedia</a> &gt; <span class="el_source">ColopediaGameObjectTypePanel.java</span></div><h1>ColopediaGameObjectTypePanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel.colopedia;
+
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.first;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.awt.image.BufferedImage;
+import java.awt.Dimension;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
+import javax.swing.tree.DefaultMutableTreeNode;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.ModifierFormat;
+import net.sf.freecol.client.gui.action.ColopediaAction.PanelType;
+import net.sf.freecol.client.gui.panel.FreeColPanel;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.AbstractUnit;
+import net.sf.freecol.common.model.FreeColSpecObjectType;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Modifier;
+import net.sf.freecol.common.model.ResourceType;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.util.ImageUtils;
+
+
+/**
+ * This panel displays details of game objects in the Colopedia.
+ */
+public abstract class ColopediaGameObjectTypePanel&lt;T extends FreeColSpecObjectType&gt;
+    extends FreeColPanel implements ColopediaDetailPanel&lt;T&gt; {
+
+<span class="nc" id="L66">    private static final Logger logger = Logger.getLogger(ColopediaGameObjectTypePanel.class.getName());</span>
+
+    /** The enclosing colopedia panel. */
+    private ColopediaPanel colopediaPanel; 
+
+    /** The specific panel id. */
+    private final String id;
+
+
+    /**
+     * Create a new Colopedia game object type panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param colopediaPanel The parent {@code ColopediaPanel}.
+     * @param id The panel type identifier.
+     */
+    protected ColopediaGameObjectTypePanel(FreeColClient freeColClient,
+                                           ColopediaPanel colopediaPanel,
+                                           String id) {
+<span class="nc" id="L85">        super(freeColClient);</span>
+
+<span class="nc" id="L87">        this.colopediaPanel = colopediaPanel;</span>
+<span class="nc" id="L88">        this.id = &quot;colopediaAction.&quot; + id;</span>
+<span class="nc" id="L89">    }</span>
+
+
+    /**
+     * Get the panel id.
+     *
+     * @return The panel id, usually &quot;colopediaAction.*&quot;.
+     */
+    protected String getId() {
+<span class="nc" id="L98">        return id;</span>
+    }
+
+    /**
+     * Get the name of this ColopediaDetailPanel, which is generally
+     * used to label the root node of its sub-tree.
+     *
+     * @return The panel name.
+     */
+    @Override
+    public String getName() {
+<span class="nc" id="L109">        return Messages.getName(id);</span>
+    }
+
+    /**
+     * Builds a subtree including all the given objects.
+     *
+     * @param root a {@code DefaultMutableTreeNode}
+     * @param types a List of FreeColSpecObjectTypes
+     */
+    protected void addSubTrees(DefaultMutableTreeNode root, List&lt;T&gt; types) {
+<span class="nc" id="L119">        addSubTrees(root, id, types);</span>
+<span class="nc" id="L120">    }</span>
+
+    /**
+     * Builds a subtree including all the given objects.
+     *
+     * @param root a {@code DefaultMutableTreeNode}
+     * @param id The object identifier of the new branch node.
+     * @param types a List of FreeColSpecObjectTypes
+     */
+    protected void addSubTrees(DefaultMutableTreeNode root, String id,
+                               List&lt;T&gt; types) {
+<span class="nc" id="L131">        final ImageLibrary lib = getImageLibrary();</span>
+<span class="nc" id="L132">        String name = getName();</span>
+<span class="nc" id="L133">        ColopediaTreeItem cti = new ColopediaTreeItem(this, id, name, null);</span>
+<span class="nc" id="L134">        DefaultMutableTreeNode node = new DefaultMutableTreeNode(cti);</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        for (FreeColSpecObjectType type : types) {</span>
+<span class="nc" id="L136">            final BufferedImage image = ImageUtils.createCenteredImage(lib.getObjectImage(type), getListItemIconSize());</span>
+<span class="nc" id="L137">            node.add(buildItem(type, new ImageIcon(image)));</span>
+<span class="nc" id="L138">        }</span>
+<span class="nc" id="L139">        root.add(node);</span>
+<span class="nc" id="L140">    }</span>
+
+    protected DefaultMutableTreeNode buildItem(FreeColSpecObjectType type,
+                                               ImageIcon icon) {
+<span class="nc" id="L144">        String name = Messages.getName(type);</span>
+<span class="nc" id="L145">        return new DefaultMutableTreeNode(new ColopediaTreeItem(this, </span>
+<span class="nc" id="L146">                type.getId(), name, icon));</span>
+    }
+
+    protected JButton getButton(FreeColSpecObjectType type, String text,
+                                ImageIcon icon) {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        JButton button = Utility.getLinkButton((text != null) ? text</span>
+<span class="nc" id="L152">            : Messages.getName(type), icon, type.getId());</span>
+<span class="nc" id="L153">        button.addActionListener(colopediaPanel);</span>
+<span class="nc" id="L154">        return button;</span>
+    }
+
+    protected JButton getButton(PanelType panelType, String text,
+                                ImageIcon icon) {
+<span class="nc" id="L159">        JButton button = Utility.getLinkButton(text, icon,</span>
+<span class="nc" id="L160">            &quot;colopediaAction.&quot; + panelType.getKey());</span>
+<span class="nc" id="L161">        button.addActionListener(colopediaPanel);</span>
+<span class="nc" id="L162">        return button;</span>
+    }
+
+    protected JButton getButton(FreeColSpecObjectType type) {
+<span class="nc" id="L166">        return getButton(type, null, null);</span>
+    }
+
+    protected JButton getResourceButton(final ResourceType resourceType) {
+<span class="nc" id="L170">        return getButton(resourceType, null, new ImageIcon(getImageLibrary()</span>
+<span class="nc" id="L171">                .getScaledResourceTypeImage(resourceType)));</span>
+    }
+
+    protected JButton getGoodsButton(final GoodsType goodsType) {
+<span class="nc" id="L175">        return getGoodsButton(goodsType, null);</span>
+    }
+
+    protected JButton getGoodsButton(final GoodsType goodsType, int amount) {
+<span class="nc" id="L179">        return getGoodsButton(goodsType, Integer.toString(amount));</span>
+    }
+
+    protected JButton getGoodsButton(final AbstractGoods goods) {
+<span class="nc" id="L183">        return getGoodsButton(goods.getType(), goods.getAmount());</span>
+    }
+
+    protected JButton getGoodsButton(final GoodsType goodsType, String text) {
+<span class="nc" id="L187">        JButton result = getButton(goodsType, text,</span>
+<span class="nc" id="L188">            new ImageIcon(getImageLibrary().getScaledGoodsTypeImage(goodsType)));</span>
+<span class="nc" id="L189">        result.setToolTipText(Messages.getName(goodsType));</span>
+<span class="nc" id="L190">        return result;</span>
+    }
+
+    protected JButton getUnitButton(AbstractUnit au) {
+<span class="nc" id="L194">        return getUnitButton(au.getType(getSpecification()), au.getRoleId());</span>
+    }
+
+    protected JButton getUnitButton(final UnitType unitType, String roleId) {
+<span class="nc" id="L198">        ImageIcon unitIcon = new ImageIcon(getImageLibrary()</span>
+<span class="nc" id="L199">            .getSmallUnitTypeImage(unitType, roleId, false));</span>
+<span class="nc" id="L200">        JButton unitButton = getButton(unitType, null, unitIcon);</span>
+<span class="nc" id="L201">        unitButton.setHorizontalAlignment(JButton.LEFT);</span>
+<span class="nc" id="L202">        return unitButton;</span>
+    }
+
+    protected JButton getUnitButton(final UnitType unitType) {
+<span class="nc" id="L206">        return getUnitButton(unitType, unitType.getDisplayRoleId());</span>
+    }
+
+    public JComponent getModifierComponent(Modifier modifier) {
+        try {
+<span class="nc" id="L211">            GoodsType goodsType = getSpecification()</span>
+<span class="nc" id="L212">                .getGoodsType(modifier.getId());</span>
+<span class="nc" id="L213">            String bonus = ModifierFormat.getModifierAsString(modifier);</span>
+<span class="nc" id="L214">            return getGoodsButton(goodsType, bonus);</span>
+<span class="nc" id="L215">        } catch (Exception e) {</span>
+            // not a production bonus
+<span class="nc" id="L217">            JLabel label = new JLabel(ModifierFormat.getFeatureAsString(modifier) + &quot;: &quot;</span>
+<span class="nc" id="L218">                + ModifierFormat.getModifierAsString(modifier));</span>
+<span class="nc" id="L219">            label.setToolTipText(Messages.getShortDescription(modifier));</span>
+<span class="nc" id="L220">            return label;</span>
+        }
+    }
+
+    public JLabel getAbilityComponent(Ability ability) {
+<span class="nc bnc" id="L225" title="All 2 branches missed.">        if (ability.getValue()) {</span>
+<span class="nc" id="L226">            JLabel label = new JLabel(ModifierFormat.getFeatureAsString(ability));</span>
+<span class="nc" id="L227">            label.setToolTipText(Messages.getShortDescription(ability));</span>
+<span class="nc" id="L228">            return label;</span>
+        } else {
+<span class="nc" id="L230">            return null;</span>
+        }
+    }
+
+    public void appendRequiredAbility(StyledDocument doc, String key, boolean value) {
+<span class="nc" id="L235">        final Specification spec = getSpecification();</span>
+        try {
+<span class="nc" id="L237">            doc.insertString(doc.getLength(), Messages.getName(key),</span>
+<span class="nc" id="L238">                             doc.getStyle(&quot;regular&quot;));</span>
+<span class="nc" id="L239">            List&lt;JButton&gt; requiredTypes</span>
+<span class="nc" id="L240">                 = transform(spec.getTypesProviding(key, value), alwaysTrue(),</span>
+                     t -&gt; {
+<span class="nc" id="L242">                         JButton typeButton = getButton(t);</span>
+<span class="nc" id="L243">                         typeButton.addActionListener(this);</span>
+<span class="nc" id="L244">                         return typeButton;</span>
+                     });
+<span class="nc" id="L246">            JButton rt = first(requiredTypes);</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">            if (rt != null) {</span>
+<span class="nc" id="L248">                doc.insertString(doc.getLength(), &quot; (&quot;,</span>
+<span class="nc" id="L249">                                 doc.getStyle(&quot;regular&quot;));</span>
+<span class="nc" id="L250">                StyleConstants.setComponent(doc.getStyle(&quot;button&quot;), rt);</span>
+<span class="nc" id="L251">                doc.insertString(doc.getLength(), &quot; &quot;, doc.getStyle(&quot;button&quot;));</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">                for (int index = 1; index &lt; requiredTypes.size(); index++) {</span>
+<span class="nc" id="L253">                    JButton button = requiredTypes.get(index);</span>
+<span class="nc" id="L254">                    doc.insertString(doc.getLength(), &quot; / &quot;,</span>
+<span class="nc" id="L255">                                     doc.getStyle(&quot;regular&quot;));</span>
+<span class="nc" id="L256">                    StyleConstants.setComponent(doc.getStyle(&quot;button&quot;), button);</span>
+<span class="nc" id="L257">                    doc.insertString(doc.getLength(), &quot; &quot;,</span>
+<span class="nc" id="L258">                                     doc.getStyle(&quot;button&quot;));</span>
+                }
+<span class="nc" id="L260">                doc.insertString(doc.getLength(), &quot;)&quot;,</span>
+<span class="nc" id="L261">                                 doc.getStyle(&quot;regular&quot;));</span>
+            }
+<span class="nc" id="L263">            doc.insertString(doc.getLength(), &quot;\n&quot;, doc.getStyle(&quot;regular&quot;));</span>
+<span class="nc" id="L264">        } catch (BadLocationException ble) {</span>
+<span class="nc" id="L265">            logger.log(Level.WARNING, &quot;Insert fail&quot;, ble);</span>
+<span class="nc" id="L266">        }</span>
+<span class="nc" id="L267">    }</span>
+    
+    public Dimension getListItemIconSize() {
+<span class="nc" id="L270">        return colopediaPanel.getListItemIconSize();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

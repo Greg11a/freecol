@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RandomUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.util</a> &gt; <span class="el_source">RandomUtils.java</span></div><h1>RandomUtils.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.util;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+
+/**
+ * Collection of small static helper routines for logged pseudo-random
+ * number generation.
+ */
+<span class="nc" id="L35">public class RandomUtils {</span>
+
+    public static class RandomIntCache {
+
+        private final Logger logger;
+        private final String logMe;
+        private final Random random;
+        private final int range;
+        private final int size;
+        private int generation;
+        private int[] cache;
+        private int index;
+
+        public RandomIntCache(Logger logger, String logMe, Random random,
+<span class="fc" id="L49">                              int range, int size) {</span>
+<span class="fc" id="L50">            this.logger = logger;</span>
+<span class="fc" id="L51">            this.logMe = logMe;</span>
+<span class="fc" id="L52">            this.random = random;</span>
+<span class="fc" id="L53">            this.range = range;</span>
+<span class="fc" id="L54">            this.size = size;</span>
+<span class="fc" id="L55">            this.generation = 0;</span>
+<span class="fc" id="L56">            refill();</span>
+<span class="fc" id="L57">        }</span>
+
+        private void refill() {
+<span class="fc" id="L60">            this.cache = this.random.ints(this.size, 0, this.range).toArray();</span>
+<span class="fc" id="L61">            this.index = 0;</span>
+<span class="fc" id="L62">            RandomUtils.logArray(logger,</span>
+<span class="fc" id="L63">                logMe + &quot;/&quot; + String.valueOf(generation), this.cache);</span>
+<span class="fc" id="L64">            this.generation++;</span>
+<span class="fc" id="L65">        }</span>
+
+        public int nextInt() {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (this.index &gt;= this.size) refill();</span>
+<span class="fc" id="L69">            return this.cache[this.index++];</span>
+        }
+
+        public int nextInt(int tighterRange) {
+<span class="fc" id="L73">            return nextInt() % tighterRange;</span>
+        }
+    }
+    
+    /**
+     * Convenience to aid logging uses of Randoms.
+     *
+     * @param logger The {@code Logger} to log to.
+     * @param logMe A string to log with the result.
+     * @param random A pseudo-{@code Random} number source.
+     * @param range The exclusive maximum integer to return.
+     * @return A pseudo-random integer r, 0 &amp;le; r &amp;lt; range.
+     */
+    public static int randomInt(Logger logger, String logMe, Random random,
+                                int range) {
+<span class="fc" id="L88">        int ret = random.nextInt(range);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (logger != null) {</span>
+<span class="fc" id="L90">            logger.finest(logMe + &quot; random(&quot; + range + &quot;) = &quot; + ret);</span>
+        }
+<span class="fc" id="L92">        return ret;</span>
+    }
+
+    /**
+     * Log an array of ints at Level.FINEST.
+     *
+     * @param logger The {@code Logger} to log to.
+     * @param logMe A string to log with the result.
+     * @param arr The array of ints to log.
+     */
+    public static void logArray(Logger logger, String logMe, int[] arr) {
+<span class="pc bpc" id="L103" title="2 of 4 branches missed.">        if (logger != null &amp;&amp; logger.isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L104">            StringBuilder sb = new StringBuilder(64);</span>
+<span class="nc" id="L105">            sb.append(logMe).append(&quot; random&quot;).append(&quot; = [&quot;);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            for (int i = 0; i &lt; arr.length; i++) sb.append(' ').append(arr[i]);</span>
+<span class="nc" id="L107">            sb.append(&quot; ]&quot;);</span>
+<span class="nc" id="L108">            logger.finest(sb.toString());</span>
+        }
+<span class="fc" id="L110">    }</span>
+
+    /**
+     * Convenience to aid logging uses of Randoms.
+     *
+     * @param logger The {@code Logger} to log to.
+     * @param logMe A string to log with the result.
+     * @param random A pseudo-{@code Random} number source.
+     * @param range The exclusive maximum integer to return.
+     * @param n The number of randoms.
+     * @return A vector of pseudo-random integers r, 0 &amp;le; r &amp;lt; range.
+     */
+    public static int[] randomInts(Logger logger, String logMe, Random random,
+                                   int range, int n) {
+<span class="fc" id="L124">        int[] ret = random.ints(n, 0, range).toArray();</span>
+<span class="fc" id="L125">        logArray(logger, logMe, ret);</span>
+<span class="fc" id="L126">        return ret;</span>
+    }
+
+    /**
+     * Convenience to aid logging uses of Randoms.
+     *
+     * @param logger The {@code Logger} to log to.
+     * @param logMe A string to log with the result.
+     * @param random A pseudo-{@code Random} number source.
+     * @return A pseudo-random double r, 0 &amp;le; r &amp;lt; 1.0.
+     */
+    public static float randomFloat(Logger logger, String logMe,
+                                    Random random) {
+<span class="nc" id="L139">        float ret = random.nextFloat();</span>
+<span class="nc bnc" id="L140" title="All 4 branches missed.">        if (logger != null &amp;&amp; logger.isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L141">            logger.finest(logMe + &quot; random(1.0f) = &quot; + ret);</span>
+        }
+<span class="nc" id="L143">        return ret;</span>
+    }
+
+    /**
+     * Convenience to aid logging uses of Randoms.
+     *
+     * @param logger The {@code Logger} to log to.
+     * @param logMe A string to log with the result.
+     * @param random A pseudo-{@code Random} number source.
+     * @return A pseudo-random double r, 0 &amp;le; r &amp;lt; 1.0.
+     */
+    public static double randomDouble(Logger logger, String logMe,
+                                      Random random) {
+<span class="fc" id="L156">        double ret = random.nextDouble();</span>
+<span class="pc bpc" id="L157" title="2 of 4 branches missed.">        if (logger != null &amp;&amp; logger.isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L158">            logger.finest(logMe + &quot; random(1.0) = &quot; + ret);</span>
+        }
+<span class="fc" id="L160">        return ret;</span>
+    }
+
+    /**
+     * Gets a random member of a list.
+     *
+     * @param &lt;T&gt; The list member type.
+     * @param logger The {@code Logger} to log to.
+     * @param logMe A string to log with the result.
+     * @param list The list.
+     * @param random A random number source.
+     * @return A random member from the list.
+     */
+    public static &lt;T&gt; T getRandomMember(Logger logger, String logMe,
+                                        List&lt;T&gt; list, Random random) {
+<span class="pc bpc" id="L175" title="1 of 3 branches missed.">        switch (list.size()) {</span>
+        case 0:
+<span class="nc" id="L177">            return null;</span>
+        case 1:
+<span class="fc" id="L179">            return list.get(0);</span>
+        default:
+            break;
+        }
+<span class="fc" id="L183">        return list.get(randomInt(logger, logMe, random, list.size()));</span>
+    }
+
+    /**
+     * Gets a random member of a stream.
+     *
+     * @param &lt;T&gt; The list member type.
+     * @param logger The {@code Logger} to log to.
+     * @param logMe A string to log with the result.
+     * @param stream The {@code Stream} to pick from.
+     * @param random A random number source.
+     * @return A random member from the stream.
+     */
+    public static &lt;T&gt; T getRandomMember(Logger logger, String logMe,
+                                        Stream&lt;T&gt; stream, Random random) {
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">        return (stream == null) ? null</span>
+<span class="fc" id="L199">            : getRandomMember(logger, logMe,</span>
+<span class="fc" id="L200">                              stream.collect(Collectors.toList()), random);</span>
+    }
+
+    /**
+     * Shuffle a list.
+     *
+     * @param logger The {@code Logger} to log to.
+     * @param logMe A string to log with the result.
+     * @param list The list.
+     * @param random A random number source.
+     */
+    public static void randomShuffle(Logger logger, String logMe,
+                                     List&lt;?&gt; list, Random random) {
+<span class="pc bpc" id="L213" title="2 of 4 branches missed.">        if (list.size() &lt;= 1 || random == null) return;</span>
+<span class="pc bpc" id="L214" title="1 of 4 branches missed.">        if (logger != null &amp;&amp; logger.isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L215">            logger.finest(logMe + &quot; shuffle.&quot;);</span>
+        }
+<span class="fc" id="L217">        Collections.shuffle(list, random);</span>
+<span class="fc" id="L218">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

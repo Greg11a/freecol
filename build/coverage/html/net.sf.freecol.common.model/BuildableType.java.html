@@ -1,0 +1,417 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BuildableType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">BuildableType.java</span></div><h1>BuildableType.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+
+import javax.swing.JList;
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.model.Colony.NoBuildReason;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+
+/**
+ * Contains information on buildable types.
+ */
+public abstract class BuildableType extends FreeColSpecObjectType {
+
+    /** The required population for an ordinary buildable. */
+    private static final int DEFAULT_REQUIRED_POPULATION = 1;
+
+    /**
+     * The minimum population that a Colony needs in order to build
+     * this type.
+     */
+<span class="fc" id="L51">    private int requiredPopulation = DEFAULT_REQUIRED_POPULATION;</span>
+
+    /** Stores the abilities required by this Type. */
+<span class="fc" id="L54">    private Map&lt;String, Boolean&gt; requiredAbilities = null;</span>
+
+    /** A list of AbstractGoods required to build this type. */
+<span class="fc" id="L57">    private List&lt;AbstractGoods&gt; requiredGoods = null;</span>
+
+    /** Limits on the production of this type. */
+<span class="fc" id="L60">    private List&lt;Limit&gt; limits = null;</span>
+
+
+    /**
+     * Creates a new buildable type.
+     *
+     * @param id The object identifier.
+     * @param specification The {@code Specification} to refer to.
+     */
+    public BuildableType(String id, Specification specification) {
+<span class="fc" id="L70">        super(id, specification);</span>
+<span class="fc" id="L71">    }</span>
+
+
+    /**
+     * Get the population required to build this buildable type.
+     *
+     * @return The population required.
+     */
+    public int getRequiredPopulation() {
+<span class="fc" id="L80">        return requiredPopulation;</span>
+    }
+
+    /**
+     * Set the population required to build this buildable type.
+     *
+     * @param newPopulation The new population required.
+     */
+    public void setRequiredPopulation(final int newPopulation) {
+<span class="fc" id="L89">        this.requiredPopulation = newPopulation;</span>
+<span class="fc" id="L90">    }</span>
+
+    /**
+     * Gets the abilities required by this type.
+     *
+     * @return A copy of the required abilities map.
+     */
+    public Map&lt;String, Boolean&gt; getRequiredAbilities() {
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        return (requiredAbilities == null)</span>
+<span class="fc" id="L99">                ? Collections.&lt;String, Boolean&gt;emptyMap()</span>
+<span class="fc" id="L100">                : new HashMap&lt;&gt;(requiredAbilities);</span>
+    }
+
+    public boolean requiresAbility(String key) {
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        return (requiredAbilities == null) ? false</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                : (!requiredAbilities.containsKey(key)) ? false</span>
+<span class="fc" id="L106">                : requiredAbilities.get(key);</span>
+    }
+
+    /**
+     * Sets the abilities required by this type.
+     *
+     * @param abilities The new required abilities.
+     */
+    public void setRequiredAbilities(Map&lt;String, Boolean&gt; abilities) {
+<span class="nc" id="L115">        requiredAbilities = abilities;</span>
+<span class="nc" id="L116">    }</span>
+
+    /**
+     * Add a new required ability.
+     *
+     * Public for specification fixes.
+     *
+     * @param tag The ability name.
+     * @param value The ability value.
+     */
+    public void addRequiredAbility(String tag, boolean value) {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (requiredAbilities == null) {</span>
+<span class="fc" id="L128">            requiredAbilities = new HashMap&lt;&gt;();</span>
+        }
+<span class="fc" id="L130">        requiredAbilities.put(tag, value);</span>
+<span class="fc" id="L131">    }</span>
+
+    /**
+     * Remove a required ability.
+     *
+     * Public for specification fixes.
+     *
+     * @param tag The ability name to remove.
+     */
+    public void removeRequiredAbility(String tag) {
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (requiredAbilities != null) requiredAbilities.remove(tag);</span>
+<span class="nc" id="L142">    }</span>
+
+
+    /**
+     * Is this buildable available to a given FreeColObject?
+     *
+     * @param fco The {@code FreeColObject}s to check.
+     * @return True if the buildable is available.
+     */
+    public boolean isAvailableTo(FreeColObject... fco) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        return (requiredAbilities == null) ? true</span>
+<span class="fc" id="L153">            : all(requiredAbilities.entrySet(),</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                e -&gt; e.getValue() == any(fco,</span>
+<span class="pc bpc" id="L155" title="1 of 4 branches missed.">                    o -&gt; o != null &amp;&amp; o.hasAbility(e.getKey())));</span>
+    }
+
+    /**
+     * Get the goods required to build an instance of this buildable.
+     *
+     * Note we must take care to return a deep copy, as these lists
+     * are subject to complex manipulations in the role code.
+     *
+     * @return A deep copy of the list of required goods.
+     */
+    public List&lt;AbstractGoods&gt; getRequiredGoodsList() {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        return (this.requiredGoods == null)</span>
+<span class="fc" id="L168">                ? Collections.&lt;AbstractGoods&gt;emptyList()</span>
+<span class="fc" id="L169">                : transform(this.requiredGoods, alwaysTrue(),</span>
+<span class="fc" id="L170">                ag -&gt; new AbstractGoods(ag.getType(), ag.getAmount()));</span>
+    }
+
+    /**
+     * Get the goods required to build an instance of this buildable
+     * as a stream.
+     *
+     * @return A stream of the required goods.
+     */
+    public Stream&lt;AbstractGoods&gt; getRequiredGoods() {
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        return (this.requiredGoods == null) ? Stream.&lt;AbstractGoods&gt;empty()</span>
+<span class="fc" id="L181">                : getRequiredGoodsList().stream();</span>
+    }
+
+    /**
+     * Set the goods required to build an instance of this buildable.
+     *
+     * @param goods The new required goods.
+     */
+    public void setRequiredGoods(List&lt;AbstractGoods&gt; goods) {
+<span class="nc" id="L190">        this.requiredGoods.clear();</span>
+<span class="nc" id="L191">        this.requiredGoods.addAll(goods);</span>
+<span class="nc" id="L192">    }</span>
+
+    /**
+     * Get the amount required of a given {@code GoodsType} to build
+     * an instance of this buildable.
+     *
+     * @param type The {@code GoodsType} to check.
+     * @return The amount of goods required.
+     */
+    public int getRequiredAmountOf(GoodsType type) {
+<span class="fc" id="L202">        return AbstractGoods.getCount(type, getRequiredGoodsList());</span>
+    }
+
+    /**
+     * Add a new goods requirement.
+     *
+     * @param ag The required {@code AbstractGoods} to add.
+     */
+    private void addRequiredGoods(AbstractGoods ag) {
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        if (this.requiredGoods == null) this.requiredGoods = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L212">        this.requiredGoods.add(ag);</span>
+<span class="fc" id="L213">    }</span>
+
+    /**
+     * Does this buildable need goods to build?
+     *
+     * @return True if goods are required to build this buildable.
+     */
+    public boolean needsGoodsToBuild() {
+<span class="pc bpc" id="L221" title="1 of 4 branches missed.">        return this.requiredGoods != null &amp;&amp; !this.requiredGoods.isEmpty();</span>
+    }
+
+    /**
+     * Get the limits on this buildable.
+     *
+     * @return A list of {@code Limit}s.
+     */
+    public List&lt;Limit&gt; getLimits() {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        return (limits == null) ? Collections.&lt;Limit&gt;emptyList() : limits;</span>
+    }
+
+    /**
+     * Set the limits on this buildable.
+     *
+     * @param newLimits The new {@code Limits} value.
+     */
+    public void setLimits(List&lt;Limit&gt; newLimits) {
+<span class="nc" id="L239">        limits = newLimits;</span>
+<span class="nc" id="L240">    }</span>
+
+    /**
+     * Add a new limit.
+     *
+     * @param limit The {@code Limit} to add.
+     */
+    private void addLimit(Limit limit) {
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        if (limits == null) limits = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L249">        limits.add(limit);</span>
+<span class="fc" id="L250">    }</span>
+
+    /**
+     * Get a label describing this buildable type as being currently built.
+     *
+     * @return A suitable label.
+     */
+    public StringTemplate getCurrentlyBuildingLabel() {
+<span class="nc" id="L258">        return StringTemplate.template(&quot;model.buildableType.currentlyBuilding&quot;)</span>
+<span class="nc" id="L259">                .addNamed(&quot;%buildable%&quot;, this);</span>
+    }
+
+    /**
+     * Check to see if this buildable type can be built in a colony
+     * based on the buildings or units available.
+     *
+     * @param colony The {@code Colony} to check.
+     * @param assumeBuilt A list of {@code BuildableType}s.
+     * @return The reason the for failure, or NoBuildReason.NONE on success.
+     */
+    public abstract NoBuildReason canBeBuiltInColony(Colony colony,
+        List&lt;BuildableType&gt; assumeBuilt);
+
+    public int getMinimumIndex(Colony colony, JList&lt;BuildableType&gt; buildQueueList, int UNABLE_TO_BUILD) {
+<span class="nc" id="L274">        return UNABLE_TO_BUILD;</span>
+    }
+
+    public int getMaximumIndex(Colony colony, JList&lt;BuildableType&gt; buildQueueList, int UNABLE_TO_BUILD) {
+<span class="nc" id="L278">        return UNABLE_TO_BUILD;</span>
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L289">        BuildableType o = copyInCast(other, BuildableType.class);</span>
+<span class="nc bnc" id="L290" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L291">        this.setRequiredPopulation(o.getRequiredPopulation());</span>
+<span class="nc" id="L292">        this.setRequiredAbilities(o.getRequiredAbilities());</span>
+<span class="nc" id="L293">        this.setRequiredGoods(o.getRequiredGoodsList());</span>
+<span class="nc" id="L294">        this.setLimits(o.getLimits());</span>
+<span class="nc" id="L295">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String REQUIRED_ABILITY_TAG = &quot;required-ability&quot;;
+    private static final String REQUIRED_GOODS_TAG = &quot;required-goods&quot;;
+    // Subclasses need to check this.
+    public static final String REQUIRED_POPULATION_TAG = &quot;required-population&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L312">        super.writeAttributes(xw);</span>
+
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        if (requiredPopulation &gt; 1) {</span>
+<span class="fc" id="L315">            xw.writeAttribute(REQUIRED_POPULATION_TAG, requiredPopulation);</span>
+        }
+<span class="fc" id="L317">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L324">        super.writeChildren(xw);</span>
+
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        if (requiredAbilities != null) {</span>
+            for (Map.Entry&lt;String, Boolean&gt; entry
+<span class="fc bfc" id="L328" title="All 2 branches covered.">                    : requiredAbilities.entrySet()) {</span>
+<span class="fc" id="L329">                xw.writeStartElement(REQUIRED_ABILITY_TAG);</span>
+
+<span class="fc" id="L331">                xw.writeAttribute(ID_ATTRIBUTE_TAG, entry.getKey());</span>
+
+<span class="fc" id="L333">                xw.writeAttribute(VALUE_TAG, entry.getValue());</span>
+
+<span class="fc" id="L335">                xw.writeEndElement();</span>
+<span class="fc" id="L336">            }</span>
+        }
+
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        for (AbstractGoods goods : getRequiredGoodsList()) {</span>
+<span class="fc" id="L340">            xw.writeStartElement(REQUIRED_GOODS_TAG);</span>
+
+<span class="fc" id="L342">            xw.writeAttribute(ID_ATTRIBUTE_TAG, goods.getType());</span>
+
+<span class="fc" id="L344">            xw.writeAttribute(VALUE_TAG, goods.getAmount());</span>
+
+<span class="fc" id="L346">            xw.writeEndElement();</span>
+<span class="fc" id="L347">        }</span>
+
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        for (Limit limit : getLimits()) limit.toXML(xw);</span>
+<span class="fc" id="L350">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L357">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L359">        requiredPopulation = xr.getAttribute(REQUIRED_POPULATION_TAG,</span>
+                DEFAULT_REQUIRED_POPULATION);
+<span class="fc" id="L361">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void clearContainers(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L368">        super.clearContainers(xr);</span>
+<span class="fc" id="L369">        requiredAbilities = null;</span>
+<span class="fc" id="L370">        requiredGoods = null;</span>
+<span class="fc" id="L371">        limits = null;</span>
+<span class="fc" id="L372">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L379">        super.readChildren(xr);</span>
+<span class="fc" id="L380">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L387">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L388">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L390" title="All 2 branches covered.">        if (REQUIRED_ABILITY_TAG.equals(tag)) {</span>
+<span class="fc" id="L391">            String id = xr.readId();</span>
+<span class="fc" id="L392">            addRequiredAbility(id, xr.getAttribute(VALUE_TAG, true));</span>
+<span class="fc" id="L393">            spec.addAbility(id);</span>
+<span class="fc" id="L394">            xr.closeTag(REQUIRED_ABILITY_TAG);</span>
+
+<span class="fc bfc" id="L396" title="All 2 branches covered.">        } else if (REQUIRED_GOODS_TAG.equals(tag)) {</span>
+<span class="fc" id="L397">            GoodsType type = xr.getType(spec, ID_ATTRIBUTE_TAG,</span>
+                    GoodsType.class, (GoodsType)null);
+<span class="fc" id="L399">            int amount = xr.getAttribute(VALUE_TAG, 0);</span>
+<span class="fc" id="L400">            addRequiredGoods(new AbstractGoods(type, amount));</span>
+<span class="fc" id="L401">            xr.closeTag(REQUIRED_GOODS_TAG);</span>
+
+<span class="fc bfc" id="L403" title="All 2 branches covered.">        } else if (Limit.TAG.equals(tag)) {</span>
+<span class="fc" id="L404">            Limit limit = new Limit(xr, spec);</span>
+<span class="fc bfc" id="L405" title="All 2 branches covered.">            if (limit.getLeftHandSide().getType() == null) {</span>
+<span class="fc" id="L406">                limit.getLeftHandSide().setType(getId());</span>
+            }
+<span class="fc" id="L408">            addLimit(limit);</span>
+
+<span class="fc" id="L410">        } else {</span>
+<span class="fc" id="L411">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L413">    }</span>
+
+    // getXMLTagName left to subclasses
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

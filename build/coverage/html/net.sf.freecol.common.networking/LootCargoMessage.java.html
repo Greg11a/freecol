@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LootCargoMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">LootCargoMessage.java</span></div><h1>LootCargoMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent when looting cargo.
+ */
+public class LootCargoMessage extends ObjectMessage {
+
+    public static final String TAG = &quot;lootCargo&quot;;
+    private static final String LOSER_TAG = &quot;loser&quot;;
+    private static final String WINNER_TAG = &quot;winner&quot;;
+
+
+    /**
+     * Create a new {@code LootCargoMessage}.
+     *
+     * @param winner The {@code Unit} that is looting.
+     * @param loserId The identifier of the {@code Unit} that is looted.
+     * @param goods The {@code AbstractGoods} to loot.
+     */
+    public LootCargoMessage(Unit winner, String loserId, List&lt;Goods&gt; goods) {
+<span class="fc" id="L55">        super(TAG, WINNER_TAG, winner.getId(), LOSER_TAG, loserId);</span>
+
+<span class="fc" id="L57">        appendChildren(goods);</span>
+<span class="fc" id="L58">    }</span>
+
+    /**
+     * Create a new {@code LootCargoMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public LootCargoMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L69">        super(TAG, xr, WINNER_TAG, LOSER_TAG);</span>
+
+<span class="nc" id="L71">        List&lt;Goods&gt; goods = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        while (xr.moreTags()) {</span>
+<span class="nc" id="L73">            String tag = xr.getLocalName();</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">            if (Goods.TAG.equals(tag)) {</span>
+<span class="nc" id="L75">                Goods g = xr.readFreeColObject(game, Goods.class);</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                if (g != null) goods.add(g);</span>
+<span class="nc" id="L77">            } else {</span>
+<span class="nc" id="L78">                expected(Goods.TAG, tag);</span>
+            }
+<span class="nc" id="L80">            xr.expectTag(tag);</span>
+<span class="nc" id="L81">        }</span>
+<span class="nc" id="L82">        xr.expectTag(TAG);</span>
+<span class="nc" id="L83">        appendChildren(goods);</span>
+<span class="nc" id="L84">    }</span>
+
+
+    /**
+     * Accessor for the winning unit.
+     *
+     * @param game The {@code Game} to look for the unit in.
+     * @return The winner unit.
+     */
+    private Unit getWinner(Game game) {
+<span class="fc" id="L94">        return game.getFreeColGameObject(getStringAttribute(WINNER_TAG),</span>
+                                         Unit.class);
+    }
+
+    /**
+     * Accessor for the losing unit identifier.
+     *
+     * @return The loser unit object Identifier.
+     */
+    private String getLoserId() {
+<span class="fc" id="L104">        return getStringAttribute(LOSER_TAG);</span>
+    }
+
+    /**
+     * Accessor for the goods to loot.
+     *
+     * @return The goods to loot.
+     */
+    private List&lt;Goods&gt; getGoods() {
+<span class="fc" id="L113">        return getChildren(Goods.class);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="fc" id="L121">        return Message.MessagePriority.LATE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+<span class="fc" id="L129">        final Game game = freeColServer.getGame();</span>
+<span class="fc" id="L130">        final Unit winner = getWinner(game);</span>
+<span class="fc" id="L131">        final List&lt;Goods&gt; initialGoods = getGoods();</span>
+<span class="fc" id="L132">        final String loserId = getLoserId();</span>
+
+<span class="fc" id="L134">        aiPlayer.lootCargoHandler(winner, initialGoods, loserId);</span>
+<span class="fc" id="L135">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L142">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L143">        final Unit unit = getWinner(game);</span>
+<span class="nc" id="L144">        final String loserId = getLoserId();</span>
+<span class="nc" id="L145">        final List&lt;Goods&gt; goods = getGoods();</span>
+
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (unit == null) return;</span>
+
+<span class="nc" id="L149">        igc(freeColClient).lootCargoHandler(unit, goods, loserId);</span>
+<span class="nc" id="L150">        clientGeneric(freeColClient);</span>
+<span class="nc" id="L151">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="fc" id="L159">        final Game game = freeColServer.getGame();</span>
+
+        Unit winner;
+        try {
+<span class="fc" id="L163">            winner = getWinner(game);</span>
+<span class="nc" id="L164">        } catch (Exception e) {</span>
+<span class="nc" id="L165">            return serverPlayer.clientError(e.getMessage());</span>
+<span class="fc" id="L166">        }</span>
+        // Do not check the defender identifier, as it might have
+        // sunk.  It is enough that the attacker knows it.  Similarly
+        // the server is better placed to check the goods validity.
+
+        // Try to loot.
+<span class="fc" id="L172">        return igc(freeColServer)</span>
+<span class="fc" id="L173">            .lootCargo(serverPlayer, winner, getLoserId(), getGoods());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

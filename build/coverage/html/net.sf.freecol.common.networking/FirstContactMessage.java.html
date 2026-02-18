@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FirstContactMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">FirstContactMessage.java</span></div><h1>FirstContactMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent when making first contact between players.
+ */
+public class FirstContactMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;firstContact&quot;;
+    private static final String CAMPS_TAG = &quot;camps&quot;;
+    private static final String OTHER_TAG = &quot;other&quot;;
+    private static final String PLAYER_TAG = &quot;player&quot;;
+    private static final String RESULT_TAG = &quot;result&quot;;
+    private static final String TILE_TAG = &quot;tile&quot;;
+
+
+    /**
+     * Create a new {@code FirstContactMessage}.
+     *
+     * @param player The {@code Player} making contact.
+     * @param other The {@code Player} being contacted.
+     * @param tile An optional {@code Tile} to offer.
+     */
+    public FirstContactMessage(Player player, Player other, Tile tile) {
+<span class="fc" id="L55">        super(TAG, PLAYER_TAG, player.getId(), OTHER_TAG, other.getId(),</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">              TILE_TAG, (tile == null) ? null : tile.getId(),</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">              CAMPS_TAG, ((other.isEuropean()) ? null</span>
+<span class="fc" id="L58">                  : String.valueOf(other.getSettlementCount())));</span>
+<span class="fc" id="L59">    }</span>
+
+    /**
+     * Create a new {@code FirstContactMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public FirstContactMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L70">        super(TAG, xr, PLAYER_TAG, OTHER_TAG, TILE_TAG, CAMPS_TAG, RESULT_TAG);</span>
+<span class="nc" id="L71">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="fc" id="L79">        return Message.MessagePriority.EARLY;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+<span class="fc" id="L87">        final Game game = freeColServer.getGame();</span>
+<span class="fc" id="L88">        final Player contactor = getPlayer(game);</span>
+<span class="fc" id="L89">        final Player contactee = getOtherPlayer(game);</span>
+<span class="fc" id="L90">        final Tile tile = getTile(game);</span>
+
+<span class="fc" id="L92">        aiPlayer.firstContactHandler(contactor, contactee, tile);</span>
+<span class="fc" id="L93">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L100">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L101">        final Player player = getPlayer(game);</span>
+<span class="nc" id="L102">        final Player other = getOtherPlayer(game);</span>
+<span class="nc" id="L103">        final Tile tile = getTile(game);</span>
+<span class="nc" id="L104">        final int n = getSettlementCount();</span>
+
+<span class="nc bnc" id="L106" title="All 4 branches missed.">        if (player == null || player != freeColClient.getMyPlayer()) {</span>
+<span class="nc" id="L107">            logger.warning(&quot;firstContact with bad player: &quot; + player);</span>
+<span class="nc" id="L108">            return;</span>
+        }
+<span class="nc bnc" id="L110" title="All 6 branches missed.">        if (other == null || other == player || !other.isIndian()) {</span>
+<span class="nc" id="L111">            logger.warning(&quot;firstContact with bad other player: &quot; + other);</span>
+<span class="nc" id="L112">            return;</span>
+        }
+<span class="nc bnc" id="L114" title="All 4 branches missed.">        if (tile != null &amp;&amp; tile.getOwner() != other) {</span>
+<span class="nc" id="L115">            logger.warning(&quot;firstContact with bad tile: &quot; + tile);</span>
+<span class="nc" id="L116">            return;</span>
+        }
+
+<span class="nc" id="L119">        igc(freeColClient).firstContactHandler(player, other, tile, n);</span>
+<span class="nc" id="L120">        clientGeneric(freeColClient);</span>
+<span class="nc" id="L121">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="fc" id="L129">        final Game game = freeColServer.getGame();</span>
+<span class="fc" id="L130">        final String playerId = getStringAttribute(PLAYER_TAG);</span>
+<span class="fc" id="L131">        final String otherId = getStringAttribute(OTHER_TAG);</span>
+
+<span class="fc" id="L133">        Player first = getPlayer(game);</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        if (first == null) {</span>
+<span class="nc" id="L135">            return serverPlayer.clientError(&quot;Invalid player: &quot; + playerId);</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        } else if (serverPlayer.getId().equals(playerId)) {</span>
+            ; // OK
+        } else {
+<span class="nc" id="L139">            return serverPlayer.clientError(&quot;Not our player: &quot; + playerId);</span>
+        }
+
+<span class="fc" id="L142">        Player otherPlayer = getOtherPlayer(game);</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        if (otherPlayer == null) {</span>
+<span class="nc" id="L144">            return serverPlayer.clientError(&quot;Invalid other player: &quot; + otherId);</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        } else if (otherPlayer == (Player)serverPlayer) {</span>
+<span class="nc" id="L146">            return serverPlayer.clientError(&quot;First contact with self!?!&quot;);</span>
+        }
+
+        // Proceed to contact.
+<span class="fc" id="L150">        return igc(freeColServer)</span>
+<span class="fc" id="L151">            .nativeFirstContact(serverPlayer, otherPlayer,</span>
+<span class="fc" id="L152">                                getTile(game), getResult());</span>
+    }
+
+
+    // Public interface
+
+    public Player getPlayer(Game game) {
+<span class="fc" id="L159">        return game.getFreeColGameObject(getStringAttribute(PLAYER_TAG), Player.class);</span>
+    }
+
+    public Player getOtherPlayer(Game game) {
+<span class="fc" id="L163">        return game.getFreeColGameObject(getStringAttribute(OTHER_TAG), Player.class);</span>
+    }
+
+    public Tile getTile(Game game) {
+<span class="fc" id="L167">        return game.getFreeColGameObject(getStringAttribute(TILE_TAG), Tile.class);</span>
+    }
+
+    public int getSettlementCount() {
+<span class="nc" id="L171">        return getIntegerAttribute(CAMPS_TAG, -1);</span>
+    }
+            
+    public boolean getResult() {
+<span class="fc" id="L175">        return getBooleanAttribute(RESULT_TAG, (Boolean)null);</span>
+    }
+
+    public FirstContactMessage setResult(boolean result) {
+<span class="fc" id="L179">        setBooleanAttribute(RESULT_TAG, result);</span>
+<span class="fc" id="L180">        return this;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

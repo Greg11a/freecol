@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LoginMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">LoginMessage.java</span></div><h1>LoginMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.util.stream.Collectors;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Nation;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.networking.ChangeSet.See;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.FreeColServer.ServerState;
+import net.sf.freecol.server.model.ServerGame;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent when logging in.
+ */
+public class LoginMessage extends ObjectMessage {
+
+    public static final String TAG = &quot;login&quot;;
+    private static final String CURRENT_PLAYER_TAG = &quot;currentPlayer&quot;;
+    private static final String SINGLE_PLAYER_TAG = &quot;singlePlayer&quot;;
+    private static final String STATE_TAG = &quot;state&quot;;
+    private static final String USER_NAME_TAG = &quot;userName&quot;;
+    private static final String NATION_ID_TAG = &quot;nationId&quot;;
+    private static final String VERSION_TAG = &quot;version&quot;;
+
+    /** The player in the attached game, if any. */
+<span class="fc" id="L58">    private Player player = null;</span>
+
+
+    /**
+     * Create a new {@code LoginMessage} with the supplied parameters.
+     *
+     * @param player The {@code player} to send to.
+     * @param userName The name of the user logging in.
+     * @param nationId The nationId when the client is selecting a player. 
+     * @param version The version of FreeCol at the client.
+     * @param state The server state.
+     * @param singlePlayer True in single player games.
+     * @param currentPlayer True if this player is the current player.
+     * @param game The entire game.
+     */
+    public LoginMessage(Player player, String userName, String nationId,
+                        String version, ServerState state,
+                        boolean singlePlayer, boolean currentPlayer,
+                        Game game) {
+<span class="fc" id="L77">        super(TAG,</span>
+              USER_NAME_TAG, userName,
+              NATION_ID_TAG, nationId,
+              VERSION_TAG, version,
+<span class="fc" id="L81">              SINGLE_PLAYER_TAG, Boolean.toString(singlePlayer),</span>
+<span class="fc" id="L82">              CURRENT_PLAYER_TAG, Boolean.toString(currentPlayer));</span>
+
+<span class="fc" id="L84">        this.player = player;</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (state != null) setStringAttribute(STATE_TAG, state.toString());</span>
+<span class="fc" id="L86">        appendChild(game);</span>
+<span class="fc" id="L87">    }</span>
+
+    /**
+     * Create a new {@code LoginMessage} from a stream.
+     *
+     * @param ignoredGame A {@code Game} (not actually used, the
+     *     actual game is read from the stream).
+     * @param xr The {@code FreeColXMLReader} to read the message from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public LoginMessage(@SuppressWarnings(&quot;unused&quot;) Game ignoredGame,
+                        FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L99">        super(TAG, xr, USER_NAME_TAG, NATION_ID_TAG, VERSION_TAG, STATE_TAG,</span>
+              SINGLE_PLAYER_TAG, CURRENT_PLAYER_TAG);
+
+<span class="fc" id="L102">        Game game = null;</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        while (xr.moreTags()) {</span>
+<span class="nc" id="L104">            final String tag = xr.getLocalName();</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">            if (Game.TAG.equals(tag)) {</span>
+<span class="nc" id="L106">                game = new Game(null, xr);</span>
+            } else {
+<span class="nc" id="L108">                expected(Game.TAG, tag);</span>
+            }
+<span class="nc" id="L110">        }</span>
+<span class="fc" id="L111">        xr.expectTag(TAG);</span>
+<span class="fc" id="L112">        appendChild(game);</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        this.player = (game == null) ? null : getPlayer(game);</span>
+<span class="fc" id="L114">    }</span>
+
+
+    private String getUserName() {
+<span class="fc" id="L118">        return getStringAttribute(USER_NAME_TAG);</span>
+    }
+    
+    private String getNationId() {
+<span class="fc" id="L122">        return getStringAttribute(NATION_ID_TAG);</span>
+    }
+
+    private String getVersion() {
+<span class="fc" id="L126">        return getStringAttribute(VERSION_TAG);</span>
+    }
+
+    private ServerState getState() {
+<span class="nc" id="L130">        return getEnumAttribute(STATE_TAG, ServerState.class,</span>
+                                (ServerState)null);
+    }
+
+    private boolean getSinglePlayer() {
+<span class="nc" id="L135">        return getBooleanAttribute(SINGLE_PLAYER_TAG, Boolean.FALSE);</span>
+    }
+
+    private boolean getCurrentPlayer() {
+<span class="nc" id="L139">        return getBooleanAttribute(CURRENT_PLAYER_TAG, Boolean.FALSE);</span>
+    }
+
+    private Game getGame() {
+<span class="nc" id="L143">        return getChild(0, Game.class);</span>
+    }
+
+    /**
+     * Get the player (if any) with the current name in a given game.
+     *
+     * @param game The {@code Game} to look up.
+     * @return The {@code ServerPlayer} found.
+     */
+    private Player getPlayer(Game game) {
+<span class="fc" id="L153">        final Player playerByUsername = game.getPlayerByName(getUserName());</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        if (playerByUsername != null) {</span>
+<span class="nc" id="L155">            return playerByUsername;</span>
+        }
+
+<span class="fc" id="L158">        return game.getPlayerByNationId(getNationId());</span>
+    }
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L167">        return MessagePriority.EARLY;</span>
+    }
+        
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L175">        Game game = getGame();</span>
+<span class="nc" id="L176">        freeColClient.getConnectController()</span>
+<span class="nc" id="L177">            .login(getState(), game, getUserName(),</span>
+<span class="nc" id="L178">                   getSinglePlayer(), getCurrentPlayer());</span>
+<span class="nc" id="L179">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void toXML(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L186">        FreeColXMLWriter.WriteScope ws = null;</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">        if (this.player != null) {</span>
+<span class="nc" id="L188">            ws = xw.replaceScope(FreeColXMLWriter.WriteScope</span>
+<span class="nc" id="L189">                .toClient(this.player));</span>
+        }
+<span class="fc" id="L191">        super.toXML(xw);</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        if (this.player != null) xw.replaceScope(ws);</span>
+<span class="fc" id="L193">    }</span>
+
+    /**
+     * Handle login to a completely new game.
+     *
+     * @param freeColServer The {@code FreeColServer} to log into.
+     * @param connection The incoming {@code Connection} that is logging in.
+     * @return A {@code ChangeSet} with the result.
+     */
+    private ChangeSet preGameLogin(FreeColServer freeColServer,
+                                   Connection connection) {
+<span class="nc" id="L204">        final String userName = getUserName();</span>
+        ServerGame serverGame;
+        Nation nation;
+        ChangeSet ret;
+
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if ((serverGame = freeColServer.waitForGame()) == null) {</span>
+            // No game found
+<span class="nc" id="L211">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L212">                StringTemplate.template(&quot;server.timeOut&quot;));</span>
+
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        } else if ((nation = serverGame.getVacantNation()) == null) {</span>
+            // No nation available
+<span class="nc" id="L216">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L217">                StringTemplate.template(&quot;server.maximumPlayers&quot;));</span>
+
+<span class="nc bnc" id="L219" title="All 2 branches missed.">        } else if (getPlayer(serverGame) != null) {</span>
+            // Can not use the same name as existing player
+<span class="nc" id="L221">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L222">                StringTemplate.template(&quot;server.userNameInUse&quot;)</span>
+<span class="nc" id="L223">                    .addName(&quot;%name%&quot;, userName));</span>
+
+        } else {
+            // OK, make a new player and complete initialization...
+<span class="nc" id="L227">            ServerPlayer serverPlayer = new ServerPlayer(serverGame, connection);</span>
+<span class="nc" id="L228">            serverPlayer.initialize(serverGame,</span>
+<span class="nc" id="L229">                                    serverGame.getLivePlayerList().isEmpty(),</span>
+                                    nation);
+
+            // ... but override player name
+<span class="nc" id="L233">            serverPlayer.setName(userName);</span>
+            
+            // Add the new player and inform all other players
+<span class="nc" id="L236">            ret = new ChangeSet();</span>
+<span class="nc" id="L237">            serverGame.addPlayer(serverPlayer);</span>
+<span class="nc" id="L238">            ret.addNewPlayer(serverPlayer);</span>
+
+            // Ensure there is a current player.
+<span class="nc bnc" id="L241" title="All 2 branches missed.">            if (serverGame.getCurrentPlayer() == null) {</span>
+<span class="nc" id="L242">                serverGame.setCurrentPlayer(serverPlayer);</span>
+            }
+
+            // Add the connection, send back the game
+<span class="nc" id="L246">            Connection conn = serverPlayer.getConnection();</span>
+<span class="nc" id="L247">            freeColServer.addPlayerConnection(conn);</span>
+<span class="nc" id="L248">            conn.setWriteScope(FreeColXMLWriter.WriteScope</span>
+<span class="nc" id="L249">                .toClient(serverPlayer));</span>
+            
+<span class="nc" id="L251">            ret.add(See.only(serverPlayer),</span>
+                new LoginMessage(serverPlayer, userName,
+<span class="nc" id="L253">                                 serverPlayer.getNationId(),</span>
+<span class="nc" id="L254">                                 getVersion(),</span>
+<span class="nc" id="L255">                                 freeColServer.getServerState(),</span>
+<span class="nc" id="L256">                                 freeColServer.getSinglePlayer(),</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">                                 serverGame.getCurrentPlayer() == serverPlayer,</span>
+                                 serverGame));
+
+<span class="nc" id="L260">            serverGame.sendToOthers(serverPlayer, ret);</span>
+        }
+<span class="nc" id="L262">        return ret;</span>
+    }
+
+    /**
+     * Handle login that loads an existing game.
+     *
+     * @param freeColServer The {@code FreeColServer} to log into.
+     * @param connection The incoming {@code Connection} that is logging in.
+     * @return A {@code ChangeSet} with the result.
+     */
+    private ChangeSet loadGameLogin(FreeColServer freeColServer,
+                                    Connection connection) {
+<span class="nc" id="L274">        final String userName = getUserName();</span>
+        ServerGame serverGame;
+        Player present;
+        ChangeSet ret;
+        
+<span class="nc bnc" id="L279" title="All 2 branches missed.">        if (FreeColServer.MAP_EDITOR_NAME.equals(userName)) {</span>
+            // Trying to start a map, see BR#2976 -&gt; IR#217
+<span class="nc" id="L281">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L282">                StringTemplate.template(&quot;error.mapEditorGame&quot;));</span>
+
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        } else if ((serverGame = freeColServer.getGame()) == null) {</span>
+            // No game found
+<span class="nc" id="L286">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L287">                StringTemplate.template(&quot;server.noSuchGame&quot;));</span>
+
+<span class="nc bnc" id="L289" title="All 2 branches missed.">        } else if ((present = getPlayer(serverGame)) == null) {</span>
+            // Player not present
+<span class="nc" id="L291">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L292">                StringTemplate.template(&quot;server.userNameNotPresent&quot;)</span>
+<span class="nc" id="L293">                    .addName(&quot;%name%&quot;, userName)</span>
+<span class="nc" id="L294">                    .addName(&quot;%names%&quot;,</span>
+<span class="nc" id="L295">                        transform(serverGame.getLiveEuropeanPlayers(),</span>
+<span class="nc" id="L296">                            alwaysTrue(), Player::getName,</span>
+<span class="nc" id="L297">                            Collectors.joining(&quot;, &quot;))));</span>
+
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        } else if (present.isConnected()) {</span>
+            // Another player already connected on the name
+<span class="nc" id="L301">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L302">                StringTemplate.template(&quot;server.userNameInUse&quot;)</span>
+<span class="nc" id="L303">                    .addName(&quot;%name%&quot;, userName));</span>
+
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        } else if (present.isAI()) {</span>
+            // Should not connect to AI
+<span class="nc" id="L307">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L308">                StringTemplate.template(&quot;server.userNameInUse&quot;)</span>
+<span class="nc" id="L309">                    .addName(&quot;%name%&quot;, userName));</span>
+
+        } else {
+            // Found the player
+<span class="nc" id="L313">            present.setConnection(connection);</span>
+
+            // Ensure there is a current player.
+<span class="nc bnc" id="L316" title="All 2 branches missed.">            if (serverGame.getCurrentPlayer() == null) {</span>
+<span class="nc" id="L317">                serverGame.setCurrentPlayer(present);</span>
+            }
+
+            // Add the connection, send back the game.
+<span class="nc" id="L321">            freeColServer.addPlayerConnection(connection);</span>
+<span class="nc" id="L322">            connection.setWriteScope(FreeColXMLWriter.WriteScope</span>
+<span class="nc" id="L323">                .toClient(present));</span>
+<span class="nc" id="L324">            ret = ChangeSet.simpleChange(present,</span>
+                new LoginMessage(present, userName,
+<span class="nc" id="L326">                    present.getNationId(),</span>
+<span class="nc" id="L327">                    getVersion(),</span>
+<span class="nc" id="L328">                    freeColServer.getServerState(),</span>
+<span class="nc" id="L329">                    freeColServer.getSinglePlayer(),</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">                    serverGame.getCurrentPlayer() == present,</span>
+                    serverGame));
+        }
+<span class="nc" id="L333">        return ret;</span>
+    }
+
+    /**
+     * Handle login to a running game.
+     *
+     * @param freeColServer The {@code FreeColServer} to log into.
+     * @param connection The incoming {@code Connection} that is logging in.
+     * @return A {@code ChangeSet} with the result.
+     */
+    private ChangeSet inGameLogin(FreeColServer freeColServer,
+                                  Connection connection) {
+<span class="fc" id="L345">        final String userName = getUserName();</span>
+        ServerGame serverGame;
+        Player present;
+        ChangeSet ret;
+        
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">        if ((serverGame = freeColServer.getGame()) == null) {</span>
+<span class="nc" id="L351">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L352">                StringTemplate.template(&quot;server.noSuchGame&quot;));</span>
+
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">        } else if ((present = getPlayer(serverGame)) == null) {</span>
+            // Player not present
+<span class="fc" id="L356">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="fc" id="L357">                StringTemplate.template(&quot;server.userNameNotPresent&quot;)</span>
+<span class="fc" id="L358">                    .addName(&quot;%name%&quot;, userName)</span>
+<span class="fc" id="L359">                    .addName(&quot;%names%&quot;,</span>
+<span class="fc" id="L360">                        transform(serverGame.getLiveEuropeanPlayers(),</span>
+<span class="fc" id="L361">                            alwaysTrue(), Player::getName,</span>
+<span class="fc" id="L362">                            Collectors.joining(&quot;, &quot;))));</span>
+
+<span class="nc bnc" id="L364" title="All 4 branches missed.">        } else if (!present.isAI() &amp;&amp; present.isConnected()) {</span>
+            // Another human player already connected on the name
+<span class="nc" id="L366">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L367">                StringTemplate.template(&quot;server.userNameInUse&quot;)</span>
+<span class="nc" id="L368">                    .addName(&quot;%name%&quot;, userName));</span>
+
+        } else {
+            // Join allowed, including over an AI
+<span class="nc bnc" id="L372" title="All 2 branches missed.">            if (present.isAI()) serverGame.changeAI(present, false);</span>
+
+<span class="nc" id="L374">            present.setName(userName);</span>
+<span class="nc" id="L375">            present.setConnection(connection);</span>
+
+            // Add the connection, send back the game
+<span class="nc" id="L378">            freeColServer.addPlayerConnection(connection);</span>
+<span class="nc" id="L379">            connection.setWriteScope(FreeColXMLWriter.WriteScope</span>
+<span class="nc" id="L380">                .toClient(present));</span>
+<span class="nc" id="L381">            ret = ChangeSet.simpleChange(present,</span>
+<span class="nc" id="L382">                new LoginMessage(present, userName, present.getNationId(),</span>
+<span class="nc" id="L383">                                 getVersion(),</span>
+<span class="nc" id="L384">                                 freeColServer.getServerState(),</span>
+<span class="nc" id="L385">                                 freeColServer.getSinglePlayer(),</span>
+<span class="nc bnc" id="L386" title="All 2 branches missed.">                                 serverGame.getCurrentPlayer() == present,</span>
+                                 serverGame));
+        }
+<span class="fc" id="L389">        return ret;</span>
+    }
+
+    /**
+     * Special purpose handler for the UserConnectionHandler.
+     *
+     * @param freeColServer The server to connect to.
+     * @param connection The incoming {@code Connection}.
+     * @return A {@code ChangeSet} encapsulating the login.
+     */
+    public ChangeSet loginHandler(FreeColServer freeColServer,
+                                  Connection connection) {
+        // Note: At this point serverPlayer is just a stub, with only
+        // the connection infomation being valid.
+        
+        // FIXME: Do not allow more than one (human) player to connect
+        // to a single player game. This would be easy if we used a
+        // dummy connection for single player games.
+<span class="fc" id="L407">        final String userName = getUserName();</span>
+<span class="fc" id="L408">        final String version = getVersion();</span>
+        ChangeSet ret;
+
+<span class="pc bpc" id="L411" title="2 of 4 branches missed.">        if (userName == null || userName.isEmpty()) {</span>
+<span class="nc" id="L412">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L413">                StringTemplate.template(&quot;server.missingUserName&quot;));</span>
+
+<span class="pc bpc" id="L415" title="2 of 4 branches missed.">        } else if (version == null || version.isEmpty()) {</span>
+<span class="nc" id="L416">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L417">                StringTemplate.template(&quot;server.missingVersion&quot;));</span>
+
+<span class="pc bpc" id="L419" title="1 of 2 branches missed.">        } else if (!version.equals(FreeCol.getVersion())) {</span>
+<span class="nc" id="L420">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L421">                StringTemplate.template(&quot;server.wrongFreeColVersion&quot;)</span>
+<span class="nc" id="L422">                    .addName(&quot;%clientVersion%&quot;, version)</span>
+<span class="nc" id="L423">                    .addName(&quot;%serverVersion%&quot;, FreeCol.getVersion()));</span>
+
+<span class="pc bpc" id="L425" title="3 of 4 branches missed.">        } else switch (freeColServer.getServerState()) {</span>
+        case PRE_GAME:
+<span class="nc" id="L427">            ret = preGameLogin(freeColServer, connection);</span>
+<span class="nc" id="L428">            break;</span>
+
+        case LOAD_GAME:
+<span class="nc" id="L431">            ret = loadGameLogin(freeColServer, connection);</span>
+<span class="nc" id="L432">            break;</span>
+
+        case IN_GAME:
+<span class="fc" id="L435">            ret = inGameLogin(freeColServer, connection);</span>
+<span class="fc" id="L436">            break;</span>
+
+        case END_GAME: default:
+<span class="nc" id="L439">            ret = ChangeSet.clientError((Player)null,</span>
+<span class="nc" id="L440">                StringTemplate.template(&quot;server.couldNotLogin&quot;));</span>
+            break;
+        }
+
+<span class="fc" id="L444">        return ret;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

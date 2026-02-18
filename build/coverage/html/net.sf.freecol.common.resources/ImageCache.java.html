@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImageCache.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.resources</a> &gt; <span class="el_source">ImageCache.java</span></div><h1>ImageCache.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.resources;
+
+import java.awt.Dimension;
+import java.awt.image.BufferedImage;
+import java.lang.ref.ReferenceQueue;
+import java.lang.ref.SoftReference;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import net.sf.freecol.FreeCol;
+
+
+/**
+ * Wrapper around ResourceManager for caching image resources.
+ */
+public class ImageCache {
+
+<span class="nc" id="L40">    private static final Logger logger = Logger.getLogger(ImageCache.class.getName());</span>
+
+    private static final boolean DEBUG_PRINT_CACHE_SIZES_TO_STDOUT = false;
+    
+    public static final String REPLACEMENT_IMAGE = &quot;image.miscicon.delete&quot;;
+
+    /** A cache of scaled (and possibly greyed) images. */
+    private final Map&lt;Long, BufferedImage&gt; cache;
+    private final Map&lt;Long, CacheSoftReference&lt;Long, BufferedImage&gt;&gt; lowPriorityCache;
+<span class="nc" id="L49">    private final ReferenceQueue&lt;BufferedImage&gt; lowPriorityCacheReferenceQueue = new ReferenceQueue&lt;&gt;();</span>
+<span class="nc" id="L50">    private final CacheCleanupThread cleanupThread = new CacheCleanupThread();</span>
+    
+<span class="nc" id="L52">    private long cacheSize = 0;</span>
+<span class="nc" id="L53">    private long lowPriorityCacheSize = 0;</span>
+
+
+    /**
+     * Initialize this image cache.
+     */
+<span class="nc" id="L59">    public ImageCache() {</span>
+<span class="nc" id="L60">        this.cache = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L61">        this.lowPriorityCache = new HashMap&lt;&gt;();</span>
+        
+<span class="nc" id="L63">        cleanupThread.start();</span>
+<span class="nc" id="L64">    }</span>
+
+
+    /**
+     * Get an image resource by key from the resource manager.
+     *
+     * Fall back to a replacement image on failure.  Failure to find
+     * that is fatal.  Image resource failure has already been logged.
+     *
+     * @param key The key to look up.
+     * @return The {@code ImageResource} found.
+     */
+    public static ImageResource getImageResource(final String key) {
+<span class="nc" id="L77">        ImageResource r = ResourceManager.getImageResource(key, false);</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        if (r == null) {</span>
+<span class="nc" id="L79">            r = ResourceManager.getImageResource(REPLACEMENT_IMAGE, false);</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            if (r == null) {</span>
+<span class="nc" id="L81">                FreeCol.fatal(logger, &quot;Replacement image not found: &quot;</span>
+                    + REPLACEMENT_IMAGE);
+            }
+        }
+<span class="nc" id="L85">        return r;</span>
+    }
+
+    /**
+     * Hash function for images.
+     *
+     * We accept the standard 32-bit int hashCode of the key, and
+     * or it with 12 bits of the width and height, 6 bits for variations and
+     * one more bit for the grayscale boolean.
+     *
+     * @param key The image key.
+     * @param size The size of the image.
+     * @param grayscale True if grayscale.
+     * @param variation The image variation.
+     * @return A unique hash of these parameters.
+     */
+    public static long imageHash(final String key, final Dimension size,
+                                 final boolean grayscale, final int variation) {
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (variation &gt;= 64) {</span>
+<span class="nc" id="L104">            throw new IllegalStateException(&quot;Update formula below in order to support more variations.&quot;);</span>
+        }
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (size.width &gt;= 4096) {</span>
+<span class="nc" id="L107">            throw new IllegalStateException(&quot;Update formula below in order to support larger image width.&quot;);</span>
+        }
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (size.height &gt;= 4096) {</span>
+<span class="nc" id="L110">            throw new IllegalStateException(&quot;Update formula below in order to support larger image heights.&quot;);</span>
+        }
+<span class="nc" id="L112">        return (key.hashCode() &amp; 0xFFFFFFFFL)</span>
+            ^ ((size.width &amp; 0x7FFFL) &lt;&lt; 32)
+            ^ ((size.height &amp; 0x7FFFL) &lt;&lt; 44)
+            ^ (variation &lt;&lt; 56)
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            ^ ((grayscale) ? (0x1L &lt;&lt; 62) : 0L)</span>
+            + variation;
+    }
+
+    /**
+     * Get an image, checking first if it is in the cache.
+     *
+     * All requests for scaled images come through here, so this is
+     * where to maintain the image cache.
+     *
+     * @param ir The {@code ImageResource} to load from.
+     * @param size The size of the requested image.
+     *     Rescaling will be performed if necessary.
+     * @param grayscale If true return a grayscale image.
+     * @param variation The image variation.
+     * @return The image identified by {@code resource}.
+     */
+    public BufferedImage getCachedImage(final ImageResource ir,
+                                         final Dimension size,
+                                         final boolean grayscale,
+                                         final int variation) {
+
+<span class="nc" id="L138">        final long cacheKey = imageHash(ir.getCachingKey(), size, grayscale, variation);</span>
+<span class="nc" id="L139">        final BufferedImage cached = searchCaches(cacheKey);</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        if (cached != null) {</span>
+<span class="nc" id="L141">            return cached;</span>
+        }
+
+<span class="nc" id="L144">        BufferedImage image = ir.getImage(variation, size, grayscale);</span>
+<span class="nc" id="L145">        placeImageInCache(cacheKey, image);</span>
+<span class="nc" id="L146">        return image;</span>
+    }
+    
+    public BufferedImage getCachedImageOrGenerate(final String key,
+            final Dimension size,
+            final boolean grayscale,
+            final int variation,
+            Callable&lt;BufferedImage&gt; imageCreator) {
+        
+<span class="nc" id="L155">        final long cacheKey = imageHash(key, size, grayscale, variation);</span>
+<span class="nc" id="L156">        final BufferedImage cached = searchCaches(cacheKey);</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (cached != null) {</span>
+<span class="nc" id="L158">            return cached;</span>
+        }
+        
+        try {
+<span class="nc" id="L162">            final BufferedImage image = imageCreator.call();</span>
+<span class="nc" id="L163">            placeImageInLowPriorityCache(cacheKey, image);</span>
+<span class="nc" id="L164">            return image;</span>
+<span class="nc" id="L165">        } catch (Exception e) {</span>
+<span class="nc" id="L166">            logger.log(Level.WARNING, &quot;Exception while producing image&quot;, e);</span>
+<span class="nc" id="L167">            return null;</span>
+        }
+    }
+    
+    private BufferedImage searchCaches(long cacheKey) {
+<span class="nc" id="L172">        BufferedImage image = this.cache.get(cacheKey);</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">        if (image != null) {</span>
+<span class="nc" id="L174">            return image;</span>
+        }
+<span class="nc" id="L176">        image = getFromLowPriorityCache(cacheKey);</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (image != null) {</span>
+<span class="nc" id="L178">            return image;</span>
+        }
+<span class="nc" id="L180">        return null;</span>
+    }
+    
+    private BufferedImage getFromLowPriorityCache(long cacheKey) {
+<span class="nc" id="L184">        final SoftReference&lt;BufferedImage&gt; ref = this.lowPriorityCache.get(cacheKey);</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        return (ref != null) ? ref.get() : null;</span>
+    }
+    
+    private void placeImageInCache(long hashKey, BufferedImage image) {
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        if (image != null) {</span>
+<span class="nc" id="L190">            this.cache.put(hashKey, image);</span>
+<span class="nc" id="L191">            cacheSize += image.getWidth() * image.getHeight() * 4;</span>
+<span class="nc" id="L192">            debugPrintCacheSizes();</span>
+        }
+<span class="nc" id="L194">    }</span>
+    
+    private void placeImageInLowPriorityCache(long hashKey, BufferedImage image) {
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        if (image != null) {</span>
+<span class="nc" id="L198">            final long size = image.getWidth() * image.getHeight() * 4;</span>
+<span class="nc" id="L199">            final CacheSoftReference&lt;Long, BufferedImage&gt; ref = new CacheSoftReference&lt;&gt;(hashKey, size, image, lowPriorityCacheReferenceQueue);</span>
+<span class="nc" id="L200">            this.lowPriorityCache.put(hashKey, ref);</span>
+<span class="nc" id="L201">            lowPriorityCacheSize += size;</span>
+<span class="nc" id="L202">            debugPrintCacheSizes();</span>
+        }
+<span class="nc" id="L204">    }</span>
+
+    private void debugPrintCacheSizes() {
+        if (DEBUG_PRINT_CACHE_SIZES_TO_STDOUT) {
+            System.out.format(&quot;Cache: %4sMB   Low priority cache: %4sMB\n&quot;, Math.round(cacheSize / (1024 * 1024)), Math.round(lowPriorityCacheSize / (1024 * 1024)));
+        }
+<span class="nc" id="L210">    }</span>
+
+    // Public interface
+
+    /**
+     * Get the image specified by the given name, scale and grayscale.
+     *
+     * @param key The name of the resource to return.
+     * @param scale A scaling to apply to the base image size.
+     * @param grayscale If true return a grayscale image.
+     * @return The image found.
+     */
+    public BufferedImage getScaledImage(final String key,
+                                        final float scale,
+                                        boolean grayscale) {
+<span class="nc" id="L225">        final ImageResource ir = getImageResource(key);</span>
+<span class="nc" id="L226">        final BufferedImage image = ir.getImage();</span>
+        // Shortcut trivial cases
+<span class="nc bnc" id="L228" title="All 2 branches missed.">        if (image == null) return null;</span>
+
+<span class="nc" id="L230">        Dimension d = new Dimension(Math.round(image.getWidth() * scale),</span>
+<span class="nc" id="L231">                                    Math.round(image.getHeight() * scale));</span>
+<span class="nc" id="L232">        return getCachedImage(ir, d, grayscale, 0);</span>
+    }
+
+    /**
+     * Get the image specified by the given name, size and grayscale.
+     *
+     * Please, avoid using too many different sizes!
+     * For each is a scaled image cached here for a long time,
+     * which wastes memory if you are not careful.
+     *
+     * @param key The name of the resource to return.
+     * @param size The size of the requested image.
+     * @param grayscale If true return a grayscale image.
+     * @return The image found.
+     */
+    public BufferedImage getSizedImage(final String key,
+                                       final Dimension size,
+                                       final boolean grayscale) {
+<span class="nc" id="L250">        return getSizedImage(key, size, grayscale, 0);</span>
+    }
+    
+    /**
+     * Get the image specified by the given name, size and grayscale.
+     *
+     * Please, avoid using too many different sizes!
+     * For each is a scaled image cached here for a long time,
+     * which wastes memory if you are not careful.
+     *
+     * @param key The name of the resource to return.
+     * @param size The size of the requested image.
+     * @param grayscale If true return a grayscale image.
+     * @param seed A seed used for getting the same &quot;random&quot; picture every
+     *      time.
+     * @return The image found.
+     */
+    public BufferedImage getSizedImage(final String key,
+                                       final Dimension size,
+                                       final boolean grayscale,
+                                       final int seed) {
+<span class="nc" id="L271">        final ImageResource ir = getImageResource(key);</span>
+<span class="nc" id="L272">        return getCachedImage(ir, size, grayscale, ir.getVariationNumberForSeed(seed));</span>
+    }
+
+    /**
+     * Clear this cache.
+     */
+    public void clear() {
+<span class="nc" id="L279">        this.cache.clear();</span>
+<span class="nc" id="L280">        this.cacheSize = 0;</span>
+        
+<span class="nc" id="L282">        clearLowPriorityCache();</span>
+<span class="nc" id="L283">    }</span>
+    
+    public void clearLowPriorityCache() {
+<span class="nc" id="L286">        this.lowPriorityCache.clear();</span>
+<span class="nc" id="L287">        this.lowPriorityCacheSize = 0;</span>
+<span class="nc" id="L288">    }</span>
+    
+<span class="nc" id="L290">    private final class CacheCleanupThread extends Thread {</span>
+        @Override
+        public void run() {
+            try {
+                while (true) {
+                    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L296">                    final CacheSoftReference&lt;Long,BufferedImage&gt; ref = (CacheSoftReference&lt;Long,BufferedImage&gt;) lowPriorityCacheReferenceQueue.remove();</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">                    if (ref == null) {</span>
+<span class="nc" id="L298">                        continue;</span>
+                    }
+<span class="nc" id="L300">                    lowPriorityCacheSize -= ref.getSize();</span>
+<span class="nc" id="L301">                    lowPriorityCache.remove(ref.getKey());</span>
+<span class="nc" id="L302">                }</span>
+<span class="nc" id="L303">            } catch (InterruptedException e) {}</span>
+<span class="nc" id="L304">        }</span>
+    }
+    
+    private final class CacheSoftReference&lt;K, V&gt; extends SoftReference&lt;V&gt; {
+        
+        private final K key;
+        private final long size;
+        
+<span class="nc" id="L312">        public CacheSoftReference(K key, long size, V referent, ReferenceQueue&lt;? super V&gt; q) {</span>
+<span class="nc" id="L313">            super(referent, q);</span>
+<span class="nc" id="L314">            this.key = key;</span>
+<span class="nc" id="L315">            this.size = size;</span>
+<span class="nc" id="L316">        }</span>
+        
+        public K getKey() {
+<span class="nc" id="L319">            return key;</span>
+        }
+        
+        public long getSize() {
+<span class="nc" id="L323">            return size;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

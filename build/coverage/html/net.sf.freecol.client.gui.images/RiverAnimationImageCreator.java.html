@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RiverAnimationImageCreator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.images</a> &gt; <span class="el_source">RiverAnimationImageCreator.java</span></div><h1>RiverAnimationImageCreator.java</h1><pre class="source lang-java linenums">package net.sf.freecol.client.gui.images;
+
+import java.awt.AlphaComposite;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.TileImprovement;
+import net.sf.freecol.common.resources.ImageCache;
+import net.sf.freecol.common.resources.ImageResource;
+import net.sf.freecol.common.util.ImageUtils;
+
+/**
+ * Class for generating the combined animated images for rivers.
+ */
+public final class RiverAnimationImageCreator {
+
+    private final ImageLibrary lib;
+    private final ImageCache imageCache;
+    
+<span class="nc" id="L26">    public RiverAnimationImageCreator(ImageLibrary lib, ImageCache imageCache) {</span>
+<span class="nc" id="L27">        this.lib = lib;</span>
+<span class="nc" id="L28">        this.imageCache = imageCache;</span>
+<span class="nc" id="L29">    }</span>
+    
+    /**
+     * Gets the combined animated image for river
+     * 
+     * @param tile The tile. 
+     * @param ticks The number of ticks to get the correct animation frame.
+     * @return A cached, generated image.
+     */
+    public BufferedImage getAnimatedScaledRiverTerrainImage(Tile tile, long ticks) {
+<span class="nc" id="L39">        final ImageResource riverPebblesImageResource = getRiverPebblesImageResource();</span>
+<span class="nc bnc" id="L40" title="All 2 branches missed.">        if (riverPebblesImageResource == null) {</span>
+<span class="nc" id="L41">            return null;</span>
+        }
+        
+        // Automatically determine:
+        //final List&lt;Direction&gt; riverTransitions = determineRiverCombinations(tile);
+        
+        // Using hardcoded style:
+<span class="nc" id="L48">        final List&lt;Direction&gt; riverTransitions = determineRiverTransitionsUsingStyle(tile);</span>
+<span class="nc" id="L49">        final String riverVariationKey = directionsToString(riverTransitions);</span>
+        
+<span class="nc" id="L51">        final ImageResource riverWaterImageResource = ImageCache.getImageResource(&quot;image.tile.river.water&quot;);</span>
+<span class="nc" id="L52">        final int riverVariationNumber = riverWaterImageResource.getVariationNumberForTick(ticks);</span>
+        
+<span class="nc" id="L54">        final int magnitude = tile.getRiver().getMagnitude();</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        final String minorString = (magnitude &lt;= 1) ? &quot;.minor&quot; : &quot;&quot;;</span>
+<span class="nc" id="L56">        final List&lt;Direction&gt; minorToMajorTransitions = determineMinorToMajorRiverTransitions(tile, riverTransitions);</span>
+        
+<span class="nc" id="L58">        final String generatedKey = riverWaterImageResource.getCachingKey() + &quot;.river.&quot; + minorString + directionsToString(minorToMajorTransitions) + &quot;.&quot; + riverVariationKey + &quot;$gen&quot;;</span>
+<span class="nc" id="L59">        final BufferedImage result = imageCache.getCachedImageOrGenerate(generatedKey, lib.getTileSize(), false, riverVariationNumber, () -&gt; {</span>
+<span class="nc" id="L60">            final BufferedImage riverPebblesImage = riverPebblesImageResource.getImage(lib.getTileSize(), false);</span>
+<span class="nc" id="L61">            final BufferedImage riverWaterImage = riverWaterImageResource.getVariation(riverVariationNumber).getImage(lib.getTileSize(), false);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">            final String riverMaskKey = &quot;image.mask.river&quot; + minorString + (riverVariationKey.isEmpty() ? &quot;&quot; : &quot;.&quot; + riverVariationKey);</span>
+<span class="nc" id="L63">            final BufferedImage baseMaskImage = this.imageCache.getSizedImage(riverMaskKey, lib.getTileSize(), false);</span>
+<span class="nc" id="L64">            final BufferedImage maskImage = createRiverMaskImageWithTransitions(baseMaskImage, minorToMajorTransitions);</span>
+<span class="nc" id="L65">            final BufferedImage baseTileMask = lib.getTerrainMask(null);</span>
+            
+<span class="nc" id="L67">            return generateImage(riverPebblesImage, riverWaterImage, riverVariationNumber, maskImage, baseTileMask);</span>
+        });
+        
+<span class="nc" id="L70">        return result;</span>
+    }
+    
+    private static ImageResource getRiverPebblesImageResource() {
+<span class="nc" id="L74">        final String key = &quot;image.tile.river.pebbles&quot;;</span>
+<span class="nc" id="L75">        return ImageCache.getImageResource(key);</span>
+    }
+
+    private BufferedImage createRiverMaskImageWithTransitions(BufferedImage baseMaskImage, List&lt;Direction&gt; minorToMajorTransitions) {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (minorToMajorTransitions.isEmpty()) {</span>
+<span class="nc" id="L80">            return baseMaskImage;</span>
+        }
+<span class="nc" id="L82">        final BufferedImage resultImage = ImageUtils.createBufferedImage(baseMaskImage.getWidth(), baseMaskImage.getHeight());</span>
+<span class="nc" id="L83">        final Graphics2D g2d = resultImage.createGraphics();</span>
+<span class="nc" id="L84">        g2d.drawImage(baseMaskImage, 0, 0, null);</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        for (Direction d : minorToMajorTransitions) {</span>
+<span class="nc" id="L86">            final String riverMaskKey = &quot;image.mask.river.to_major.&quot; + d.toString().toLowerCase();</span>
+<span class="nc" id="L87">            final BufferedImage maskImage = this.imageCache.getSizedImage(riverMaskKey, lib.getTileSize(), false);</span>
+<span class="nc" id="L88">            g2d.drawImage(maskImage, 0, 0, null);</span>
+<span class="nc" id="L89">        }</span>
+<span class="nc" id="L90">        g2d.dispose();</span>
+<span class="nc" id="L91">        return resultImage;</span>
+    }
+    
+    private List&lt;Direction&gt; determineMinorToMajorRiverTransitions(Tile tile, List&lt;Direction&gt; riverTransitions) {
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (tile.getRiver().getMagnitude() &gt; 1) {</span>
+<span class="nc" id="L96">            return List.of();</span>
+        }
+<span class="nc" id="L98">        final List&lt;Direction&gt; directionsWithRiverTransitions = riverTransitions.stream().filter(d -&gt; {</span>
+<span class="nc" id="L99">            final Tile neighbour = tile.getNeighbourOrNull(d);</span>
+<span class="nc bnc" id="L100" title="All 10 branches missed.">            return neighbour != null &amp;&amp; (neighbour.hasRiver() &amp;&amp; neighbour.getRiver().getMagnitude() &gt; 1 || tile.isLand() &amp;&amp; !neighbour.isLand());</span>
+<span class="nc" id="L101">        }).collect(Collectors.toList());</span>
+        
+<span class="nc" id="L103">        return directionsWithRiverTransitions;</span>
+    }
+    
+    @SuppressWarnings(&quot;unused&quot;)
+    private List&lt;Direction&gt; determineRiverCombinations(Tile tile) {
+<span class="nc" id="L108">        final List&lt;Direction&gt; directionsWithRiver = Direction.longSides.stream().filter(d -&gt; {</span>
+<span class="nc" id="L109">            final Tile neighbour = tile.getNeighbourOrNull(d);</span>
+<span class="nc bnc" id="L110" title="All 8 branches missed.">            return neighbour != null &amp;&amp; (neighbour.hasRiver() || tile.isLand() &amp;&amp; !neighbour.isLand());</span>
+<span class="nc" id="L111">        }).collect(Collectors.toList());</span>
+
+<span class="nc" id="L113">        return directionsWithRiver;</span>
+    }
+    
+    private List&lt;Direction&gt; determineRiverTransitionsUsingStyle(Tile tile) {
+<span class="nc" id="L117">        final TileImprovement river = tile.getRiver();</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (river == null) {</span>
+<span class="nc" id="L119">            return List.of();</span>
+        }
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        return river.getConnections().entrySet().stream().filter(e -&gt; e.getValue() &gt; 0).map(e -&gt; e.getKey()).collect(Collectors.toList());</span>
+    }
+
+    private String directionsToString(List&lt;Direction&gt; directions) {
+<span class="nc" id="L125">        return directions.stream()</span>
+<span class="nc" id="L126">                .map(d -&gt; d.toString().toLowerCase())</span>
+<span class="nc" id="L127">                .sorted()</span>
+<span class="nc" id="L128">                .reduce((a, b) -&gt; a + &quot;_&quot; + b).orElse(&quot;&quot;);</span>
+    }
+    
+    /**
+     * Generates the image.
+     * 
+     * @param pebblesImage The pebbles image. That is, the graphics the water is drawn upon.
+     * @param waterImage The water to be drawn.
+     * @param riverImageVariationNumber The variation number of the
+     *      water image given above.
+     * @param riverMaskImage A mask to be applied to the water image in
+     *      order to make the pebbles visible below the water. In addition, an
+     *      enlarged (and less transparent) version of this mask is used for
+     *      masking the pebbles.
+     * @param tileMask A center tile mask. This is used to ensure that
+     *      no pixels are out of bounds of the base tile.
+     * @return A base tile image fitting inside the standard &quot;diamond&quot;.
+     */
+    private static BufferedImage generateImage(BufferedImage pebblesImage,
+            BufferedImage waterImage,
+            int riverImageVariationNumber,
+            BufferedImage riverMaskImage,
+            BufferedImage tileMask) {
+<span class="nc" id="L151">        final int width = waterImage.getWidth();</span>
+<span class="nc" id="L152">        final int height = waterImage.getHeight();</span>
+        
+<span class="nc bnc" id="L154" title="All 4 branches missed.">        if (pebblesImage.getWidth() != width || pebblesImage.getHeight() != height) {</span>
+<span class="nc" id="L155">            throw new IllegalArgumentException(&quot;All images should be of the same size.&quot;);</span>
+        }
+<span class="nc bnc" id="L157" title="All 4 branches missed.">        if (riverMaskImage.getWidth() != width || riverMaskImage.getHeight() != height) {</span>
+<span class="nc" id="L158">            throw new IllegalArgumentException(&quot;All images should be of the same size.&quot;);</span>
+        }
+<span class="nc bnc" id="L160" title="All 4 branches missed.">        if (tileMask.getWidth() != width || tileMask.getHeight() != height) {</span>
+<span class="nc" id="L161">            throw new IllegalArgumentException(&quot;All images should be of the same size.&quot;);</span>
+        }
+
+<span class="nc" id="L164">        final BufferedImage maskedInputImage = ImageUtils.imageWithAlphaFromMask(waterImage, riverMaskImage);</span>
+        
+        
+<span class="nc" id="L167">        final BufferedImage riverAndPebblesImage = ImageUtils.createBufferedImage(width, height);</span>
+<span class="nc" id="L168">        final Graphics2D g2d = riverAndPebblesImage.createGraphics();</span>
+<span class="nc" id="L169">        g2d.drawImage(pebblesImage, 0, 0, null); // TODO: Perhaps without pebbles for minor river?</span>
+<span class="nc" id="L170">        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.9f));</span>
+<span class="nc" id="L171">        g2d.drawImage(maskedInputImage, 0, 0, null);</span>
+<span class="nc" id="L172">        g2d.dispose();</span>
+
+<span class="nc" id="L174">        final BufferedImage largerRiverMaskImage = toLargerMaskWithLessTransparency(riverMaskImage, width, height);</span>
+<span class="nc" id="L175">        final BufferedImage resultImage = ImageUtils.imageWithAlphaFromMask(riverAndPebblesImage, largerRiverMaskImage);       </span>
+
+<span class="nc" id="L177">        return ImageUtils.imageWithAlphaFromMask(resultImage, tileMask);</span>
+    }
+    
+    private static BufferedImage toLargerMaskWithLessTransparency(BufferedImage riverMaskImage, int origWidth, int origHeight) {
+<span class="nc" id="L181">        final int largerWidth = (int) (origWidth * 1.25f);</span>
+<span class="nc" id="L182">        final int largerHeight = (int) (origHeight * 1.25f);</span>
+<span class="nc" id="L183">        final BufferedImage expandedRiverMaskImage = ImageUtils.createBufferedImage(largerWidth, largerHeight);</span>
+<span class="nc" id="L184">        final Graphics2D expandedRiverMaskImageG2d = expandedRiverMaskImage.createGraphics();</span>
+<span class="nc" id="L185">        expandedRiverMaskImageG2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);</span>
+<span class="nc" id="L186">        expandedRiverMaskImageG2d.drawImage(riverMaskImage, 0, 0, largerWidth, largerHeight, null);</span>
+
+<span class="nc" id="L188">        final int x = (largerWidth - origWidth) / 2;</span>
+<span class="nc" id="L189">        final int y = (largerHeight - origHeight) / 2;</span>
+<span class="nc" id="L190">        expandedRiverMaskImageG2d.drawImage(riverMaskImage, x, y, origWidth, origHeight, null);</span>
+<span class="nc" id="L191">        expandedRiverMaskImageG2d.dispose();</span>
+<span class="nc" id="L192">        return expandedRiverMaskImage.getSubimage(x, y, origWidth, origHeight);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

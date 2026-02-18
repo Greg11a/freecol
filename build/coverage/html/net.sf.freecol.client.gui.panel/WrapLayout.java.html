@@ -1,0 +1,529 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WrapLayout.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">WrapLayout.java</span></div><h1>WrapLayout.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dimension;
+import java.awt.Insets;
+import java.awt.LayoutManager;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+
+import javax.swing.JScrollPane;
+import javax.swing.SwingUtilities;
+
+/**
+ * FlowLayout like layout manager that supports automatic wrapping to a new line when needed.
+ */
+public class WrapLayout implements LayoutManager {
+
+    private static final int MAX_COMPRESS_TRIES = 3;
+
+<span class="nc" id="L44">    public enum HorizontalAlignment {</span>
+<span class="nc" id="L45">        LEFT,</span>
+<span class="nc" id="L46">        CENTER,</span>
+<span class="nc" id="L47">        RIGHT;</span>
+    }
+    
+<span class="nc" id="L50">    public enum LayoutStyle {</span>
+        /**
+         * Layout the components using the narrowest width per row that
+         * still does not increase the height.
+         */
+<span class="nc" id="L55">        BALANCED,</span>
+        
+        /**
+         * Layout the components from top to bottom, only making a new row
+         * when the width would otherwise increase beyond the bounds.
+         */
+<span class="nc" id="L61">        PREFER_TOP,</span>
+        
+        /**
+         * Layout the components from bottom to top, only making a new row
+         * when the width would otherwise increase beyond the bounds.
+         * 
+         * Note that the components is in the same order as when using
+         * PREFER_TOP, but the widest rows will tend to occur more often
+         * at the bottom rows rather than the top rows.
+         */
+<span class="nc" id="L71">        PREFER_BOTTOM</span>
+    }
+    
+<span class="nc" id="L74">    public enum HorizontalGap {</span>
+        /**
+         * No extra horizontal gaps will be added between components.
+         */
+<span class="nc" id="L78">        NONE,</span>
+        
+        /**
+         * Automatic horizontal gaps for every row.
+         */
+<span class="nc" id="L83">        AUTO,</span>
+        
+        /**
+         * Automatic horizontal gaps only for the first row.
+         */
+<span class="nc" id="L88">        AUTO_TOP,</span>
+        
+        /**
+         * Automatic horizontal gaps only for the last row.
+         */
+<span class="nc" id="L93">        AUTO_BOTTOM</span>
+    }
+    
+<span class="nc" id="L96">    private HorizontalAlignment horizontalAlignment = HorizontalAlignment.CENTER;</span>
+<span class="nc" id="L97">    private LayoutStyle layoutStyle = LayoutStyle.BALANCED;</span>
+<span class="nc" id="L98">    private HorizontalGap horizontalGap = HorizontalGap.AUTO;</span>
+<span class="nc" id="L99">    private Dimension forceComponentSize = null;</span>
+<span class="nc" id="L100">    private boolean allComponentsWithTheSameSize = false;</span>
+    
+<span class="nc" id="L102">    private int minHorizontalGap = 0;</span>
+<span class="nc" id="L103">    private int minVerticalGap = 0;</span>
+<span class="nc" id="L104">    private int maxHorizontalGap = 0;</span>
+    
+    
+    /**
+     * Creates a {@code WrapLayout} with default settings. Specify layout rules using the
+     * {@code with*} methods.
+     * 
+     * @see #withHorizontalAlignment(HorizontalAlignment)
+     * @see #withLayoutStyle(LayoutStyle)
+     * @see #withHorizontalGap(HorizontalGap, int)
+     */
+<span class="nc" id="L115">    public WrapLayout() {</span>
+        
+<span class="nc" id="L117">    }</span>
+    
+    
+    /**
+     * Sets the horizontal alignment.
+     * @param horizontalAlignment The alignment to be used.
+     * @return This object, in order to support method chaining.
+     */
+    public WrapLayout withHorizontalAlignment(HorizontalAlignment horizontalAlignment) {
+<span class="nc" id="L126">        this.horizontalAlignment = Objects.requireNonNull(horizontalAlignment, &quot;horizontalAlignment&quot;);</span>
+<span class="nc" id="L127">        return this;</span>
+    }
+    
+    /**
+     * Chooses the style when laying out components.
+     * @param layoutStyle The style to be used.
+     * @return This object, in order to support method chaining.
+     */
+    public WrapLayout withLayoutStyle(LayoutStyle layoutStyle) {
+<span class="nc" id="L136">        this.layoutStyle = Objects.requireNonNull(layoutStyle, &quot;layoutStyle&quot;);</span>
+<span class="nc" id="L137">        return this;</span>
+    }
+    
+    /**
+     * Defines how horizontal gaps will be handled.
+     * 
+     * @param horizontalGap The method for choosing the gap size.
+     * @return This object, in order to support method chaining.
+     */
+    public WrapLayout withHorizontalGap(HorizontalGap horizontalGap) {
+<span class="nc" id="L147">        this.horizontalGap = Objects.requireNonNull(horizontalGap, &quot;horizontalGap&quot;);</span>
+<span class="nc" id="L148">        this.minHorizontalGap = 0;</span>
+<span class="nc" id="L149">        this.maxHorizontalGap = Integer.MAX_VALUE;</span>
+<span class="nc" id="L150">        return this;</span>
+    }
+    
+    /**
+     * Defines how horizontal gaps will be handled.
+     * 
+     * @param horizontalGap The method for choosing the gap size.
+     * @param minHorizontalGap The minimum horizontal gap to always be placed between
+     *      components (even if there is no room for it).
+     * @param maxHorizontalGap The maximum allowed horizontal gap between components.
+     * @return This object, in order to support method chaining.
+     */
+    public WrapLayout withHorizontalGap(HorizontalGap horizontalGap, int minHorizontalGap, int maxHorizontalGap) {
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        if (maxHorizontalGap &lt; 0) {</span>
+<span class="nc" id="L164">            throw new IllegalArgumentException(&quot;maxHorizontalGap must be &gt;= 0. Argument: &quot; + maxHorizontalGap);</span>
+        }
+<span class="nc" id="L166">        this.minHorizontalGap = minHorizontalGap;</span>
+<span class="nc" id="L167">        this.horizontalGap = Objects.requireNonNull(horizontalGap, &quot;horizontalGap&quot;);</span>
+<span class="nc" id="L168">        this.maxHorizontalGap = maxHorizontalGap;</span>
+<span class="nc" id="L169">        return this;</span>
+    }
+    
+    /**
+     * Forces all child components to have the given size.
+     * 
+     * @param forceComponentSize The component size.
+     * @return This object, in order to support method chaining.
+     */
+    public WrapLayout withForceComponentSize(Dimension forceComponentSize) {
+<span class="nc" id="L179">        this.forceComponentSize = forceComponentSize;</span>
+<span class="nc" id="L180">        this.allComponentsWithTheSameSize = false;</span>
+<span class="nc" id="L181">        return this;</span>
+    }
+    
+    /**
+     * Uses the biggest preferred/minimum size for all child components.
+     * 
+     * @param allComponentsWithTheSameSize {@code true} if all components should
+     *      get the same same.
+     * @return This object, in order to support method chaining.
+     */
+    public WrapLayout withAllComponentsWithTheSameSize(boolean allComponentsWithTheSameSize) {
+<span class="nc" id="L192">        this.allComponentsWithTheSameSize = allComponentsWithTheSameSize;</span>
+<span class="nc" id="L193">        this.forceComponentSize = null;</span>
+<span class="nc" id="L194">        return this;</span>
+    }
+
+    /**
+     * Returns the preferred dimensions for this layout given the &lt;i&gt;visible&lt;/i&gt;
+     * components in the specified target container.
+     * 
+     * @param target the component which needs to be laid out
+     * @return the preferred dimensions to lay out the subcomponents of the
+     *         specified container
+     */
+    @Override
+    public Dimension preferredLayoutSize(Container target) {
+<span class="nc" id="L207">        return layoutSize(target, true);</span>
+    }
+
+    /**
+     * Returns the minimum dimensions needed to layout the &lt;i&gt;visible&lt;/i&gt; components
+     * contained in the specified target container.
+     * 
+     * @param target the component which needs to be laid out
+     * @return the minimum dimensions to lay out the subcomponents of the specified
+     *         container
+     */
+    @Override
+    public Dimension minimumLayoutSize(Container target) {
+<span class="nc" id="L220">        Dimension minimum = layoutSize(target, false);</span>
+<span class="nc" id="L221">        return minimum;</span>
+    }
+    
+    /**
+     * Determines the layout size. To be used by other layout managers using
+     * {@code WrapLayout} as a fallback.
+     */
+    public Dimension layoutSize(Container target, int targetWidth, boolean preferred) {
+<span class="nc" id="L229">        synchronized (target.getTreeLock()) {</span>
+<span class="nc" id="L230">            final Layout mostCompactLayout = determineLayout(target, targetWidth, preferred); </span>
+<span class="nc" id="L231">            return mostCompactLayout.dimension;</span>
+        }
+    }
+
+    
+    private Dimension layoutSize(Container target, boolean preferred) {
+<span class="nc" id="L237">        synchronized (target.getTreeLock()) {</span>
+<span class="nc" id="L238">            final Layout mostCompactLayout = determineLayout(target, preferred); </span>
+<span class="nc" id="L239">            return mostCompactLayout.dimension;</span>
+        }
+    }
+    
+    private Layout determineLayout(Container target, boolean preferred) {
+<span class="nc" id="L244">        int targetWidth = target.getSize().width;</span>
+<span class="nc" id="L245">        Container container = target;</span>
+<span class="nc bnc" id="L246" title="All 4 branches missed.">        while (container.getSize().width == 0 &amp;&amp; container.getParent() != null) {</span>
+<span class="nc" id="L247">            container = container.getParent();</span>
+        }
+<span class="nc" id="L249">        targetWidth = container.getSize().width;</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (targetWidth == 0) {</span>
+<span class="nc" id="L251">            targetWidth = Integer.MAX_VALUE;</span>
+        }
+        
+<span class="nc" id="L254">        return determineLayout(target, targetWidth, preferred);</span>
+    }
+
+    private Layout determineLayout(Container target, int targetWidth, boolean preferred) {
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        final boolean reverseComponentOrder = (layoutStyle == LayoutStyle.PREFER_BOTTOM);</span>
+<span class="nc" id="L259">        Layout mostCompactLayout = internalLayoutSize(target, targetWidth, preferred, reverseComponentOrder);</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        if (targetWidth &lt;= 0) {</span>
+<span class="nc" id="L261">            return mostCompactLayout;</span>
+        }
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        if (layoutStyle != LayoutStyle.BALANCED) {</span>
+<span class="nc" id="L264">            return mostCompactLayout;</span>
+        }
+<span class="nc bnc" id="L266" title="All 2 branches missed.">        for (int i=0; i&lt;MAX_COMPRESS_TRIES; i++) {</span>
+<span class="nc" id="L267">            final Layout candidateLayout = internalLayoutSize(target, mostCompactLayout.getWidestColumnWidth() - 1, preferred, reverseComponentOrder);</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">            if (candidateLayout.dimension.height &lt;= mostCompactLayout.dimension.height) {</span>
+<span class="nc" id="L269">                mostCompactLayout = candidateLayout;</span>
+            } else {
+                break;
+            }
+        }
+<span class="nc" id="L274">        return mostCompactLayout;</span>
+    }
+    
+    private Layout internalLayoutSize(Container target, int targetWidth, boolean preferred, boolean layoutBottomToTop) {
+<span class="nc" id="L278">        final Insets insets = target.getInsets();</span>
+<span class="nc" id="L279">        final int horizontalInsetsAndGap = insets.left + insets.right + (minHorizontalGap * 2);</span>
+<span class="nc" id="L280">        final int maxWidth = targetWidth - horizontalInsetsAndGap;</span>
+
+<span class="nc" id="L282">        final List&lt;Row&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L283">        final Dimension currentLayoutSize = new Dimension(0, 0);</span>
+        
+<span class="nc" id="L285">        Dimension sharedComponentSize = forceComponentSize;</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">        if (allComponentsWithTheSameSize) {</span>
+<span class="nc" id="L287">            sharedComponentSize = new Dimension(0, 0);</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">            for (Component component : getVisibleComponents(target, layoutBottomToTop)) {</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">                final Dimension d = preferred ? component.getPreferredSize() : component.getMinimumSize();</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">                if (d.width &gt; sharedComponentSize.width) {</span>
+<span class="nc" id="L291">                    sharedComponentSize.width = d.width;</span>
+                }
+<span class="nc bnc" id="L293" title="All 2 branches missed.">                if (d.height &gt; sharedComponentSize.height) {</span>
+<span class="nc" id="L294">                    sharedComponentSize.height = d.height;</span>
+                }
+<span class="nc" id="L296">            }</span>
+        }
+        
+<span class="nc" id="L299">        List&lt;Child&gt; currentChildren = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L300">        Dimension currentRowSize = new Dimension(0, 0);</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        for (Component component : getVisibleComponents(target, layoutBottomToTop)) {</span>
+            final Dimension d;
+<span class="nc bnc" id="L303" title="All 2 branches missed.">            if (sharedComponentSize != null) {</span>
+<span class="nc" id="L304">                d = sharedComponentSize;</span>
+            } else {
+<span class="nc bnc" id="L306" title="All 2 branches missed.">                d = preferred ? component.getPreferredSize() : component.getMinimumSize();</span>
+            }
+
+            // Can't add the component to current row. Start a new row.
+<span class="nc bnc" id="L310" title="All 2 branches missed.">            if (currentRowSize.width + d.width &gt; maxWidth) {</span>
+<span class="nc" id="L311">                updateCurrentLayoutSize(currentLayoutSize, currentRowSize);</span>
+<span class="nc" id="L312">                rows.add(new Row(currentRowSize, currentChildren));</span>
+                
+<span class="nc" id="L314">                currentChildren = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L315">                currentRowSize = new Dimension(0, 0);</span>
+            }
+
+            // Add a horizontal gap for all components after the first
+<span class="nc bnc" id="L319" title="All 2 branches missed.">            if (currentRowSize.width != 0) {</span>
+<span class="nc" id="L320">                currentRowSize.width += minHorizontalGap;</span>
+            }
+            
+<span class="nc" id="L323">            currentChildren.add(new Child(component, new Rectangle(currentRowSize.width, currentLayoutSize.height, d.width, d.height)));</span>
+<span class="nc" id="L324">            currentRowSize.width += d.width;</span>
+<span class="nc" id="L325">            currentRowSize.height = Math.max(currentRowSize.height, d.height);</span>
+<span class="nc" id="L326">        }</span>
+<span class="nc" id="L327">        currentLayoutSize.width = Math.max(currentLayoutSize.width, currentRowSize.width);</span>
+<span class="nc" id="L328">        currentLayoutSize.height += currentRowSize.height;</span>
+<span class="nc" id="L329">        rows.add(new Row(currentRowSize, currentChildren));</span>
+
+<span class="nc" id="L331">        currentLayoutSize.width += horizontalInsetsAndGap;</span>
+<span class="nc" id="L332">        currentLayoutSize.height += insets.top + insets.bottom;</span>
+
+        // When using a scroll pane or the DecoratedLookAndFeel we need to
+        // make sure the preferred size is less than the size of the
+        // target containter so shrinking the container size works
+        // correctly. Removing the horizontal gap is an easy way to do this.
+<span class="nc" id="L338">        Container scrollPane = SwingUtilities.getAncestorOfClass(JScrollPane.class, target);</span>
+<span class="nc bnc" id="L339" title="All 4 branches missed.">        if (scrollPane != null &amp;&amp; target.isValid()) {</span>
+<span class="nc" id="L340">            currentLayoutSize.width -= (minHorizontalGap + 1);</span>
+        }
+        
+<span class="nc bnc" id="L343" title="All 2 branches missed.">        if (layoutBottomToTop) {</span>
+<span class="nc" id="L344">            reverseLayout(rows);</span>
+        }
+
+<span class="nc" id="L347">        return new Layout(currentLayoutSize, rows);</span>
+    }
+
+    private void reverseLayout(final List&lt;Row&gt; rows) {
+<span class="nc bnc" id="L351" title="All 2 branches missed.">        if (rows.isEmpty()) {</span>
+<span class="nc" id="L352">            return;</span>
+        }
+        
+<span class="nc" id="L355">        Collections.reverse(rows);</span>
+<span class="nc" id="L356">        int y = 0;</span>
+<span class="nc" id="L357">        int rowNum = 0;</span>
+<span class="nc" id="L358">        final int lastRowIndex = rows.size() - 1;</span>
+<span class="nc bnc" id="L359" title="All 2 branches missed.">        for (Row row : rows) {</span>
+<span class="nc" id="L360">            Collections.reverse(row.children);</span>
+<span class="nc" id="L361">            int x = 0;</span>
+<span class="nc" id="L362">            int childNum = 0;</span>
+<span class="nc" id="L363">            final int lastChildIndex = row.children.size() - 1;</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">            for (Child child : row.children) {</span>
+<span class="nc" id="L365">                child.bounds.x = x;</span>
+<span class="nc" id="L366">                child.bounds.y = y;</span>
+<span class="nc" id="L367">                x += child.bounds.width;</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">                if (childNum != lastChildIndex) {</span>
+<span class="nc" id="L369">                    x += minHorizontalGap;</span>
+                }
+<span class="nc" id="L371">                childNum++;</span>
+<span class="nc" id="L372">            }</span>
+<span class="nc" id="L373">            y += row.size.height;</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">            if (rowNum != lastRowIndex) {</span>
+<span class="nc" id="L375">                y += minVerticalGap;</span>
+            }
+<span class="nc" id="L377">            rowNum++;</span>
+<span class="nc" id="L378">        }</span>
+<span class="nc" id="L379">    }</span>
+
+    private void updateCurrentLayoutSize(Dimension currentLayoutSize, Dimension newRowSize) {
+<span class="nc" id="L382">        currentLayoutSize.width = Math.max(currentLayoutSize.width, newRowSize.width);</span>
+<span class="nc" id="L383">        currentLayoutSize.height += minVerticalGap;</span>
+<span class="nc" id="L384">        currentLayoutSize.height += newRowSize.height;</span>
+<span class="nc" id="L385">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void layoutContainer(Container parent) {
+<span class="nc" id="L392">        synchronized (parent.getTreeLock()) {</span>
+<span class="nc" id="L393">            final Dimension size = parent.getSize();</span>
+<span class="nc" id="L394">            Layout layout = determineLayout(parent, size.width, true);</span>
+<span class="nc bnc" id="L395" title="All 4 branches missed.">            if (layout.dimension.width &gt; size.width || layout.dimension.height &gt; size.height) {</span>
+<span class="nc" id="L396">                layout = determineLayout(parent, size.width, false);</span>
+            }
+<span class="nc" id="L398">            applyLayout(parent, size, layout);</span>
+<span class="nc" id="L399">        }</span>
+<span class="nc" id="L400">    }</span>
+    
+    /**
+     * Layout of the container. To be used by other layout managers using
+     * {@code WrapLayout} as a fallback.
+     */
+    public void layoutContainer(Container parent, boolean preferred) {
+<span class="nc" id="L407">        synchronized (parent.getTreeLock()) {</span>
+<span class="nc" id="L408">            final Dimension size = parent.getSize();</span>
+<span class="nc" id="L409">            final Layout layout = determineLayout(parent, size.width, preferred);</span>
+<span class="nc" id="L410">            applyLayout(parent, size, layout);</span>
+<span class="nc" id="L411">        }</span>
+<span class="nc" id="L412">    }</span>
+    
+    private void applyLayout(Container parent, Dimension size, Layout layout) {
+<span class="nc" id="L415">        final Point offsetAll = determineOffsetForCentering(size, layout.dimension);</span>
+        
+<span class="nc" id="L417">        final int rowsSize = layout.rows.size();</span>
+<span class="nc" id="L418">        int rowNum = 0;</span>
+<span class="nc bnc" id="L419" title="All 2 branches missed.">        for (Row row : layout.rows) {</span>
+<span class="nc" id="L420">            final int additionalGapWidthPerChild = determineAdditionalGapWidthPerChild(size, rowsSize, rowNum, row);</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">            final int totalAdditionalWidthFromAllChildren = (row.children.size() &gt; 1) ? additionalGapWidthPerChild * (row.children.size() - 1) : 0;</span>
+<span class="nc" id="L422">            final int additionalWidth = size.width - row.size.width;</span>
+<span class="nc" id="L423">            int childNum = 0;</span>
+<span class="nc" id="L424">            final int offsetRowX = (size.width - row.size.width - totalAdditionalWidthFromAllChildren) / 2;</span>
+<span class="nc bnc" id="L425" title="All 2 branches missed.">            for (Child child : row.children) {</span>
+<span class="nc" id="L426">                final Rectangle bounds = child.bounds;</span>
+<span class="nc bnc" id="L427" title="All 2 branches missed.">                if (additionalGapWidthPerChild &gt; 0) {</span>
+<span class="nc bnc" id="L428" title="All 2 branches missed.">                    if (childNum != 0) {</span>
+<span class="nc" id="L429">                        bounds.x = bounds.x + additionalGapWidthPerChild * childNum;</span>
+                    }
+                }
+<span class="nc bnc" id="L432" title="All 2 branches missed.">                if (horizontalAlignment == HorizontalAlignment.CENTER) {</span>
+<span class="nc" id="L433">                    bounds.x = bounds.x + offsetRowX;</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">                } else if (horizontalAlignment == HorizontalAlignment.LEFT) {</span>
+                    // Ignore.
+<span class="nc bnc" id="L436" title="All 2 branches missed.">                } else if (horizontalAlignment == HorizontalAlignment.RIGHT) {</span>
+<span class="nc" id="L437">                    bounds.x = bounds.x + additionalWidth;</span>
+                } else {
+<span class="nc" id="L439">                    throw new IllegalStateException(&quot;Unknown horizontalAlignment: &quot; + horizontalAlignment);</span>
+                }
+                            
+<span class="nc" id="L442">                bounds.y = bounds.y + offsetAll.y;</span>
+                
+<span class="nc" id="L444">                child.component.setBounds(bounds);</span>
+<span class="nc" id="L445">                childNum++;</span>
+<span class="nc" id="L446">            }</span>
+<span class="nc" id="L447">            rowNum++;</span>
+<span class="nc" id="L448">        }</span>
+<span class="nc" id="L449">    }</span>
+
+
+    private int determineAdditionalGapWidthPerChild(Dimension size, final int rowsSize, int rowNum, Row row) {
+<span class="nc bnc" id="L453" title="All 2 branches missed.">        if (row.children.size() &lt;= 1) {</span>
+<span class="nc" id="L454">            return 0;</span>
+        }
+<span class="nc bnc" id="L456" title="All 2 branches missed.">        if (!hasAutoHorizontalGap(rowsSize, rowNum)) {</span>
+<span class="nc" id="L457">            return 0;</span>
+        }
+<span class="nc" id="L459">        return Math.min(maxHorizontalGap, (size.width - row.size.width) / (row.children.size() - 1));</span>
+    }
+
+
+    private boolean hasAutoHorizontalGap(final int rowsSize, int rowNum) {
+<span class="nc bnc" id="L464" title="All 10 branches missed.">        return horizontalGap == HorizontalGap.AUTO</span>
+                || horizontalGap == HorizontalGap.AUTO_TOP &amp;&amp; rowNum == 0
+                || horizontalGap == HorizontalGap.AUTO_BOTTOM &amp;&amp; rowNum == rowsSize - 1;
+    }
+    
+    private List&lt;Component&gt; getVisibleComponents(Container parent, boolean reverseComponentOrder) {
+<span class="nc" id="L470">        final List&lt;Component&gt; components = new ArrayList&lt;&gt;(parent.getComponentCount());</span>
+<span class="nc bnc" id="L471" title="All 2 branches missed.">        for (Component c : parent.getComponents()) {</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">            if (!c.isVisible()) {</span>
+<span class="nc" id="L473">                continue;</span>
+            }
+<span class="nc" id="L475">            components.add(c);</span>
+        }
+        
+<span class="nc bnc" id="L478" title="All 2 branches missed.">        if (reverseComponentOrder) {</span>
+<span class="nc" id="L479">            Collections.reverse(components);</span>
+        }
+<span class="nc" id="L481">        return components;</span>
+    }
+    
+    private final Point determineOffsetForCentering(Dimension displaySize, Dimension contentSize) {
+<span class="nc" id="L485">        return new Point((displaySize.width - contentSize.width) / 2,</span>
+                (displaySize.height - contentSize.height) / 2);
+    }
+
+    @Override
+<span class="nc" id="L490">    public void addLayoutComponent(String name, Component comp) {}</span>
+
+    @Override
+<span class="nc" id="L493">    public void removeLayoutComponent(Component comp) {}</span>
+    
+    private static class Layout {
+        private Dimension dimension;
+        private List&lt;Row&gt; rows;
+        
+<span class="nc" id="L499">        private Layout(Dimension dimension, List&lt;Row&gt; rows) {</span>
+<span class="nc" id="L500">            this.dimension = dimension;</span>
+<span class="nc" id="L501">            this.rows = rows;</span>
+<span class="nc" id="L502">        }</span>
+        
+        int getWidestColumnWidth() {
+<span class="nc" id="L505">            return rows.stream().mapToInt(r -&gt; r.size.width).max().orElse(0);</span>
+        }
+    }
+    
+    private static class Row {
+        private Dimension size;
+        private List&lt;Child&gt; children;
+        
+<span class="nc" id="L513">        public Row(Dimension size, List&lt;Child&gt; children) {</span>
+<span class="nc" id="L514">            this.size = size;</span>
+<span class="nc" id="L515">            this.children = children;</span>
+<span class="nc" id="L516">        }</span>
+    }
+    
+    private static class Child {
+        private Component component;
+        private Rectangle bounds;
+        
+<span class="nc" id="L523">        public Child(Component component, Rectangle bounds) {</span>
+<span class="nc" id="L524">            this.component = component;</span>
+<span class="nc" id="L525">            this.bounds = bounds;</span>
+<span class="nc" id="L526">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

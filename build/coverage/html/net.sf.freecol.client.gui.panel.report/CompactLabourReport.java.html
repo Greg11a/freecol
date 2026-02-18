@@ -1,0 +1,651 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompactLabourReport.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel.report</a> &gt; <span class="el_source">CompactLabourReport.java</span></div><h1>CompactLabourReport.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel.report;
+
+import java.awt.Color;
+import java.awt.Insets;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+
+import java.util.Collections;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.SwingConstants;
+import javax.swing.border.EmptyBorder;
+
+import net.miginfocom.swing.MigLayout;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.panel.*;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.model.WorkLocation;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+
+/**
+ * This panel displays the Labour Report.
+ */
+public final class CompactLabourReport extends ReportPanel {
+
+    private static final int COLONY_COLUMN = 0;
+    private static final int UNIT_TYPE_COLUMN = 1;
+    private static final int WORKING_COLUMN = 2;
+    private static final int BUILDING_COLUMN = 3;
+    private static final int COLONIST_COLUMN = 4;
+    private static final int COLONIST_SUMMARY_COLUMN = 5;
+    private static final int PRODUCTION_SYMBOL_COLUMN = 6;
+    private static final int PRODUCTION_COLUMN = 7;
+    private static final int PRODUCTION_SUMMARY_COLUMN = 8;
+    private static final int NETPRODUCTION_SUMMARY_COLUMN = 9;
+    private static final int COLUMNS = NETPRODUCTION_SUMMARY_COLUMN + 1;
+
+    private LabourData labourData;
+
+    private final LabourData.UnitData unitData;
+
+    private boolean showProduction;
+    private boolean showNetProduction;
+    private boolean showProductionSymbols;
+
+    private boolean showBuildings;
+
+<span class="nc" id="L84">    private final JPanel headerRow = new MigPanel(&quot;ReportPanelUI&quot;);</span>
+
+
+    /**
+     * The constructor that will add the items to this panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public CompactLabourReport(FreeColClient freeColClient) {
+<span class="nc" id="L93">        this(freeColClient, null);</span>
+
+<span class="nc" id="L95">        labourData = new LabourData(getFreeColClient());</span>
+<span class="nc" id="L96">    }</span>
+
+    /**
+     * The constructor that will add the items to this panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param data The {@code UnitData} to display in this report.
+     */
+    public CompactLabourReport(FreeColClient freeColClient,
+                               LabourData.UnitData data) {
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        super(freeColClient, ((data == null) ? &quot;reportLabourAction&quot;</span>
+<span class="nc" id="L107">                : &quot;report.labour.details&quot;));</span>
+
+<span class="nc" id="L109">        this.unitData = data;</span>
+
+<span class="nc" id="L111">        headerRow.setBorder(new EmptyBorder(20, 20, 0, 20));</span>
+<span class="nc" id="L112">        headerRow.setOpaque(true);</span>
+<span class="nc" id="L113">        scrollPane.setColumnHeaderView(headerRow);</span>
+<span class="nc" id="L114">    }</span>
+
+
+    @Override
+    public JButton createColonyButton(final Colony colony) {
+<span class="nc" id="L119">        String text = colony.getName();</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (!unitData.isSummary()) {</span>
+            /*
+            int unitIndex = unitData.getUnitType().getIndex();
+            
+            int skillLevel = Unit.getSkillLevel(unitIndex);
+            if (skillLevel &lt;= 0 &amp;&amp; skillLevel &gt; -2) {
+            //settlers and servants can be trained anywwhere a farmer can
+            unitIndex = Unit.EXPERT_FARMER;
+            }
+            */
+
+<span class="nc bnc" id="L131" title="All 2 branches missed.">            if (colony.canTrain(unitData.getUnitType())) {</span>
+<span class="nc" id="L132">                text += &quot;*&quot;;</span>
+            }
+        }
+
+<span class="nc" id="L136">        return createButton(text, (ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L137">                getGUI().showColonyPanel(colony, null);</span>
+<span class="nc" id="L138">        });</span>
+    }
+
+
+    @Override
+    public void initialize() {
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (isOverview()) {</span>
+<span class="nc" id="L145">            showProduction = true;</span>
+<span class="nc" id="L146">            showNetProduction = true;</span>
+<span class="nc" id="L147">            showProductionSymbols = true;</span>
+<span class="nc" id="L148">            showBuildings = false;</span>
+        } else {
+<span class="nc" id="L150">            showProduction = unitData.showProduction();</span>
+<span class="nc" id="L151">            showNetProduction = unitData.showNetProduction();</span>
+<span class="nc" id="L152">            showProductionSymbols = false;</span>
+
+<span class="nc" id="L154">            GoodsType expertProduction = getGoodsType();</span>
+<span class="nc bnc" id="L155" title="All 6 branches missed.">            showBuildings = (expertProduction != null &amp;&amp; !expertProduction.isFarmed()) || unitData.getTotal().isTraining();</span>
+        }
+
+
+<span class="nc" id="L159">        String layoutConstraints = &quot;fill, insets 0, gap 0 0&quot;;</span>
+<span class="nc" id="L160">        StringBuilder widths = new StringBuilder();</span>
+<span class="nc" id="L161">        widths.append(&quot;[175, fill]&quot;);</span>
+<span class="nc bnc" id="L162" title="All 4 branches missed.">        widths.append(isOverview() || !unitData.isSummary() ? &quot;[150, fill]&quot; : &quot;[0!]&quot;);</span>
+<span class="nc" id="L163">        widths.append(&quot;[150, fill]&quot;);</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        widths.append(showBuildings ? &quot;[130, fill]&quot; : &quot;[0!]&quot;);</span>
+<span class="nc" id="L165">        widths.append(&quot;[26, fill][33, fill]&quot;);</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        widths.append(showProductionSymbols ? &quot;[50, fill]&quot; : &quot;[0!]&quot;);</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        widths.append(showProduction ? &quot;[30, fill][40, fill]&quot; : &quot;[0!][0!]&quot;);</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        widths.append(showNetProduction ? &quot;[40, fill]&quot; : &quot;[0!]&quot;);</span>
+<span class="nc" id="L169">        String columnConstraints = widths.toString();</span>
+<span class="nc" id="L170">        String rowConstraints = &quot;[fill]&quot;;</span>
+
+<span class="nc" id="L172">        headerRow.setLayout(new MigLayout(layoutConstraints, columnConstraints, rowConstraints));</span>
+<span class="nc" id="L173">        reportPanel.setLayout(new MigLayout(layoutConstraints, columnConstraints, rowConstraints));</span>
+
+<span class="nc" id="L175">        addHeader();</span>
+
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (isOverview()) {</span>
+<span class="nc" id="L178">            addUnitTypes();</span>
+        } else {
+<span class="nc" id="L180">            addLocations();</span>
+        }
+<span class="nc" id="L182">    }</span>
+
+    /**
+     * adds the header rows
+     */
+    private void addHeader() {
+
+<span class="nc" id="L189">        JLabel empty = new JLabel();</span>
+<span class="nc" id="L190">        empty.setBorder(Utility.getTopLeftCellBorder());</span>
+<span class="nc" id="L191">        headerRow.add(empty, &quot;cell &quot; + COLONY_COLUMN + &quot; 1&quot;);</span>
+
+<span class="nc bnc" id="L193" title="All 4 branches missed.">        if (isOverview() || !unitData.isSummary()) {</span>
+<span class="nc" id="L194">            JLabel unitType = Utility.localizedLabel(&quot;unitType&quot;);</span>
+<span class="nc" id="L195">            unitType.setBorder(Utility.getTopCellBorder());</span>
+<span class="nc" id="L196">            headerRow.add(unitType, &quot;cell &quot; + UNIT_TYPE_COLUMN + &quot; 1&quot;);</span>
+        }
+
+<span class="nc" id="L199">        JLabel workingAs = Utility.localizedLabel(&quot;report.labour.workingAs&quot;);</span>
+<span class="nc" id="L200">        workingAs.setBorder(Utility.getTopCellBorder());</span>
+<span class="nc" id="L201">        headerRow.add(workingAs, &quot;cell &quot; + WORKING_COLUMN + &quot; 1&quot;);</span>
+
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (showBuildings) {</span>
+<span class="nc" id="L204">            JLabel building = Utility.localizedLabel(&quot;building&quot;);</span>
+<span class="nc" id="L205">            building.setBorder(Utility.getTopCellBorder());</span>
+<span class="nc" id="L206">            headerRow.add(building, &quot;cell &quot; + BUILDING_COLUMN + &quot; 1&quot;);</span>
+        }
+
+<span class="nc" id="L209">        JLabel colonists = Utility.localizedLabel(&quot;colonists&quot;);</span>
+<span class="nc" id="L210">        colonists.setBorder(Utility.getTopCellBorder());</span>
+<span class="nc" id="L211">        headerRow.add(colonists, &quot;cell &quot; + COLONIST_COLUMN + &quot; 1 2 1&quot;);</span>
+
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        if (isOverview()) {</span>
+<span class="nc" id="L214">            JLabel production = Utility.localizedLabel(&quot;report.labour.production&quot;);</span>
+<span class="nc" id="L215">            production.setBorder(Utility.getTopCellBorder());</span>
+<span class="nc" id="L216">            headerRow.add(production, &quot;cell &quot; + PRODUCTION_SYMBOL_COLUMN + &quot; 1 &quot; + (COLUMNS - PRODUCTION_SYMBOL_COLUMN) + &quot; 1&quot;);</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        } else if (showProduction) {</span>
+<span class="nc" id="L218">            LabourData.UnitData unit = unitData;</span>
+<span class="nc" id="L219">            GoodsType goodsType = unit.getExpertProduction();</span>
+
+<span class="nc" id="L221">            ImageLibrary lib = getImageLibrary();</span>
+<span class="nc" id="L222">            JLabel production = new JLabel(new ImageIcon(lib.getScaledGoodsTypeImage(goodsType)));</span>
+<span class="nc" id="L223">            production.setBorder(Utility.getTopCellBorder());</span>
+
+<span class="nc" id="L225">            headerRow.add(production, &quot;cell &quot;</span>
+                + PRODUCTION_SYMBOL_COLUMN + &quot; 1 &quot;
+                + (COLUMNS - PRODUCTION_SYMBOL_COLUMN
+<span class="nc bnc" id="L228" title="All 4 branches missed.">                    + (showNetProduction &amp;&amp; goodsType.isStoredAs() ? 1 : 0))</span>
+                + &quot; 1&quot;);
+
+<span class="nc bnc" id="L231" title="All 4 branches missed.">            if (showNetProduction &amp;&amp; goodsType.isStoredAs()) {</span>
+<span class="nc" id="L232">                JLabel netProduction = new JLabel(new ImageIcon(lib.getScaledGoodsTypeImage(goodsType.getStoredAs())));</span>
+<span class="nc" id="L233">                netProduction.setBorder(Utility.getTopCellBorder());</span>
+<span class="nc" id="L234">                headerRow.add(netProduction, &quot;cell &quot; + NETPRODUCTION_SUMMARY_COLUMN + &quot; 1&quot;);</span>
+            }
+        }
+
+<span class="nc bnc" id="L238" title="All 2 branches missed.">        if (!isSummary()) {</span>
+<span class="nc" id="L239">            ImageIcon icon = new ImageIcon(getImageLibrary()</span>
+<span class="nc" id="L240">                .getScaledUnitTypeImage(unitData.getUnitType()));</span>
+<span class="nc" id="L241">            header.setIcon(icon);</span>
+<span class="nc" id="L242">            header.setIconTextGap(20);</span>
+        }
+<span class="nc" id="L244">    }</span>
+
+    /**
+     * Add unit data for a given location.
+     *
+     * @param data The {@code LocationData} to add to.
+     * @param colony The enclosing {@code Colony}.
+     * @param row The starting row.
+     * @return The finishing row.
+     */
+    private int addLocationData(LabourData.LocationData data, Colony colony,
+                                int row) {
+<span class="nc" id="L256">        boolean allColonists = data.getUnitData().isSummary();</span>
+
+<span class="nc" id="L258">        LabourData.UnitData unit = data.getUnitData();</span>
+<span class="nc" id="L259">        UnitType unitType = unit.getUnitType();</span>
+<span class="nc" id="L260">        String unitName = unit.getUnitName();</span>
+
+<span class="nc" id="L262">        String workingAs = null;</span>
+<span class="nc" id="L263">        WorkLocation productionWL = null;</span>
+
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        if (!allColonists) {</span>
+<span class="nc" id="L266">            workingAs = Messages.message(unitType.getWorkingAsKey());</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">            if (colony != null) {</span>
+<span class="nc" id="L268">                GoodsType expert = unitType.getExpertProduction();</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">                if (expert != null) {</span>
+<span class="nc" id="L270">                    productionWL = colony.getWorkLocationForProducing(expert);</span>
+                }
+            }
+        }
+<span class="nc" id="L274">        addLocationSummary(data, row);</span>
+
+<span class="nc" id="L276">        int buildingStartRow = row;</span>
+
+        //details
+<span class="nc" id="L279">        int otherAmateurs = data.getOtherWorkingAmateurs().getColonists();</span>
+<span class="nc bnc" id="L280" title="All 4 branches missed.">        if (!allColonists &amp;&amp; otherAmateurs &gt; 0) {</span>
+<span class="nc" id="L281">            addRow(data,</span>
+<span class="nc" id="L282">                   Messages.message(&quot;report.labour.otherUnitType&quot;),</span>
+                   workingAs,
+<span class="nc" id="L284">                   createNonCountedLabel(otherAmateurs),</span>
+<span class="nc" id="L285">                   data.getOtherWorkingAmateurs().getProduction(),</span>
+                   row);
+<span class="nc" id="L287">            row++;</span>
+        }
+
+<span class="nc" id="L290">        row = addRow(data,</span>
+                     unitName,
+<span class="nc bnc" id="L292" title="All 2 branches missed.">                     allColonists ? Messages.message(&quot;report.labour.expertsWorking&quot;) : workingAs,</span>
+<span class="nc" id="L293">                     data.getWorkingProfessionals().getColonists(),</span>
+<span class="nc" id="L294">                     data.getWorkingProfessionals().getProduction(),</span>
+                     row);
+
+<span class="nc" id="L297">        int notProducingStartRow = row;</span>
+
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        if (showBuildings) {</span>
+<span class="nc bnc" id="L300" title="All 4 branches missed.">            if (productionWL != null &amp;&amp; row &gt; buildingStartRow) {</span>
+<span class="nc" id="L301">                JLabel buildingLabel = Utility.localizedLabel(productionWL.getLabel());</span>
+<span class="nc" id="L302">                buildingLabel.setBorder(Utility.getCellBorder());</span>
+<span class="nc" id="L303">                reportPanel.add(buildingLabel, &quot;cell &quot; + BUILDING_COLUMN + &quot; &quot; + buildingStartRow + &quot; 1 &quot; + (row - buildingStartRow));</span>
+<span class="nc" id="L304">                buildingStartRow = row;</span>
+<span class="nc" id="L305">            } else {</span>
+<span class="nc" id="L306">                reportPanel.add(createEmptyLabel(), &quot;cell &quot; + BUILDING_COLUMN + &quot; &quot; + buildingStartRow + &quot; 1 &quot; + (row - buildingStartRow));</span>
+            }
+        }
+
+<span class="nc" id="L310">        row = addRow(data,</span>
+                     unitName,
+<span class="nc bnc" id="L312" title="All 2 branches missed.">                     Messages.message(allColonists ?</span>
+<span class="nc" id="L313">                         &quot;report.labour.amateursWorking&quot; :</span>
+<span class="nc" id="L314">                         &quot;report.labour.workingAsOther&quot;),</span>
+<span class="nc" id="L315">                     data.getWorkingAmateurs(),</span>
+                     0, row);
+<span class="nc bnc" id="L317" title="All 2 branches missed.">        if (data.getNotWorking() &gt; 0) {</span>
+<span class="nc" id="L318">            addRow(data,</span>
+                   unitName,
+<span class="nc" id="L320">                   Messages.message(&quot;report.labour.notWorking&quot;),</span>
+<span class="nc" id="L321">                   createNumberLabel(data.getNotWorking(), &quot;report.labour.notWorking.tooltip&quot;),</span>
+                   0, row);
+<span class="nc" id="L323">            row++;</span>
+        }
+
+<span class="nc bnc" id="L326" title="All 4 branches missed.">        WorkLocation school = (colony != null &amp;&amp; data.isTraining())</span>
+<span class="nc" id="L327">            ? colony.getWorkLocationWithAbility(Ability.TEACH)</span>
+<span class="nc" id="L328">            : null;</span>
+
+<span class="nc bnc" id="L330" title="All 6 branches missed.">        if (showBuildings &amp;&amp; school != null &amp;&amp; row &gt; buildingStartRow) {</span>
+<span class="nc" id="L331">            reportPanel.add(createEmptyLabel(), &quot;cell &quot; + BUILDING_COLUMN</span>
+                + &quot; &quot; + buildingStartRow + &quot; 1 &quot; + (row - buildingStartRow));
+<span class="nc" id="L333">            buildingStartRow = row;</span>
+        }
+
+<span class="nc" id="L336">        row = addRow(data,</span>
+                     unitName,
+<span class="nc" id="L338">                     Messages.message(&quot;report.labour.teacher&quot;),</span>
+<span class="nc" id="L339">                     data.getTeachers(),</span>
+                     0, row);
+<span class="nc bnc" id="L341" title="All 2 branches missed.">        if (!allColonists) {</span>
+<span class="nc" id="L342">            row = addRow(data,</span>
+<span class="nc" id="L343">                         data.getOtherStudentsName(),</span>
+<span class="nc" id="L344">                         Messages.message(StringTemplate</span>
+<span class="nc" id="L345">                             .template(&quot;report.labour.learning&quot;)</span>
+<span class="nc" id="L346">                             .addName(&quot;%unit%&quot;, data.getUnitData().getUnitName())),</span>
+<span class="nc" id="L347">                         data.getOtherStudents(),</span>
+                         0, row);
+        }
+
+<span class="nc" id="L351">        int studentCount = data.getStudents();</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">        if (studentCount &gt; 0) {</span>
+<span class="nc bnc" id="L353" title="All 2 branches missed.">            if (allColonists) {</span>
+<span class="nc" id="L354">                addRow(data, null, Messages.message(&quot;report.labour.sutdent&quot;), createNonCountedLabel(studentCount), 0, row);</span>
+            } else {
+<span class="nc" id="L356">                final Predicate&lt;Unit&gt; teachingPred = u -&gt; {</span>
+<span class="nc" id="L357">                    final Unit student = u.getStudent();</span>
+<span class="nc bnc" id="L358" title="All 4 branches missed.">                    return student != null &amp;&amp; student.getType() == unitType;</span>
+                };
+<span class="nc" id="L360">                final Function&lt;Unit, UnitType&gt; studentMapper = u -&gt;</span>
+<span class="nc" id="L361">                    unitType.getTeachingType(u.getType());</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">                Set&lt;UnitType&gt; resultOfTraining = (colony == null)</span>
+<span class="nc" id="L363">                    ? Collections.&lt;UnitType&gt;emptySet()</span>
+<span class="nc" id="L364">                    : transform(colony.getTeachers(), teachingPred,</span>
+<span class="nc" id="L365">                                studentMapper, Collectors.toSet());</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">                String student = (resultOfTraining.size() == 1)</span>
+<span class="nc" id="L367">                    ? Messages.message(StringTemplate</span>
+<span class="nc" id="L368">                        .template(&quot;report.labour.learning&quot;)</span>
+<span class="nc" id="L369">                        .addName(&quot;%unit%&quot;, first(resultOfTraining)))</span>
+<span class="nc" id="L370">                    : Messages.message(&quot;report.labour.learningOther&quot;);</span>
+<span class="nc" id="L371">                addRow(data,</span>
+<span class="nc" id="L372">                       data.getUnitData().getUnitName(),</span>
+                       student,
+<span class="nc" id="L374">                       createNumberLabel(-studentCount, &quot;report.labour.subtracted.tooltip&quot;),</span>
+                       0, row);
+            }
+<span class="nc" id="L377">            row++;</span>
+        }
+
+<span class="nc bnc" id="L380" title="All 4 branches missed.">        if (showBuildings &amp;&amp; row &gt; buildingStartRow) {</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">            JLabel buildingLabel = new JLabel((school == null) ? &quot;&quot;</span>
+<span class="nc" id="L382">                : Messages.message(school.getLabel()));</span>
+<span class="nc" id="L383">            buildingLabel.setBorder(Utility.getCellBorder());</span>
+<span class="nc" id="L384">            reportPanel.add(buildingLabel, &quot;cell &quot; + BUILDING_COLUMN</span>
+                + &quot; &quot; + buildingStartRow
+                + &quot; 1 &quot; + (row - buildingStartRow));
+        }
+
+<span class="nc bnc" id="L389" title="All 4 branches missed.">        if (row &gt; notProducingStartRow &amp;&amp; data.getUnitData().showProduction()) {</span>
+<span class="nc" id="L390">            reportPanel.add(createEmptyLabel(), &quot;cell &quot; + PRODUCTION_COLUMN</span>
+                + &quot; &quot; + notProducingStartRow
+                + &quot; 1 &quot; + (row - notProducingStartRow));
+        }
+
+<span class="nc" id="L395">        return row;</span>
+    }
+
+    private void addLocations() {
+<span class="nc" id="L399">        final Player player = getMyPlayer();</span>
+
+<span class="nc" id="L401">        LabourData.LocationData unitTotal = unitData.getTotal();</span>
+
+<span class="nc" id="L403">        int row = 1;</span>
+<span class="nc" id="L404">        JLabel summaryLabel = Utility.localizedLabel(&quot;report.labour.summary&quot;);</span>
+<span class="nc" id="L405">        summaryLabel.setBorder(Utility.getLeftCellBorder());</span>
+<span class="nc" id="L406">        reportPanel.add(summaryLabel, &quot;cell &quot; + COLONY_COLUMN + &quot; &quot; + row</span>
+<span class="nc" id="L407">            + &quot; 1 &quot; + unitTotal.getRowCount());</span>
+
+<span class="nc" id="L409">        row = addLocationData(unitTotal, null, row);</span>
+
+<span class="nc bnc" id="L411" title="All 2 branches missed.">        for (Colony colony : player.getColonyList()) {</span>
+<span class="nc" id="L412">            LabourData.LocationData colonyData</span>
+<span class="nc" id="L413">                = unitData.getDetails().get(colony);</span>
+<span class="nc bnc" id="L414" title="All 2 branches missed.">            if (colonyData != null) {</span>
+<span class="nc" id="L415">                reportPanel.add(createColonyButton(colony),</span>
+                    &quot;cell &quot; + COLONY_COLUMN + &quot; &quot; + row
+<span class="nc" id="L417">                    + &quot; 1 &quot; + colonyData.getRowCount());</span>
+<span class="nc" id="L418">                row = addLocationData(colonyData, colony, row);</span>
+            }
+<span class="nc" id="L420">        }</span>
+<span class="nc" id="L421">        LabourData.LocationData europe = unitData.getUnitsInEurope();</span>
+<span class="nc" id="L422">        int euRow = europe.getRowCount();</span>
+<span class="nc bnc" id="L423" title="All 2 branches missed.">        if (euRow &gt; 0) {</span>
+<span class="nc" id="L424">            String nam = Messages.getName(getMyPlayer().getEurope());</span>
+<span class="nc" id="L425">            JButton button = createButton(nam,</span>
+<span class="nc" id="L426">                (ActionEvent ae) -&gt; { getGUI().showEuropePanel(); });</span>
+<span class="nc" id="L427">            reportPanel.add(button, &quot;cell &quot; + COLONY_COLUMN + &quot; &quot; + row</span>
+                + &quot; 1 &quot; + euRow);
+<span class="nc" id="L429">            row = addLocationData(europe, null, row);</span>
+        }
+<span class="nc" id="L431">        row = addNonLinkedLocation(unitData.getUnitsOnLand(),</span>
+                                   &quot;report.labour.onLand&quot;, row);
+<span class="nc" id="L433">        row = addNonLinkedLocation(unitData.getUnitsAtSea(),</span>
+                                   &quot;report.labour.atSea&quot;, row);
+
+<span class="nc" id="L436">        reportPanel.add(Utility.localizedLabel(&quot;report.labour.canTrain&quot;),</span>
+                        &quot;cell 1 &quot; + row + &quot; &quot; + COLUMNS + &quot; 1&quot;);
+<span class="nc" id="L438">    }</span>
+
+    /*
+     * distributes {@code value}, amount the number of {@code pocketCount}
+     *
+     * @param value
+     * @param pocketCount
+     * @return distribution of {@code value}
+     */
+    /*
+    private int[] distribute(int value, int pocketCount) {
+        int[] pockets = new int[pocketCount];
+
+        int pocketIndex = 0;
+        for (int i = value; i &gt; 0; i--) {
+            pockets[pocketIndex]++;
+
+            pocketIndex++;
+            pocketIndex = pocketIndex % pocketCount;
+        }
+        return pockets;
+    }
+     */
+
+    private void addLocationSummary(LabourData.LocationData data, int row) {
+<span class="nc" id="L463">        int rows = data.getRowCount();</span>
+
+<span class="nc" id="L465">        JLabel colonistsLabel = createNumberLabel(data.getTotalColonists(), null);</span>
+<span class="nc bnc" id="L466" title="All 2 branches missed.">        if (data.getUnitData().isSummary()) {</span>
+<span class="nc bnc" id="L467" title="All 2 branches missed.">            if (isOverview()) {</span>
+<span class="nc" id="L468">                reportPanel.add(createEmptyLabel(), &quot;cell &quot; + UNIT_TYPE_COLUMN + &quot; &quot; + row + &quot; 1 &quot; + rows);</span>
+            }
+        } else {
+<span class="nc" id="L471">            Utility.localizeToolTip(colonistsLabel, StringTemplate</span>
+<span class="nc" id="L472">                .template(&quot;report.labour.unitTotal.tooltip&quot;)</span>
+<span class="nc" id="L473">                .addName(&quot;%unit%&quot;, data.getUnitData().getUnitName()));</span>
+        }
+
+<span class="nc" id="L476">        reportPanel.add(colonistsLabel, &quot;cell &quot; + COLONIST_SUMMARY_COLUMN + &quot; &quot; + row + &quot; 1 &quot; + data.getRowCount());</span>
+
+<span class="nc bnc" id="L478" title="All 4 branches missed.">        if (showProduction &amp;&amp; !data.getUnitData().showProduction()) {</span>
+<span class="nc" id="L479">            reportPanel.add(createEmptyLabel(), &quot;cell &quot; + PRODUCTION_SYMBOL_COLUMN + &quot; &quot; + row + &quot; 4 &quot; + rows);</span>
+<span class="nc" id="L480">            return;</span>
+        }
+
+<span class="nc bnc" id="L483" title="All 2 branches missed.">        if (showProduction) {</span>
+<span class="nc" id="L484">            JLabel productionLabel = createNumberLabel(data.getTotalProduction(), &quot;report.labour.potentialProduction.tooltip&quot;);</span>
+<span class="nc bnc" id="L485" title="All 4 branches missed.">            if (!data.isTotal() &amp;&amp; data.getTotalProduction() == 0) {</span>
+<span class="nc" id="L486">                productionLabel.setText(&quot;&quot;);</span>
+            }
+
+<span class="nc" id="L489">            reportPanel.add(productionLabel, &quot;cell &quot; + PRODUCTION_SUMMARY_COLUMN + &quot; &quot; + row + &quot; 1 &quot; + rows);</span>
+        }
+
+<span class="nc bnc" id="L492" title="All 2 branches missed.">        if (showNetProduction) {</span>
+<span class="nc" id="L493">            int net = data.getNetProduction();</span>
+<span class="nc" id="L494">            JLabel netProductionLabel = createNumberLabel(net, &quot;report.labour.netProduction.tooltip&quot;);</span>
+
+<span class="nc bnc" id="L496" title="All 6 branches missed.">            if (!data.getUnitData().showNetProduction() || (!data.isTotal() &amp;&amp; net == 0)) {</span>
+<span class="nc" id="L497">                netProductionLabel.setText(&quot;&quot;);</span>
+<span class="nc" id="L498">                netProductionLabel.setToolTipText(&quot;&quot;);</span>
+<span class="nc bnc" id="L499" title="All 2 branches missed.">            } else if (net &gt;= 0) {</span>
+<span class="nc" id="L500">                netProductionLabel.setText(&quot;+&quot; + net);</span>
+            } else {
+<span class="nc" id="L502">                netProductionLabel.setForeground(Color.RED);</span>
+            }
+<span class="nc" id="L504">            reportPanel.add(netProductionLabel, &quot;cell &quot; + NETPRODUCTION_SUMMARY_COLUMN + &quot; &quot; + row + &quot; 1 &quot; + rows);</span>
+        }
+
+<span class="nc bnc" id="L507" title="All 2 branches missed.">        if (showProductionSymbols) {</span>
+<span class="nc" id="L508">            JLabel icon = new JLabel();</span>
+<span class="nc" id="L509">            icon.setBorder(Utility.getCellBorder());</span>
+<span class="nc" id="L510">            GoodsType goodsType = data.getUnitData().getExpertProduction();</span>
+<span class="nc bnc" id="L511" title="All 2 branches missed.">            if (goodsType != null) {</span>
+<span class="nc" id="L512">                icon.setIcon(new ImageIcon(getImageLibrary().getScaledGoodsTypeImage(goodsType)));</span>
+            }
+<span class="nc" id="L514">            reportPanel.add(icon, &quot;cell &quot; + PRODUCTION_SYMBOL_COLUMN + &quot; &quot; + row + &quot; 1 &quot; + rows);</span>
+        }
+<span class="nc" id="L516">    }</span>
+
+    private int addNonLinkedLocation(LabourData.LocationData data, String messageKey, int row) {
+<span class="nc" id="L519">        int rows = data.getRowCount();</span>
+<span class="nc bnc" id="L520" title="All 2 branches missed.">        if (rows &lt;= 0) return row;</span>
+<span class="nc" id="L521">        JLabel label = Utility.localizedLabel(messageKey);</span>
+<span class="nc" id="L522">        label.setBorder(Utility.getLeftCellBorder());</span>
+<span class="nc" id="L523">        label.setForeground(Color.GRAY);</span>
+<span class="nc" id="L524">        reportPanel.add(label, &quot;cell &quot; + COLONY_COLUMN + &quot; &quot; + row + &quot; 1 &quot; + rows);</span>
+<span class="nc" id="L525">        return addLocationData(data, null, row);</span>
+    }
+
+    private int addRow(LabourData.LocationData data, String typeName, String activity, int colonists, int production, int row) {
+<span class="nc bnc" id="L529" title="All 2 branches missed.">        if (colonists &gt; 0) {</span>
+<span class="nc" id="L530">            addRow(data, typeName, activity, createNumberLabel(colonists, null), production, row);</span>
+<span class="nc" id="L531">            row++;</span>
+        }
+<span class="nc" id="L533">        return row;</span>
+    }
+
+    private void addRow(LabourData.LocationData data, String typeName, String activity, JLabel colonistLabel, int production, int row) {
+<span class="nc bnc" id="L537" title="All 2 branches missed.">        if (!data.getUnitData().isSummary()) {</span>
+<span class="nc" id="L538">            JLabel typeLabel = new JLabel(typeName);</span>
+<span class="nc" id="L539">            typeLabel.setBorder(Utility.getCellBorder());</span>
+<span class="nc" id="L540">            reportPanel.add(typeLabel, &quot;cell &quot; + UNIT_TYPE_COLUMN + &quot; &quot; + row);</span>
+        }
+
+<span class="nc" id="L543">        JLabel activityLabel = new JLabel(activity);</span>
+<span class="nc" id="L544">        activityLabel.setBorder(Utility.getCellBorder());</span>
+<span class="nc" id="L545">        reportPanel.add(activityLabel, &quot;cell &quot; + WORKING_COLUMN + &quot; &quot; + row);</span>
+
+<span class="nc" id="L547">        reportPanel.add(colonistLabel, &quot;cell &quot; + COLONIST_COLUMN + &quot; &quot; + row);</span>
+
+<span class="nc bnc" id="L549" title="All 4 branches missed.">        if (production &gt; 0 &amp;&amp; data.getUnitData().showProduction()) {</span>
+<span class="nc" id="L550">            reportPanel.add(createNumberLabel(production, &quot;report.labour.potentialProduction.tooltip&quot;), &quot;cell &quot; + PRODUCTION_COLUMN + &quot; &quot; + row);</span>
+        }
+<span class="nc" id="L552">    }</span>
+
+    private void addUnitTypes() {
+<span class="nc" id="L555">        int row = 1;</span>
+
+<span class="nc" id="L557">        JButton allColonistsButton = createUnitNameButton(Messages.message(&quot;report.labour.allColonists&quot;), labourData.getSummary());</span>
+<span class="nc" id="L558">        reportPanel.add(allColonistsButton, &quot;cell &quot; + COLONY_COLUMN + &quot; &quot; + row + &quot; 1 &quot; + labourData.getSummary().getUnitSummaryRowCount());</span>
+
+<span class="nc" id="L560">        row = addLocationData(labourData.getSummary().getTotal(), null, row);</span>
+
+<span class="nc bnc" id="L562" title="All 2 branches missed.">        for (UnitType unitType : LabourData.getLabourTypes(getMyPlayer())) {</span>
+<span class="nc" id="L563">            LabourData.UnitData unitData = labourData.getUnitData(unitType);</span>
+
+<span class="nc" id="L565">            JButton unitButton = createUnitNameButton(unitData.getUnitName(), unitData);</span>
+<span class="nc" id="L566">            int rows = unitData.getUnitSummaryRowCount();</span>
+<span class="nc" id="L567">            reportPanel.add(unitButton, &quot;cell &quot; + COLONY_COLUMN + &quot; &quot; + row + &quot; 1 &quot; + rows);</span>
+
+<span class="nc bnc" id="L569" title="All 2 branches missed.">            if (unitData.hasDetails()) {</span>
+<span class="nc" id="L570">                row = addLocationData(unitData.getTotal(), null, row);</span>
+            } else {
+<span class="nc" id="L572">                unitButton.setEnabled(false);</span>
+<span class="nc" id="L573">                unitButton.setDisabledIcon(unitButton.getIcon());</span>
+<span class="nc" id="L574">                unitButton.setForeground(Color.GRAY);</span>
+
+<span class="nc" id="L576">                reportPanel.add(createEmptyLabel(), &quot;cell &quot; + UNIT_TYPE_COLUMN + &quot; &quot; + row + &quot; &quot; + (COLUMNS - 1) + &quot; 1&quot;);</span>
+<span class="nc" id="L577">                row++;</span>
+            }
+<span class="nc" id="L579">        }</span>
+<span class="nc" id="L580">    }</span>
+
+    private JButton createButton(String name, ActionListener listener) {
+<span class="nc" id="L583">        JButton button = new JButton(name);</span>
+<span class="nc" id="L584">        button.setMargin(new Insets(0, 0, 0, 0));</span>
+<span class="nc" id="L585">        button.setOpaque(false);</span>
+<span class="nc" id="L586">        button.setHorizontalAlignment(SwingConstants.LEADING);</span>
+<span class="nc" id="L587">        button.setForeground(Utility.getLinkColor());</span>
+<span class="nc" id="L588">        button.setBorder(Utility.getLeftCellBorder());</span>
+<span class="nc" id="L589">        button.addActionListener(listener);</span>
+<span class="nc" id="L590">        return button;</span>
+    }
+
+    private JLabel createEmptyLabel() {
+<span class="nc" id="L594">        JLabel empty = new JLabel();</span>
+<span class="nc" id="L595">        empty.setBorder(Utility.getCellBorder());</span>
+<span class="nc" id="L596">        return empty;</span>
+    }
+
+    private JLabel createNonCountedLabel(int otherAmateurs) {
+<span class="nc" id="L600">        JLabel label = createNumberLabel(otherAmateurs,</span>
+                                         &quot;report.labour.notCounted.tooltip&quot;);
+<span class="nc" id="L602">        label.setForeground(Color.GRAY);</span>
+<span class="nc" id="L603">        return label;</span>
+    }
+
+    private JLabel createNumberLabel(int number, String toolTipKey) {
+<span class="nc" id="L607">        JLabel label = new JLabel(String.valueOf(number));</span>
+<span class="nc" id="L608">        label.setHorizontalAlignment(SwingConstants.TRAILING);</span>
+<span class="nc" id="L609">        label.setBorder(Utility.getCellBorder());</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">        if (toolTipKey != null) Utility.localizeToolTip(this, toolTipKey);</span>
+<span class="nc" id="L611">        return label;</span>
+    }
+
+    private JButton createUnitNameButton(String name,
+                                         LabourData.UnitData unitData) {
+<span class="nc" id="L616">        JButton button = createButton(name, (ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L617">                getGUI().showCompactLabourReport(unitData);</span>
+<span class="nc" id="L618">            });</span>
+
+<span class="nc bnc" id="L620" title="All 2 branches missed.">        if (!unitData.isSummary()) {</span>
+<span class="nc" id="L621">            button.setIcon(new ImageIcon(getImageLibrary()</span>
+<span class="nc" id="L622">                    .getScaledUnitTypeImage(unitData.getUnitType())));</span>
+        }
+
+<span class="nc" id="L625">        return button;</span>
+    }
+
+    private GoodsType getGoodsType() {
+<span class="nc bnc" id="L629" title="All 2 branches missed.">        return (isSummary()) ? null</span>
+<span class="nc" id="L630">            : unitData.getUnitType().getExpertProduction();</span>
+    }
+
+    /**
+     * Is this an overview/location summary?
+     *
+     * @return True if this is the location summary.
+     */
+    private boolean isOverview() {
+<span class="nc bnc" id="L639" title="All 2 branches missed.">        return unitData == null;</span>
+    }
+
+    /**
+     * Is this a summary?
+     *
+     * @return True if this is any sort of summary.
+     */
+    private boolean isSummary() {
+<span class="nc bnc" id="L648" title="All 4 branches missed.">        return isOverview() || unitData.isSummary();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

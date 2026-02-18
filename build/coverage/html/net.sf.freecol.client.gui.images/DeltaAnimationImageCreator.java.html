@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DeltaAnimationImageCreator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.images</a> &gt; <span class="el_source">DeltaAnimationImageCreator.java</span></div><h1>DeltaAnimationImageCreator.java</h1><pre class="source lang-java linenums">package net.sf.freecol.client.gui.images;
+
+import java.awt.AlphaComposite;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.resources.ImageCache;
+import net.sf.freecol.common.resources.ImageResource;
+import net.sf.freecol.common.util.ImageUtils;
+
+/**
+ * Class for generating the combined animated images for river deltas.
+ */
+public final class DeltaAnimationImageCreator {
+
+    private final ImageLibrary lib;
+    private final ImageCache imageCache;
+    
+<span class="nc" id="L21">    public DeltaAnimationImageCreator(ImageLibrary lib, ImageCache imageCache) {</span>
+<span class="nc" id="L22">        this.lib = lib;</span>
+<span class="nc" id="L23">        this.imageCache = imageCache;</span>
+<span class="nc" id="L24">    }</span>
+    
+    /**
+     * Gets the combined animated image for the river delta.
+     * 
+     * @param direction The direction to where the river is coming from.
+     * @param ticks The number of ticks to get the correct animation frame.
+     * @return A cached, generated image.
+     */
+    public BufferedImage getAnimatedScaledRiverDeltaTerrainImage(Direction direction, long ticks) {
+<span class="nc" id="L34">        final ImageResource riverPebblesImageResource = getRiverPebblesImageResource();</span>
+<span class="nc bnc" id="L35" title="All 2 branches missed.">        if (riverPebblesImageResource == null) {</span>
+<span class="nc" id="L36">            return null;</span>
+        }
+                
+<span class="nc" id="L39">        final ImageResource waterImageResource = ImageCache.getImageResource(&quot;image.tile.river.water&quot;);</span>
+<span class="nc" id="L40">        final int waterVariationNumber = waterImageResource.getVariationNumberForTick(ticks);</span>
+        
+<span class="nc" id="L42">        final String generatedKey = waterImageResource.getCachingKey() + &quot;.riverDelta.&quot; + direction + &quot;.&quot; + waterVariationNumber + &quot;$gen&quot;;</span>
+<span class="nc" id="L43">        final BufferedImage result = imageCache.getCachedImageOrGenerate(generatedKey, lib.getTileSize(), false, waterVariationNumber, () -&gt; {</span>
+<span class="nc" id="L44">            final BufferedImage riverPebblesImage = riverPebblesImageResource.getImage(lib.getTileSize(), false);</span>
+<span class="nc" id="L45">            final BufferedImage waterImage = waterImageResource.getVariation(waterVariationNumber).getImage(lib.getTileSize(), false);</span>
+<span class="nc" id="L46">            final String riverWaterMaskKey = &quot;image.mask.river.delta.&quot; + direction.toString().toLowerCase();</span>
+<span class="nc" id="L47">            final BufferedImage riverWaterMaskImage = this.imageCache.getSizedImage(riverWaterMaskKey, lib.getTileSize(), false);</span>
+<span class="nc" id="L48">            final String riverPebblesMaskKey = &quot;image.mask.river.delta.pebbles.&quot; + direction.toString().toLowerCase();</span>
+<span class="nc" id="L49">            final BufferedImage riverPebblesMaskImage = this.imageCache.getSizedImage(riverPebblesMaskKey, lib.getTileSize(), false);</span>
+<span class="nc" id="L50">            final BufferedImage baseTileMask = lib.getTerrainMask(null);</span>
+            
+<span class="nc" id="L52">            return generateImage(riverPebblesImage, waterImage, waterVariationNumber, riverWaterMaskImage, riverPebblesMaskImage, baseTileMask);</span>
+        });
+        
+<span class="nc" id="L55">        return result;</span>
+    }
+    
+    private static ImageResource getRiverPebblesImageResource() {
+<span class="nc" id="L59">        final String key = &quot;image.tile.river.pebbles&quot;;</span>
+<span class="nc" id="L60">        return ImageCache.getImageResource(key);</span>
+    }
+    
+    /**
+     * Generates the image.
+     * 
+     * @param pebblesImage The pebbles image. That is, the graphics the water is drawn upon.
+     * @param waterImage The water to be drawn.
+     * @param waterImageVariationNumber The variation number of the
+     *      water image given above.
+     * @param riverWaterMaskImage A mask to be applied to the water image in
+     *      order to make the pebbles visible below the water.
+     * @param riverPebblesMaskImage A mask to be applied to the pebbles image in
+     *      order to make the resulting image properly fade out.
+     * @param tileMask A center tile mask. This is used to ensure that
+     *      no pixels are out of bounds of the base tile.
+     * @return A base tile image fitting inside the standard &quot;diamond&quot;.
+     */
+    private static BufferedImage generateImage(BufferedImage pebblesImage,
+            BufferedImage waterImage,
+            int waterImageVariationNumber,
+            BufferedImage riverWaterMaskImage,
+            BufferedImage riverPebblesMaskImage,
+            BufferedImage tileMask) {
+<span class="nc" id="L84">        final int width = waterImage.getWidth();</span>
+<span class="nc" id="L85">        final int height = waterImage.getHeight();</span>
+        
+<span class="nc bnc" id="L87" title="All 4 branches missed.">        if (pebblesImage.getWidth() != width || pebblesImage.getHeight() != height) {</span>
+<span class="nc" id="L88">            throw new IllegalArgumentException(&quot;All images should be of the same size.&quot;);</span>
+        }
+<span class="nc bnc" id="L90" title="All 4 branches missed.">        if (riverWaterMaskImage.getWidth() != width || riverWaterMaskImage.getHeight() != height) {</span>
+<span class="nc" id="L91">            throw new IllegalArgumentException(&quot;All images should be of the same size.&quot;);</span>
+        }
+<span class="nc bnc" id="L93" title="All 4 branches missed.">        if (riverPebblesMaskImage.getWidth() != width || riverPebblesMaskImage.getHeight() != height) {</span>
+<span class="nc" id="L94">            throw new IllegalArgumentException(&quot;All images should be of the same size.&quot;);</span>
+        }
+<span class="nc bnc" id="L96" title="All 4 branches missed.">        if (tileMask.getWidth() != width || tileMask.getHeight() != height) {</span>
+<span class="nc" id="L97">            throw new IllegalArgumentException(&quot;All images should be of the same size.&quot;);</span>
+        }
+
+<span class="nc" id="L100">        final BufferedImage maskedPebblesImage = ImageUtils.imageWithAlphaFromMask(pebblesImage, riverPebblesMaskImage);</span>
+<span class="nc" id="L101">        final BufferedImage maskedWaterImage = ImageUtils.imageWithAlphaFromMask(waterImage, riverWaterMaskImage);</span>
+        
+<span class="nc" id="L103">        final BufferedImage riverAndPebblesImage = ImageUtils.createBufferedImage(width, height);</span>
+<span class="nc" id="L104">        final Graphics2D g2d = riverAndPebblesImage.createGraphics();</span>
+<span class="nc" id="L105">        g2d.drawImage(maskedPebblesImage, 0, 0, null);</span>
+<span class="nc" id="L106">        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.9f));</span>
+<span class="nc" id="L107">        g2d.drawImage(maskedWaterImage, 0, 0, null);</span>
+<span class="nc" id="L108">        g2d.dispose();</span>
+
+<span class="nc" id="L110">        return ImageUtils.imageWithAlphaFromMask(riverAndPebblesImage, tileMask);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

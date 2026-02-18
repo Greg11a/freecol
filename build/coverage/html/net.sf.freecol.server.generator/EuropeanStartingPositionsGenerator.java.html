@@ -1,0 +1,610 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EuropeanStartingPositionsGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.generator</a> &gt; <span class="el_source">EuropeanStartingPositionsGenerator.java</span></div><h1>EuropeanStartingPositionsGenerator.java</h1><pre class="source lang-java linenums">package net.sf.freecol.server.generator;
+
+import static net.sf.freecol.common.model.Constants.INFINITY;
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.minimize;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+import static net.sf.freecol.common.util.RandomUtils.getRandomMember;
+import static net.sf.freecol.common.util.RandomUtils.randomShuffle;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+import java.util.function.ToIntFunction;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
+
+import net.sf.freecol.common.debug.FreeColDebugger;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.AbstractUnit;
+import net.sf.freecol.common.model.Area;
+import net.sf.freecol.common.model.Building;
+import net.sf.freecol.common.model.BuildingType;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Europe;
+import net.sf.freecol.common.model.EuropeanNationType;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Map;
+import net.sf.freecol.common.model.Nation;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Role;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.TileImprovement;
+import net.sf.freecol.common.model.TileImprovementType;
+import net.sf.freecol.common.model.TileType;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.option.GameOptions;
+import net.sf.freecol.server.model.ServerBuilding;
+import net.sf.freecol.server.model.ServerColony;
+import net.sf.freecol.server.model.ServerPlayer;
+import net.sf.freecol.server.model.ServerUnit;
+
+/**
+ * Handles the starting placement of European units. 
+ */
+class EuropeanStartingPositionsGenerator {
+    
+<span class="fc" id="L57">    private static final Logger logger = Logger.getLogger(EuropeanStartingPositionsGenerator.class.getName());</span>
+    private final Random random;
+    
+    
+<span class="fc" id="L61">    EuropeanStartingPositionsGenerator(Random random) {</span>
+<span class="fc" id="L62">        this.random = random;</span>
+<span class="fc" id="L63">    }</span>
+    
+
+    /**
+     * Creates and places the European units as determined by the map settings.
+     * 
+     * The non-naval are placed on land if there are no starting naval unit able to
+     * carry them, and in Europe if there's a starting naval unit but no more room.
+     * 
+     * Naval units are placed in Europe if non-naval units are placed on land.
+     *
+     * @param map The {@code Map} to place the european units on.
+     * @param players The players in the game. Starting units are still only created
+     *      for non-REF European players.
+     */
+    void createEuropeanUnits(Map map, List&lt;Player&gt; players) {
+<span class="fc" id="L79">        final List&lt;Player&gt; europeanPlayers = players.stream()</span>
+<span class="pc bpc" id="L80" title="1 of 4 branches missed.">                .filter(p -&gt; p.isEuropean() &amp;&amp; !p.isREF())</span>
+<span class="fc" id="L81">                .collect(Collectors.toList());</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (europeanPlayers.isEmpty()) {</span>
+<span class="nc" id="L83">            throw new RuntimeException(&quot;No players to generate units for!&quot;);</span>
+        }
+        
+<span class="fc" id="L86">        Collections.shuffle(europeanPlayers, random);</span>
+
+<span class="fc" id="L88">        final java.util.Map&lt;Player, StartingUnits&gt; playerStartingUnits = determineStartingUnits(europeanPlayers);</span>
+<span class="fc" id="L89">        final java.util.Map&lt;Player, Tile&gt; playerStartingTiles = determineStartingTiles(map, europeanPlayers, playerStartingUnits);</span>
+
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        for (Player player : europeanPlayers) {</span>
+<span class="fc" id="L92">            final Tile start = playerStartingTiles.get(player);</span>
+<span class="fc" id="L93">            final StartingUnits startingUnits = playerStartingUnits.get(player);</span>
+            
+<span class="fc" id="L95">            placeUnitsAtStartingLocation(player, start, startingUnits);</span>
+<span class="fc" id="L96">        }</span>
+<span class="fc" id="L97">    }</span>
+
+
+    private java.util.Map&lt;Player, StartingUnits&gt; determineStartingUnits(List&lt;Player&gt; europeanPlayers) {
+<span class="fc" id="L101">        final java.util.Map&lt;Player, StartingUnits&gt; playerStartingUnits = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        for (Player player : europeanPlayers) {</span>
+<span class="fc" id="L103">            playerStartingUnits.put(player, new StartingUnits(player, random));</span>
+<span class="fc" id="L104">        }</span>
+<span class="fc" id="L105">        return playerStartingUnits;</span>
+    }
+
+    private java.util.Map&lt;Player, Tile&gt; determineStartingTiles(Map map, List&lt;Player&gt; europeanPlayers, java.util.Map&lt;Player, StartingUnits&gt; playerStartingUnits) {
+<span class="fc" id="L109">        final Game game = map.getGame();</span>
+        
+<span class="fc" id="L111">        final boolean mapDefinedStartingPositionsAvailable = isMapDefinedStartingPositionsAvailableFor(europeanPlayers, game);</span>
+        
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        if (!mapDefinedStartingPositionsAvailable) {</span>
+<span class="fc" id="L114">            return determineStartingTilesWithoutUsingPredeterminedPositions(map, europeanPlayers, playerStartingUnits);</span>
+        }
+
+<span class="nc" id="L117">        final java.util.Map&lt;Player, Tile&gt; startingPositions = determineStartingTilesUsingMapDefinedPositions(europeanPlayers, playerStartingUnits, game);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (startingPositions.size() &lt; playerStartingUnits.size()) {</span>
+<span class="nc" id="L119">            logger.info(&quot;Unable to use map defined starting positions - possibly caused by overlapping nation areas.&quot;);</span>
+<span class="nc" id="L120">            return determineStartingTilesWithoutUsingPredeterminedPositions(map, europeanPlayers, playerStartingUnits);</span>
+        }
+<span class="nc" id="L122">        return startingPositions;</span>
+    }
+
+
+    private java.util.Map&lt;Player, Tile&gt; determineStartingTilesUsingMapDefinedPositions(List&lt;Player&gt; europeanPlayers, java.util.Map&lt;Player, StartingUnits&gt; playerStartingUnits, Game game) {
+<span class="nc" id="L127">        final Specification spec = game.getSpecification();</span>
+<span class="nc" id="L128">        final int positionType = spec.getInteger(GameOptions.STARTING_POSITIONS);</span>
+<span class="nc bnc" id="L129" title="All 4 branches missed.">        switch (positionType) {</span>
+        case GameOptions.STARTING_POSITIONS_CLASSIC:
+<span class="nc" id="L131">            return playerMapStartingAreaAndEnsureDistance(europeanPlayers, playerStartingUnits, game);</span>
+        case GameOptions.STARTING_POSITIONS_RANDOM:
+<span class="nc" id="L133">            return randomMapStartingArea(europeanPlayers, playerStartingUnits, game);</span>
+        case GameOptions.STARTING_POSITIONS_HISTORICAL:
+<span class="nc" id="L135">            return playerMapStartingArea(europeanPlayers, playerStartingUnits, game);</span>
+        default:
+<span class="nc" id="L137">            throw new IllegalStateException(&quot;Unknown positionType=&quot; + positionType);</span>
+        }
+    }
+
+
+    private java.util.Map&lt;Player, Tile&gt; playerMapStartingAreaAndEnsureDistance(List&lt;Player&gt; europeanPlayers,
+            java.util.Map&lt;Player, StartingUnits&gt; playerStartingUnits, final Game game) {
+<span class="nc" id="L144">        final int MINIMUM_DISTANCE_BETWEEN_PLAYERS = 10;</span>
+<span class="nc" id="L145">        final int MAX_TRIES = 10;</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        for (int i=0; i&lt;MAX_TRIES; i++) {</span>
+<span class="nc" id="L147">            final java.util.Map&lt;Player, Tile&gt; startingTiles = playerMapStartingArea(europeanPlayers, playerStartingUnits, game);</span>
+<span class="nc" id="L148">            final boolean satisfiesMinimumDistance = startingTiles.values().stream()</span>
+<span class="nc bnc" id="L149" title="All 4 branches missed.">                    .noneMatch(t -&gt; startingTiles.values().stream().anyMatch(t2 -&gt; t != t2 &amp;&amp; t.getDistanceTo(t2) &lt; MINIMUM_DISTANCE_BETWEEN_PLAYERS));</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">            if (satisfiesMinimumDistance) {</span>
+<span class="nc" id="L151">                return startingTiles;</span>
+            }
+        }
+<span class="nc" id="L154">        logger.info(&quot;Not able to secure minimum starting distance between European players.&quot;);</span>
+<span class="nc" id="L155">        return playerMapStartingArea(europeanPlayers, playerStartingUnits, game);</span>
+    }
+
+
+    private java.util.Map&lt;Player, Tile&gt; playerMapStartingArea(List&lt;Player&gt; europeanPlayers, java.util.Map&lt;Player, StartingUnits&gt; playerStartingUnits, final Game game) {
+<span class="nc" id="L160">        final java.util.Map&lt;Player, Tile&gt; startingTiles = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        for (Player player : europeanPlayers) {</span>
+<span class="nc" id="L162">            final StartingUnits startingUnits = playerStartingUnits.get(player);</span>
+<span class="nc" id="L163">            final boolean prefersLand = startingUnits.getCarriers().isEmpty();</span>
+<span class="nc" id="L164">            final Area startingArea = game.getNationStartingArea(player.getNation());</span>
+            
+<span class="nc" id="L166">            List&lt;Tile&gt; possibleStartingTiles = startingArea.getTiles().stream()</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">                    .filter(t -&gt; t.isLand() == prefersLand)</span>
+<span class="nc" id="L168">                    .collect(Collectors.toList());</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">            if (possibleStartingTiles.isEmpty()) {</span>
+<span class="nc" id="L170">                possibleStartingTiles = startingArea.getTiles();</span>
+            }
+            
+<span class="nc bnc" id="L173" title="All 2 branches missed.">            while (!possibleStartingTiles.isEmpty()) { </span>
+<span class="nc" id="L174">                final int randomIndex = random.nextInt(possibleStartingTiles.size());</span>
+<span class="nc" id="L175">                final Tile startingTile = possibleStartingTiles.get(randomIndex);</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">                if (!startingTiles.values().contains(startingTile)) {</span>
+<span class="nc" id="L177">                    startingTiles.put(player, startingTile);</span>
+<span class="nc" id="L178">                    break;</span>
+                }
+<span class="nc" id="L180">                possibleStartingTiles.remove(randomIndex);</span>
+<span class="nc" id="L181">            }</span>
+<span class="nc" id="L182">        }</span>
+<span class="nc" id="L183">        return startingTiles;</span>
+    }
+    
+    private java.util.Map&lt;Player, Tile&gt; randomMapStartingArea(List&lt;Player&gt; europeanPlayers, java.util.Map&lt;Player, StartingUnits&gt; playerStartingUnits, final Game game) {
+<span class="nc" id="L187">        final java.util.Map&lt;Player, Tile&gt; startingTiles = new HashMap&lt;&gt;();</span>
+        
+<span class="nc" id="L189">        final Set&lt;Tile&gt; tilesToChooseFrom = new HashSet&lt;&gt;();</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        for (Player player : europeanPlayers) {</span>
+<span class="nc" id="L191">            final Area startingArea = game.getNationStartingArea(player.getNation());</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">            if (startingArea != null) {</span>
+<span class="nc" id="L193">                tilesToChooseFrom.addAll(startingArea.getTiles());</span>
+            }
+<span class="nc" id="L195">        }</span>
+        
+<span class="nc" id="L197">        final List&lt;Tile&gt; randomLandTilesToChooseFrom = tilesToChooseFrom.stream()</span>
+<span class="nc" id="L198">                .filter(t -&gt; t.isLand())</span>
+<span class="nc" id="L199">                .collect(Collectors.toList());</span>
+<span class="nc" id="L200">        Collections.shuffle(randomLandTilesToChooseFrom, random);</span>
+<span class="nc" id="L201">        int indexLand = 0;</span>
+        
+<span class="nc" id="L203">        final List&lt;Tile&gt; randomOceanTilesToChooseFrom = tilesToChooseFrom.stream()</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">                .filter(t -&gt; !t.isLand())</span>
+<span class="nc" id="L205">                .collect(Collectors.toList());</span>
+<span class="nc" id="L206">        Collections.shuffle(randomOceanTilesToChooseFrom, random);</span>
+<span class="nc" id="L207">        int indexOcean = 0;</span>
+        
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        for (Player player : europeanPlayers) {</span>
+<span class="nc" id="L210">            final StartingUnits startingUnits = playerStartingUnits.get(player);</span>
+<span class="nc" id="L211">            final boolean prefersLand = startingUnits.getCarriers().isEmpty();</span>
+            final Tile startingTile;
+<span class="nc bnc" id="L213" title="All 4 branches missed.">            if (prefersLand &amp;&amp; indexLand &lt; randomLandTilesToChooseFrom.size()) {</span>
+<span class="nc" id="L214">                startingTile = randomLandTilesToChooseFrom.get(indexLand);</span>
+<span class="nc" id="L215">                indexLand++;</span>
+<span class="nc bnc" id="L216" title="All 4 branches missed.">            } else if (!prefersLand &amp;&amp; indexOcean &lt; randomOceanTilesToChooseFrom.size()) {</span>
+<span class="nc" id="L217">                startingTile = randomOceanTilesToChooseFrom.get(indexOcean);</span>
+<span class="nc" id="L218">                indexOcean++;</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">            } else if (indexLand &lt; randomLandTilesToChooseFrom.size()) {</span>
+<span class="nc" id="L220">                startingTile = randomLandTilesToChooseFrom.get(indexLand);</span>
+<span class="nc" id="L221">                indexLand++;</span>
+            } else {
+<span class="nc" id="L223">                startingTile = randomOceanTilesToChooseFrom.get(indexOcean);</span>
+<span class="nc" id="L224">                indexOcean++;</span>
+            }
+            
+<span class="nc" id="L227">            startingTiles.put(player, startingTile);</span>
+<span class="nc" id="L228">        }</span>
+<span class="nc" id="L229">        return startingTiles;</span>
+    }
+
+
+    private boolean isMapDefinedStartingPositionsAvailableFor(List&lt;Player&gt; europeanPlayers, Game game) {
+<span class="fc" id="L234">        final Specification spec = game.getSpecification();</span>
+<span class="fc" id="L235">        boolean mapDefinedStartingPositions = spec.getBoolean(GameOptions.MAP_DEFINED_STARTING_POSITIONS);</span>
+<span class="fc" id="L236">        final int positionType = spec.getInteger(GameOptions.STARTING_POSITIONS);</span>
+        
+<span class="fc" id="L238">        int numAreas = 0;</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">        if (mapDefinedStartingPositions) {</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">            for (Player player : europeanPlayers) {</span>
+<span class="fc" id="L241">                final Area area = game.getNationStartingArea(player.getNation());</span>
+<span class="pc bpc" id="L242" title="2 of 4 branches missed.">                if (area == null || area.getTiles().isEmpty()) {</span>
+<span class="fc" id="L243">                    logger.info(&quot;No map defined starting area for: &quot; + player.getNationId());</span>
+<span class="pc bpc" id="L244" title="3 of 4 branches missed.">                    if (positionType == GameOptions.STARTING_POSITIONS_CLASSIC</span>
+                            || positionType == GameOptions.STARTING_POSITIONS_HISTORICAL) {
+<span class="nc" id="L246">                        break;</span>
+                    }
+                    continue;
+                }
+<span class="nc" id="L250">                numAreas++;</span>
+<span class="nc" id="L251">            }</span>
+        }
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">        if (numAreas &lt; europeanPlayers.size()) {</span>
+<span class="fc" id="L254">            mapDefinedStartingPositions = false;</span>
+        }
+<span class="fc" id="L256">        return mapDefinedStartingPositions;</span>
+    }
+
+    private java.util.Map&lt;Player, Tile&gt; determineStartingTilesWithoutUsingPredeterminedPositions(Map map, List&lt;Player&gt; europeanPlayers, java.util.Map&lt;Player, StartingUnits&gt; playerStartingUnits) {
+<span class="fc" id="L260">        final Specification spec = map.getSpecification();</span>
+<span class="fc" id="L261">        final int positionType = spec.getInteger(GameOptions.STARTING_POSITIONS);</span>
+<span class="fc" id="L262">        final int number = europeanPlayers.size();</span>
+        
+        // Make lists of candidate starting tiles on the east and west
+        // of the map, then break them up by land and &quot;sea&quot; (revisit
+        // if we get a map with a lake on the edge)
+<span class="fc" id="L267">        List&lt;Tile&gt; eastTiles = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L268">        List&lt;Tile&gt; westTiles = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L269">        List&lt;Tile&gt; eastLandTiles = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L270">        List&lt;Tile&gt; westLandTiles = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L271">        List&lt;Tile&gt; eastSeaTiles = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L272">        List&lt;Tile&gt; westSeaTiles = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L273">        map.collectStartingTiles(eastTiles, westTiles);</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        for (Tile t : eastTiles) {</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">            if (t.isLand()) eastLandTiles.add(t); else eastSeaTiles.add(t);</span>
+<span class="fc" id="L276">        }</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">        for (Tile t : westTiles) {</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">            if (t.isLand()) westLandTiles.add(t); else westSeaTiles.add(t);</span>
+<span class="fc" id="L279">        }</span>
+
+        // Now consider what type of positions we are selecting from
+<span class="pc bpc" id="L282" title="2 of 3 branches missed.">        switch (positionType) {</span>
+        case GameOptions.STARTING_POSITIONS_CLASSIC:
+            // Break the lists up into at least &lt;number&gt; candidate
+            // positions and shuffle.  Empty the relevant list on failure.
+<span class="fc" id="L286">            sampleTiles(eastLandTiles, number);</span>
+<span class="fc" id="L287">            sampleTiles(eastSeaTiles, number);</span>
+<span class="fc" id="L288">            sampleTiles(westLandTiles, number);</span>
+<span class="fc" id="L289">            sampleTiles(westSeaTiles, number);</span>
+<span class="fc" id="L290">            break;</span>
+        case GameOptions.STARTING_POSITIONS_RANDOM:
+            // Random starts are the same as classic but do not
+            // distinguish between east and west
+<span class="nc" id="L294">            eastLandTiles.addAll(westLandTiles);</span>
+<span class="nc" id="L295">            eastSeaTiles.addAll(westSeaTiles);</span>
+<span class="nc" id="L296">            sampleTiles(eastLandTiles, number);</span>
+<span class="nc" id="L297">            sampleTiles(eastSeaTiles, number);</span>
+<span class="nc" id="L298">            break;</span>
+        case GameOptions.STARTING_POSITIONS_HISTORICAL:
+            break; // Historic positions retain all the possible tiles
+        }
+
+<span class="fc" id="L303">        final java.util.Map&lt;Player, Tile&gt; playerStartingTiles = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        for (Player player : europeanPlayers) {</span>
+<span class="fc" id="L305">            boolean startEast = player.getNation().getStartsOnEastCoast();</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">            boolean startAtSea = !playerStartingUnits.get(player).getCarriers().isEmpty();</span>
+
+            // Select a starting position from the available tiles
+<span class="fc" id="L309">            Tile start = null;</span>
+<span class="pc bpc" id="L310" title="3 of 4 branches missed.">            switch (positionType) {</span>
+            case GameOptions.STARTING_POSITIONS_CLASSIC:
+                // Classic mode respects coast preference, the lists
+                // are pre-sampled and shuffled
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">                start = ((startAtSea)</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">                    ? ((startEast) ? eastSeaTiles : westSeaTiles)</span>
+<span class="pc bnc" id="L316" title="All 2 branches missed.">                    : ((startEast) ? eastLandTiles : westLandTiles)).remove(0);</span>
+<span class="fc" id="L317">                break;</span>
+            case GameOptions.STARTING_POSITIONS_RANDOM:
+                // Random mode is as classic but ignores coast
+                // preference, the east lists already contain the west
+<span class="nc bnc" id="L321" title="All 2 branches missed.">                start = ((startAtSea) ? eastSeaTiles : eastLandTiles).remove(0);</span>
+<span class="nc" id="L322">                break;</span>
+            case GameOptions.STARTING_POSITIONS_HISTORICAL:
+<span class="nc bnc" id="L324" title="All 2 branches missed.">                start = (startAtSea)</span>
+<span class="nc" id="L325">                    ? findHistoricalStartingPosition(player, map,</span>
+                        eastSeaTiles, westSeaTiles)
+<span class="nc" id="L327">                    : findHistoricalStartingPosition(player, map,</span>
+                        eastLandTiles, westLandTiles);
+                break;
+            }
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">            if (start == null) {</span>
+<span class="nc" id="L332">                throw new RuntimeException(&quot;Failed to find start tile &quot;</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">                    + ((startAtSea) ? &quot;at sea&quot; : &quot;on land&quot;)</span>
+                    + &quot; for player &quot; + player);
+            }
+<span class="fc" id="L336">            playerStartingTiles.put(player, start);</span>
+<span class="fc" id="L337">        }</span>
+<span class="fc" id="L338">        return playerStartingTiles;</span>
+    }
+
+
+    private void placeUnitsAtStartingLocation(Player player, Tile start, StartingUnits startingUnits) {
+<span class="fc" id="L343">        final Map map = player.getGame().getMap();</span>
+<span class="fc" id="L344">        final Specification spec = map.getSpecification();</span>
+        
+<span class="fc" id="L346">        player.setEntryTile(start);</span>
+
+<span class="fc" id="L348">        final Europe europe = player.getEurope();</span>
+<span class="fc" id="L349">        final ServerPlayer serverPlayer = (ServerPlayer) player;</span>
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">        if (!start.isLand()) { // All aboard!</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">            for (Unit u : startingUnits.getCarriers()) {</span>
+<span class="fc" id="L352">                u.setLocation(start);</span>
+<span class="fc" id="L353">                serverPlayer.exploreForUnit(u);</span>
+<span class="fc" id="L354">            }</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">            passengers: for (Unit unit : startingUnits.getPassengers()) {</span>
+<span class="pc bpc" id="L356" title="1 of 2 branches missed.">                for (Unit carrier : startingUnits.getCarriers()) {</span>
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">                    if (carrier.canAdd(unit)) {</span>
+<span class="fc" id="L358">                        unit.setLocation(carrier);</span>
+<span class="fc" id="L359">                        continue passengers;</span>
+                    }
+<span class="nc" id="L361">                }</span>
+                // no space left on carriers
+<span class="nc" id="L363">                unit.setLocation(europe);</span>
+<span class="nc" id="L364">            }</span>
+<span class="pc bpc" id="L365" title="1 of 2 branches missed.">            for (Unit u : startingUnits.getOtherNaval()) {</span>
+<span class="nc" id="L366">                u.setLocation(start);</span>
+<span class="nc" id="L367">                serverPlayer.exploreForUnit(u);</span>
+<span class="pc" id="L368">            }</span>
+        } else { // Land ho!
+<span class="nc bnc" id="L370" title="All 2 branches missed.">            for (Unit u : startingUnits.getPassengers()) {</span>
+<span class="nc" id="L371">                u.setLocation(start);</span>
+<span class="nc" id="L372">                serverPlayer.exploreForUnit(u);</span>
+<span class="nc" id="L373">            }</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">            for (Unit u : startingUnits.getOtherNaval()) {</span>
+<span class="nc" id="L375">                u.setLocation(europe);</span>
+<span class="nc" id="L376">            }</span>
+        }
+
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">        if (FreeColDebugger.isInDebugMode(FreeColDebugger.DebugMode.INIT)) {</span>
+<span class="nc" id="L380">            createDebugUnits(map, player, start);</span>
+<span class="nc" id="L381">            spec.setInteger(GameOptions.STARTING_MONEY, 10000);</span>
+        }
+
+        // Start our REF player entry tile somewhere near to our
+        // starting tile, but do not place their units.
+        // They are assumed to always be on naval transport.
+<span class="fc" id="L387">        final Player ourREF = player.getREFPlayer();</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">        if (ourREF == null) {</span>
+<span class="fc" id="L389">            return;</span>
+        }
+<span class="fc" id="L391">        final int distance = 10;</span>
+<span class="fc" id="L392">        final List&lt;Tile&gt; refTiles = StreamSupport.stream(map.getCircleTiles(start, true, distance).spliterator(), false)</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">                .filter(t -&gt; !t.isLand())</span>
+<span class="fc" id="L394">                .collect(Collectors.toList());</span>
+<span class="fc" id="L395">        final Tile startRef = getRandomMember(logger, ourREF + &quot; start&quot;, refTiles, random);</span>
+            
+<span class="fc" id="L397">        ourREF.setEntryTile(startRef);</span>
+<span class="fc" id="L398">    }</span>
+    
+    /**
+     * Find the best historical starting position for a player from lists
+     * of tiles.
+     *
+     * @param player The {@code Player} to find a tile for.
+     * @param map The {@code Map} to search.
+     * @param east A list of starting {@code Tile}s on the east of the map.
+     * @param west A list of starting {@code Tile}s on the west of the map.
+     * @return The best {@code Tile} found, or null if none suitable.
+     */
+    private Tile findHistoricalStartingPosition(final Player player,
+                                                final Map map,
+                                                List&lt;Tile&gt; east,
+                                                List&lt;Tile&gt; west) {
+<span class="nc" id="L414">        final Nation nation = player.getNation();</span>
+<span class="nc" id="L415">        final int latY = map.getRow(nation.getPreferredLatitude());</span>
+<span class="nc bnc" id="L416" title="All 2 branches missed.">        List&lt;Tile&gt; tiles = (nation.getStartsOnEastCoast()) ? east : west;</span>
+<span class="nc bnc" id="L417" title="All 2 branches missed.">        if (tiles.isEmpty()) return null;</span>
+<span class="nc" id="L418">        final ToIntFunction&lt;Tile&gt; dist = t -&gt; Math.abs(t.getY() - latY);</span>
+<span class="nc" id="L419">        final Comparator&lt;Tile&gt; closest = Comparator.comparingInt(dist);</span>
+<span class="nc" id="L420">        Tile ret = minimize(tiles, closest);</span>
+<span class="nc" id="L421">        tiles.remove(ret); // chosen tile is no longer a candidate</span>
+<span class="nc" id="L422">        return ret;</span>
+    }
+
+    /**
+     * Sample a list of tiles to pick spread out starting positions.
+     * Shuffle the result or clear it if there were too few tiles.
+     *
+     * @param tiles The list of {@code Tile}s to sample.
+     * @param number The number of players, which determines the spacing.
+     * @return True if there were enough tiles in the list.
+     */
+    private boolean sampleTiles(List&lt;Tile&gt; tiles, int number) {
+<span class="fc" id="L434">        final int n = tiles.size();</span>
+<span class="fc" id="L435">        final int step = n / number;</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">        if (step &lt;= 1) {</span>
+<span class="fc" id="L437">            tiles.clear();</span>
+<span class="fc" id="L438">            return false;</span>
+        }
+<span class="fc" id="L440">        List&lt;Tile&gt; samples = new ArrayList&lt;&gt;();</span>
+        // The offset start prevents selecting right on the poles
+<span class="fc bfc" id="L442" title="All 2 branches covered.">        for (int i = step/2; i &lt; n; i += step) {</span>
+<span class="fc" id="L443">            samples.add(tiles.get(i));</span>
+        }
+<span class="fc" id="L445">        tiles.clear();</span>
+<span class="fc" id="L446">        tiles.addAll(samples);</span>
+<span class="fc" id="L447">        randomShuffle(logger, &quot;Starting tiles&quot;, tiles, random);</span>
+<span class="fc" id="L448">        return true;</span>
+    }
+
+    private List&lt;Unit&gt; createDebugUnits(Map map, Player player, Tile startTile) {
+<span class="nc" id="L452">        final Game game = map.getGame();</span>
+<span class="nc" id="L453">        final Specification spec = game.getSpecification();</span>
+<span class="nc" id="L454">        List&lt;Unit&gt; ret = new ArrayList&lt;&gt;(20);</span>
+        // In debug mode give each player a few more units and a colony.
+<span class="nc" id="L456">        UnitType unitType = spec.getUnitType(&quot;model.unit.galleon&quot;);</span>
+<span class="nc" id="L457">        Unit galleon = new ServerUnit(game, startTile, player, unitType);</span>
+<span class="nc" id="L458">        galleon.setName(player.getNameForUnit(unitType, random));</span>
+<span class="nc" id="L459">        ret.add(galleon);</span>
+<span class="nc" id="L460">        unitType = spec.getUnitType(&quot;model.unit.privateer&quot;);</span>
+<span class="nc" id="L461">        Unit privateer = new ServerUnit(game, startTile, player, unitType);</span>
+<span class="nc" id="L462">        ret.add(privateer);</span>
+<span class="nc" id="L463">        privateer.setName(player.getNameForUnit(unitType, random));</span>
+<span class="nc" id="L464">        ((ServerPlayer)player).exploreForUnit(privateer);</span>
+<span class="nc" id="L465">        unitType = spec.getUnitType(&quot;model.unit.freeColonist&quot;);</span>
+<span class="nc" id="L466">        ret.add(new ServerUnit(game, galleon, player, unitType));</span>
+<span class="nc" id="L467">        unitType = spec.getUnitType(&quot;model.unit.veteranSoldier&quot;);</span>
+<span class="nc" id="L468">        ret.add(new ServerUnit(game, galleon, player, unitType));</span>
+<span class="nc" id="L469">        unitType = spec.getUnitType(&quot;model.unit.jesuitMissionary&quot;);</span>
+<span class="nc" id="L470">        ret.add(new ServerUnit(game, galleon, player, unitType));</span>
+
+<span class="nc" id="L472">        Tile colonyTile = null;</span>
+<span class="nc bnc" id="L473" title="All 2 branches missed.">        for (Tile tempTile : map.getCircleTiles(startTile, true, INFINITY)) {</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">            if (tempTile.isPolar()) continue; // No initial polar colonies</span>
+<span class="nc bnc" id="L475" title="All 2 branches missed.">            if (player.canClaimToFoundSettlement(tempTile)) {</span>
+<span class="nc" id="L476">                colonyTile = tempTile;</span>
+<span class="nc" id="L477">                break;</span>
+            }
+<span class="nc" id="L479">        }</span>
+
+<span class="nc bnc" id="L481" title="All 2 branches missed.">        if (colonyTile == null) {</span>
+<span class="nc" id="L482">            return ret;</span>
+        }
+<span class="nc bnc" id="L484" title="All 2 branches missed.">        colonyTile.setType(find(spec.getTileTypeList(), t -&gt; !t.isWater()));</span>
+<span class="nc" id="L485">        unitType = spec.getUnitType(&quot;model.unit.expertFarmer&quot;);</span>
+<span class="nc" id="L486">        Unit buildColonyUnit = new ServerUnit(game, colonyTile,</span>
+                player, unitType);
+<span class="nc" id="L488">        ret.add(buildColonyUnit);</span>
+<span class="nc" id="L489">        String colonyName = Messages.message(player.getNationLabel())</span>
+<span class="nc" id="L490">                + &quot; &quot; + Messages.message(&quot;Colony&quot;);</span>
+<span class="nc" id="L491">        Colony colony = new ServerColony(game, player, colonyName, colonyTile);</span>
+<span class="nc" id="L492">        player.addSettlement(colony);</span>
+<span class="nc" id="L493">        colony.placeSettlement(true);</span>
+<span class="nc bnc" id="L494" title="All 2 branches missed.">        for (Tile tile : transform(colonyTile.getSurroundingTiles(1,1), t -&gt;</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">        (!t.hasSettlement()</span>
+<span class="nc bnc" id="L496" title="All 4 branches missed.">                &amp;&amp; (t.getOwner() == null || !t.getOwner().isEuropean())))) {</span>
+<span class="nc" id="L497">            tile.changeOwnership(player, colony);</span>
+<span class="nc bnc" id="L498" title="All 2 branches missed.">            if (tile.hasLostCityRumour()) tile.removeLostCityRumour();</span>
+<span class="nc" id="L499">        }</span>
+<span class="nc" id="L500">        buildColonyUnit.setLocation(colony);</span>
+<span class="nc" id="L501">        Tile ct = buildColonyUnit.getWorkTile();</span>
+<span class="nc bnc" id="L502" title="All 2 branches missed.">        if (ct != null) {</span>
+<span class="nc bnc" id="L503" title="All 2 branches missed.">            for (TileType t : transform(spec.getTileTypeList(),</span>
+<span class="nc bnc" id="L504" title="All 2 branches missed.">                    tt -&gt; !tt.isWater())) {</span>
+<span class="nc" id="L505">                ct.setType(t);</span>
+<span class="nc" id="L506">                TileImprovementType plowType = map.getSpecification()</span>
+<span class="nc" id="L507">                        .getTileImprovementType(&quot;model.improvement.plow&quot;);</span>
+<span class="nc" id="L508">                TileImprovement plow = new TileImprovement(game, ct, plowType, null);</span>
+<span class="nc" id="L509">                plow.setTurnsToComplete(0);</span>
+<span class="nc" id="L510">                ct.add(plow);</span>
+<span class="nc" id="L511">                break;</span>
+            }
+        }
+<span class="nc" id="L514">        BuildingType schoolType = spec.getBuildingType(&quot;model.building.schoolhouse&quot;);</span>
+<span class="nc" id="L515">        Building schoolhouse = new ServerBuilding(game, colony, schoolType);</span>
+<span class="nc" id="L516">        colony.addBuilding(schoolhouse);</span>
+
+<span class="nc" id="L518">        unitType = spec.getUnitType(&quot;model.unit.elderStatesman&quot;);</span>
+<span class="nc" id="L519">        Unit statesman = new ServerUnit(game, colonyTile, player, unitType);</span>
+<span class="nc" id="L520">        ret.add(statesman);</span>
+<span class="nc" id="L521">        statesman.setLocation(colony.getWorkLocationFor(statesman,</span>
+<span class="nc" id="L522">                statesman.getType().getExpertProduction()));</span>
+
+<span class="nc" id="L524">        unitType = spec.getUnitType(&quot;model.unit.expertLumberJack&quot;);</span>
+<span class="nc" id="L525">        Unit lumberjack = new ServerUnit(game, colony, player, unitType);</span>
+<span class="nc" id="L526">        ret.add(lumberjack);</span>
+<span class="nc" id="L527">        Tile lt = lumberjack.getWorkTile();</span>
+<span class="nc bnc" id="L528" title="All 2 branches missed.">        if (lt != null) {</span>
+<span class="nc" id="L529">            TileType tt = find(spec.getTileTypeList(), TileType::isForested);</span>
+<span class="nc bnc" id="L530" title="All 2 branches missed.">            if (tt != null) lt.setType(tt);</span>
+<span class="nc" id="L531">            lumberjack.changeWorkType(lumberjack.getType()</span>
+<span class="nc" id="L532">                    .getExpertProduction());</span>
+        }
+
+<span class="nc" id="L535">        unitType = spec.getUnitType(&quot;model.unit.masterCarpenter&quot;);</span>
+<span class="nc" id="L536">        ret.add(new ServerUnit(game, colony, player, unitType));</span>
+
+<span class="nc" id="L538">        unitType = spec.getUnitType(&quot;model.unit.seasonedScout&quot;);</span>
+<span class="nc" id="L539">        Unit scout = new ServerUnit(game, colonyTile, player, unitType);</span>
+<span class="nc" id="L540">        ret.add(scout);</span>
+<span class="nc" id="L541">        ((ServerPlayer)player).exploreForUnit(scout);</span>
+
+<span class="nc" id="L543">        unitType = spec.getUnitType(&quot;model.unit.veteranSoldier&quot;);</span>
+<span class="nc" id="L544">        ret.add(new ServerUnit(game, colonyTile, player, unitType));</span>
+<span class="nc" id="L545">        ret.add(new ServerUnit(game, colonyTile, player, unitType));</span>
+<span class="nc" id="L546">        unitType = spec.getUnitType(&quot;model.unit.artillery&quot;);</span>
+<span class="nc" id="L547">        ret.add(new ServerUnit(game, colonyTile, player, unitType));</span>
+<span class="nc" id="L548">        ret.add(new ServerUnit(game, colonyTile, player, unitType));</span>
+<span class="nc" id="L549">        ret.add(new ServerUnit(game, colonyTile, player, unitType));</span>
+<span class="nc" id="L550">        unitType = spec.getUnitType(&quot;model.unit.treasureTrain&quot;);</span>
+<span class="nc" id="L551">        Unit train = new ServerUnit(game, colonyTile, player, unitType);</span>
+<span class="nc" id="L552">        ret.add(train);</span>
+<span class="nc" id="L553">        train.setTreasureAmount(10000);</span>
+<span class="nc" id="L554">        unitType = spec.getUnitType(&quot;model.unit.wagonTrain&quot;);</span>
+<span class="nc" id="L555">        Unit wagon = new ServerUnit(game, colonyTile, player, unitType);</span>
+<span class="nc" id="L556">        ret.add(wagon);</span>
+<span class="nc" id="L557">        GoodsType cigarsType = spec.getGoodsType(&quot;model.goods.cigars&quot;);</span>
+<span class="nc" id="L558">        Goods cigards = new Goods(game, wagon, cigarsType, 5);</span>
+<span class="nc" id="L559">        wagon.add(cigards);</span>
+<span class="nc" id="L560">        unitType = spec.getUnitType(&quot;model.unit.jesuitMissionary&quot;);</span>
+<span class="nc" id="L561">        ret.add(new ServerUnit(game, colonyTile, player, unitType));</span>
+<span class="nc" id="L562">        ret.add(new ServerUnit(game, colonyTile, player, unitType));</span>
+
+<span class="nc" id="L564">        ((ServerPlayer)player).exploreForSettlement(colony);</span>
+<span class="nc" id="L565">        return ret;</span>
+    }
+    
+    private static final class StartingUnits {
+        
+<span class="fc" id="L570">        private final List&lt;Unit&gt; carriers = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L571">        private final List&lt;Unit&gt; passengers = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L572">        private final List&lt;Unit&gt; otherNaval = new ArrayList&lt;&gt;();</span>
+        
+<span class="fc" id="L574">        StartingUnits(Player player, Random random) {</span>
+<span class="fc" id="L575">            final Game game = player.getGame();</span>
+<span class="fc" id="L576">            final Specification spec = player.getSpecification();</span>
+<span class="fc" id="L577">            List&lt;AbstractUnit&gt; unitList = ((EuropeanNationType) player.getNationType()).getStartingUnits();</span>
+<span class="fc bfc" id="L578" title="All 2 branches covered.">            for (AbstractUnit startingUnit : unitList) {</span>
+<span class="fc" id="L579">                UnitType type = startingUnit.getType(spec);</span>
+<span class="fc" id="L580">                Role role = startingUnit.getRole(spec);</span>
+<span class="fc" id="L581">                Unit newUnit = new ServerUnit(game, null, player, type, role);</span>
+<span class="fc" id="L582">                newUnit.setName(player.getNameForUnit(type, random));</span>
+<span class="fc bfc" id="L583" title="All 2 branches covered.">                if (newUnit.isNaval()) {</span>
+<span class="pc bpc" id="L584" title="1 of 2 branches missed.">                    if (newUnit.canCarryUnits()) {</span>
+<span class="fc" id="L585">                        newUnit.setState(Unit.UnitState.ACTIVE);</span>
+<span class="fc" id="L586">                        carriers.add(newUnit);</span>
+                    } else {
+<span class="nc" id="L588">                        otherNaval.add(newUnit);</span>
+                    }
+                } else {
+<span class="fc" id="L591">                    newUnit.setState(Unit.UnitState.SENTRY);</span>
+<span class="fc" id="L592">                    passengers.add(newUnit);</span>
+                }
+<span class="fc" id="L594">            }</span>
+<span class="fc" id="L595">        }</span>
+        
+        List&lt;Unit&gt; getCarriers() {
+<span class="fc" id="L598">            return carriers;</span>
+        }
+        
+        List&lt;Unit&gt; getPassengers() {
+<span class="fc" id="L602">            return passengers;</span>
+        }
+        
+        List&lt;Unit&gt; getOtherNaval() {
+<span class="fc" id="L606">            return otherNaval;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

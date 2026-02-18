@@ -1,0 +1,595 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MapViewerBounds.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.mapviewer</a> &gt; <span class="el_source">MapViewerBounds.java</span></div><h1>MapViewerBounds.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.mapviewer;
+
+import java.awt.Dimension;
+import java.awt.Point;
+import java.awt.Rectangle;
+
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Map;
+import net.sf.freecol.common.model.Tile;
+
+/**
+ * Calculates what part of the {@link Map} is visible on screen. This includes handling
+ * the size, scaling and focus of the map.
+ * 
+ * The map projection has some interesting properties.  Here is the top
+ * left corner of the map (truncated, aspect ratio very wrong) containing
+ * x,y &quot;map&quot; coordinates.
+ *
+ *  /\  /\  /\    
+ * /0 \/1 \/2 \   
+ * \ 0/\ 0/\ 0/  
+ *  \/0 \/1 \/    
+ *  /\ 1/\ 1/\  
+ * /0 \/1 \/2 \ 
+ * \ 2/\ 2/\ 2/ 
+ *  \/0 \/1 \/   
+ *  /\ 3/\ 3/   
+ * /0 \/1 \/     
+ * \ 4/\ 4/
+ *  \/  \/ 
+ *
+ * We distinguish ordinary &quot;map&quot; coordinates from the pixel
+ * coordinates in the frame, which we will denote P(x,y).
+ *
+ * Pixel coordinates are measureed from the top left corner of the
+ * frame to minimal extent of the rectangle containing the tile
+ * (note: not actually inside the tile graphic).
+ *
+ * Let a general tile with map coordinates (x,y) have pixel coordinates
+ * P(px,py)
+ * Let tiles have width tw and height th.
+ *
+ * - Property #1:  Tile (x,0) borders the top of the window at P(?,0)
+ * - Property #2:  Tile (x,1) is inset by one half tile height at P(?,th/2)
+ * - Property #3:  Tile (0,y) borders the left of the window if y is even,
+ *   and is thus at P(0,?), otherwise it is inset one half tile width
+ *   at P(tw/2,?)
+ * - Property #4:  Within a horizontal row, the tile directly to the 
+ *   right of T0 is tile (x+1,y) at P(px+tw,py)
+ * - Property #5:  Within a vertical column, the tile directly below
+ *   tile T0 is tile (x,y+2) at P(px,py+th)
+ *
+ */
+public final class MapViewerBounds {
+
+    /**
+     * The size of the displayed {@link MapViewer}.
+     */
+<span class="nc" id="L78">    private Dimension size = null;</span>
+
+    /**
+     * The current focus Tile as determined by the {@link #mapFocusPoint}.
+     */
+<span class="nc" id="L83">    private Tile focus = null;</span>
+
+    /**
+     * The current speed when scrolling. This speed can increase when
+     * scrolling.
+     */
+<span class="nc" id="L89">    private int scrollSpeed = 1;</span>
+
+    
+    /*
+     * These variables depend on the map scale and also the map pixel size,
+     * which changes in updateSizedVariables().
+     */
+    
+    /**
+     * The current focus of the visible map given in pixels.
+     * 
+     * The maximum width of the map in pixels is:
+     * &lt;code&gt;map.getWidth() * tileBounds.getWidth()&lt;/code&gt;. 
+     */
+<span class="nc" id="L103">    private Point mapFocusPoint = null;</span>
+
+    /**
+     * The topmost and leftmost tile that is displayed in the MapViewer.
+     */
+<span class="nc" id="L108">    private Map.Position topLeftVisibleTile = new Map.Position(-1, -1);</span>
+
+    /**
+     * The position of the top-left corner of {@link topLeftVisibleTile} when
+     * rendering.
+     */
+<span class="nc" id="L114">    private Point topLeftVisibleTilePoint = new Point(0, 0);</span>
+
+    /**
+     * The bottommost and rightmost tile that is displayed in the MapViewer.
+     */
+<span class="nc" id="L119">    private Map.Position bottomRightVisibleTile = new Map.Position(-1, -1);</span>
+
+    /**
+     * Scaled sizes of a tile. This is used when calculating other variables.
+     */
+    private TileBounds tileBounds;
+
+
+<span class="nc" id="L127">    MapViewerBounds() {</span>
+<span class="nc" id="L128">        this.size = new Dimension(0, 0); // Start empty, update is coming</span>
+<span class="nc" id="L129">        this.tileBounds = new TileBounds(new Dimension(0, 0), 1f);</span>
+<span class="nc" id="L130">    }</span>
+
+    /**
+     * Update the variables that depend on the screen size (and scale).
+     *
+     * @param tileBounds The new scaled tile sizes.
+     */
+    void updateSizeVariables(TileBounds tileBounds) {
+<span class="nc" id="L138">        final TileBounds oldTileBounds = this.tileBounds;</span>
+<span class="nc" id="L139">        this.tileBounds = tileBounds;</span>
+        
+<span class="nc bnc" id="L141" title="All 4 branches missed.">        if (oldTileBounds != null &amp;&amp; mapFocusPoint != null) {</span>
+<span class="nc" id="L142">            this.mapFocusPoint = new Point(</span>
+<span class="nc" id="L143">                (mapFocusPoint.x * tileBounds.getWidth()) / oldTileBounds.getWidth(),</span>
+<span class="nc" id="L144">                (mapFocusPoint.y * tileBounds.getHalfHeight()) / oldTileBounds.getHalfHeight()</span>
+            );
+        }
+
+<span class="nc" id="L148">        positionMap();</span>
+<span class="nc" id="L149">    }</span>
+
+
+    /**
+     * Sets the focus of the map but offset to the left or right so
+     * that the focus position can still be visible when a popup is
+     * raised.  If successful, the supplied position will either be at
+     * the center of the left or right half of the map.
+     * 
+     * WARNING: This method changes the focus. You need to call
+     *          {@code repaint()}
+     *
+     * @param tile The {@code Tile} to display.
+     * @return Positive if the focus is on the right hand side, negative
+     *     if on the left, zero on failure.
+     */
+    public int setOffsetFocus(Tile tile) {
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (tile == null) return 0;</span>
+<span class="nc" id="L167">        setFocus(tile);</span>
+<span class="nc" id="L168">        positionMap();</span>
+
+<span class="nc" id="L170">        int ret = 0, moveX = -1;</span>
+<span class="nc" id="L171">        final Map map = tile.getMap();</span>
+<span class="nc" id="L172">        final int tx = tile.getX(), ty = tile.getY(),</span>
+<span class="nc" id="L173">                width = bottomRightVisibleTile.getX() - topLeftVisibleTile.getX();</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (topLeftVisibleTile.getX() &lt;= 0) { // At left edge already</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">            if (tx &lt;= width / 4) {</span>
+<span class="nc" id="L176">                ret = -1;</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">            } else if (tx &gt;= 3 * width / 4) {</span>
+<span class="nc" id="L178">                ret = 1;</span>
+            } else {
+<span class="nc" id="L180">                moveX = tx + width / 4;</span>
+<span class="nc" id="L181">                ret = -1;</span>
+            }
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        } else if (bottomRightVisibleTile.getX() &gt;= width - 1) { // At right edge</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">            if (tx &gt;= bottomRightVisibleTile.getX() - width / 4) {</span>
+<span class="nc" id="L185">                ret = 1;</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">            } else if (tx &lt;= bottomRightVisibleTile.getX() - 3 * width / 4) {</span>
+<span class="nc" id="L187">                ret = -1;</span>
+            } else {
+<span class="nc" id="L189">                moveX = tx - width / 4;</span>
+<span class="nc" id="L190">                ret = 1;</span>
+            }
+        } else { // Move focus left 1/4 screen
+<span class="nc" id="L193">            moveX = tx - width / 4;</span>
+<span class="nc" id="L194">            ret = 1;</span>
+        }
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        if (moveX &gt;= 0) {</span>
+<span class="nc" id="L197">            Tile other = map.getTile(moveX, ty);</span>
+<span class="nc" id="L198">            setFocus(other);</span>
+<span class="nc" id="L199">        } else {</span>
+<span class="nc" id="L200">            setFocus(tile);</span>
+        }
+<span class="nc" id="L202">        return ret;</span>
+    }
+
+    /**
+     * Scroll the map in the given direction.
+     * 
+     * WARNING: This method changes the focus. You need to call
+     *          {@code repaint()}
+     *
+     * @param direction The {@code Direction} to scroll in.
+     * @return True if scrolling occurred.
+     */
+    public boolean scrollMap(Direction direction) {
+<span class="nc" id="L215">        Tile t = getFocus();</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (t == null) {</span>
+<span class="nc" id="L217">            scrollSpeed = 1;</span>
+<span class="nc" id="L218">            return false;</span>
+        }
+
+<span class="nc" id="L221">        final int fx = t.getX(), fy = t.getY();</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">        if ((t = t.getNeighbourOrNull(direction)) == null) {</span>
+<span class="nc" id="L223">            scrollSpeed = 1;</span>
+<span class="nc" id="L224">            return false;</span>
+        }
+
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        if (Direction.longSides.contains(direction)) {</span>
+            /*
+             * We need to scroll an additional tile when moving the
+             * map diagonally in order to get the correct direction.
+             * 
+             * Please note that the tiles are diamond shapes, so that
+             * diagonally on the screen is longSide for a tile.
+             */
+<span class="nc" id="L235">            final Tile extraScrollTile = t.getNeighbourOrNull(direction);</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">            if (extraScrollTile != null) {</span>
+<span class="nc" id="L237">                t = extraScrollTile;</span>
+            }
+        }
+
+<span class="nc" id="L241">        final int tx = t.getX(), ty = t.getY();</span>
+
+<span class="nc" id="L243">        int scrollX = mapFocusPoint.x;</span>
+<span class="nc" id="L244">        int scrollY = mapFocusPoint.y;</span>
+<span class="nc" id="L245">        scrollSpeed += 1;</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (tx &gt; fx) {</span>
+<span class="nc" id="L247">            scrollX += 1 + scrollSpeed;</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">            if (ty &gt; fy) {</span>
+<span class="nc" id="L249">                scrollY += 1 + scrollSpeed;</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">            } else if (ty &lt; fy) {</span>
+<span class="nc" id="L251">                scrollY -= 1 + scrollSpeed;</span>
+            }
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        } else if (tx &lt; fx) {</span>
+<span class="nc" id="L254">            scrollX -= 1 + scrollSpeed;</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">            if (ty &gt; fy) {</span>
+<span class="nc" id="L256">                scrollY += 1 + scrollSpeed;</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">            } else if (ty &lt; fy) {</span>
+<span class="nc" id="L258">                scrollY -= 1 + scrollSpeed;</span>
+            }
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        } else if (ty &gt; fy) {</span>
+<span class="nc" id="L261">            scrollY += 1 + scrollSpeed;</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        } else if (ty &lt; fy) {</span>
+<span class="nc" id="L263">            scrollY -= 1 + scrollSpeed;</span>
+        } else {
+<span class="nc" id="L265">            scrollSpeed = 1;</span>
+<span class="nc" id="L266">            return false;</span>
+        }
+        
+<span class="nc" id="L269">        setFocusMapPoint(new Point(scrollX, scrollY));</span>
+        
+<span class="nc" id="L271">        return true;</span>
+    }
+
+    /**
+     * Checks if a tile is displayed on the screen but not too close
+     * to the edges.
+     *
+     * FIXME: The intent appears to be to have a two tile thick boundary?
+     *
+     * @param tile The {@code Tile} to check.
+     * @return True if the tile is roughly on screen.
+     */
+    public boolean onScreen(Tile tile) {
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        return (tile.getX() - 1 &gt; topLeftVisibleTile.getX())</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">                &amp;&amp; (tile.getX() + 2 &lt; bottomRightVisibleTile.getX())</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">                &amp;&amp; (tile.getY() - 2 &gt; topLeftVisibleTile.getY())</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">                &amp;&amp; (tile.getY() + 3 &lt; bottomRightVisibleTile.getY());</span>
+    }
+
+    /**
+     * Gets the position of the given {@code Tile} on the visible map.
+     *
+     * @param tile The {@code Tile} to check.
+     * @param rhs If true, find the right edge of the tile, otherwise
+     *     the left edge.
+     * @return The position of the given {@code Tile}, or {@code null}
+     *     if the {@code Tile} is not visible.
+     */
+    public Point calculateTilePosition(Tile tile, boolean rhs) {
+<span class="nc bnc" id="L300" title="All 2 branches missed.">        if (!isTileVisible(tile)) return null;</span>
+
+<span class="nc" id="L302">        final Point p = tileToPoint(tile);</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">        if (!rhs) {</span>
+<span class="nc" id="L304">            return p;</span>
+        }
+<span class="nc" id="L306">        return new Point(p.x + tileBounds.getWidth(), p.y);</span>
+    }
+    
+    /**
+     * Gets the center position of the given {@code Tile} on the visible map.
+     *
+     * @param tile The {@code Tile} to check.
+     * @return The centerposition of the given {@code Tile}.
+     */
+    public Point calculateCenterTilePosition(Tile tile) {
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        if (!isTileVisible(tile)) return null;</span>
+
+<span class="nc" id="L318">        final Point p = tileToPoint(tile);</span>
+<span class="nc" id="L319">        return new Point(p.x + tileBounds.getHalfWidth(), p.y + tileBounds.getHalfHeight());</span>
+    }
+
+    /**
+     * Sets the focus tile.
+     * 
+     * WARNING: This method changes the focus. You need to call
+     *          {@code repaint()}
+     *
+     * @param focus The new focus {@code Tile}.
+     * @return {@code true} if the focus has changed, and
+     *      {@code false} otherwise.
+     */
+    public boolean setFocus(Tile focus) {
+<span class="nc bnc" id="L333" title="All 4 branches missed.">        if (focus == null || this.focus == focus) {</span>
+<span class="nc" id="L334">            return false;</span>
+        }
+
+<span class="nc" id="L337">        this.focus = focus;</span>
+        
+<span class="nc" id="L339">        setFocusMapPoint(new Point(</span>
+<span class="nc" id="L340">                tileBounds.getHalfWidth() + focus.getX() * tileBounds.getWidth() + (focus.getY() &amp; 1) * tileBounds.getHalfWidth(),</span>
+<span class="nc" id="L341">                tileBounds.getHalfHeight() + focus.getY() * tileBounds.getHalfHeight()</span>
+                ));
+        
+<span class="nc" id="L344">        return true;</span>
+    }
+
+    /**
+     * The current focus of the visible map given in pixels.
+     * 
+     * The maximum width of the map in pixels is:
+     * &lt;code&gt;map.getWidth() * tileBounds.getWidth()&lt;/code&gt;.
+     * 
+     * @param mapFocusPoint The new focus point.
+     * @return {@code true} if the focus was updated.
+     */
+    public boolean setFocusMapPoint(Point mapFocusPoint) {
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        if (this.focus == null) {</span>
+<span class="nc" id="L358">            return false;</span>
+        }
+        
+<span class="nc" id="L361">        final Map map = this.focus.getMap();</span>
+<span class="nc" id="L362">        final int mapFocusPointX = inRange(tileBounds.getHalfWidth(), mapFocusPoint.x, map.getWidth() * tileBounds.getWidth());</span>
+<span class="nc" id="L363">        final int mapFocusPointY = inRange(tileBounds.getHalfHeight(), mapFocusPoint.y, map.getHeight() * tileBounds.getHalfHeight() - tileBounds.getHalfHeight());</span>
+<span class="nc" id="L364">        this.mapFocusPoint = new Point(mapFocusPointX, mapFocusPointY);</span>
+        
+<span class="nc" id="L366">        final int tileX = (mapFocusPoint.x - tileBounds.getHalfWidth()) / tileBounds.getWidth();</span>
+<span class="nc" id="L367">        final int tileY = (mapFocusPoint.y - tileBounds.getHalfHeight()) / tileBounds.getHalfHeight();</span>
+        
+<span class="nc" id="L369">        this.focus = map.getTile(</span>
+<span class="nc" id="L370">            inRange(0, tileX, map.getWidth() - 1),</span>
+<span class="nc" id="L371">            inRange(0, tileY, map.getHeight() - 1)</span>
+        );
+
+<span class="nc" id="L374">        positionMap();</span>
+        
+<span class="nc" id="L376">        return true;</span>
+    }
+    
+    /**
+     * Gets the current focus of the visible map given in pixels.
+     * 
+     * @return The current focus map point that is between {@code 0}
+     *   and &lt;code&gt;map.getWidth() * tileBounds.getWidth()&lt;/code&gt;.
+     */
+    public Point getFocusMapPoint() {
+<span class="nc" id="L386">        return mapFocusPoint;</span>
+    }
+    
+    private static int inRange(int min, int value, int max) {
+<span class="nc" id="L390">        return Math.min(max, Math.max(min, value));</span>
+    }
+
+    /**
+     * Position the map so that the focus is displayed at the center.
+     */
+    void positionMap() {
+<span class="nc bnc" id="L397" title="All 2 branches missed.">        if (this.focus == null) {</span>
+<span class="nc" id="L398">            return;</span>
+        }
+        
+<span class="nc" id="L401">        final int focusTileX = (mapFocusPoint.x - tileBounds.getHalfWidth()) / tileBounds.getWidth();</span>
+<span class="nc" id="L402">        final int focusTileY = (mapFocusPoint.y - tileBounds.getHalfHeight()) / tileBounds.getHalfHeight();</span>
+
+<span class="nc" id="L404">        final int extraSpaceFocusTileX = (mapFocusPoint.x - tileBounds.getHalfWidth()) % tileBounds.getWidth();</span>
+<span class="nc" id="L405">        final int extraSpaceFocusTileY = (mapFocusPoint.y - tileBounds.getHalfHeight()) % tileBounds.getHalfHeight();</span>
+        
+<span class="nc" id="L407">        final int topFullTiles = (size.height / 2 - extraSpaceFocusTileY) / tileBounds.getHalfHeight();</span>
+<span class="nc" id="L408">        final int extraSpaceY = (size.height / 2 - extraSpaceFocusTileY) % tileBounds.getHalfHeight();</span>
+<span class="nc bnc" id="L409" title="All 2 branches missed.">        final int topTiles = topFullTiles + (extraSpaceY &gt; 0 ? 1 : 0);</span>
+        
+<span class="nc" id="L411">        final int topLeftTileY = focusTileY - topTiles;</span>
+        
+<span class="nc" id="L413">        final int leftFullTiles = (size.width / 2 - extraSpaceFocusTileX) / tileBounds.getWidth();</span>
+<span class="nc" id="L414">        final int extraSpaceX = (size.width / 2 - extraSpaceFocusTileX) % tileBounds.getWidth();</span>
+<span class="nc bnc" id="L415" title="All 2 branches missed.">        final int leftTiles = leftFullTiles + (extraSpaceX &gt; 0 ? 1 : 0);</span>
+         
+<span class="nc" id="L417">        this.topLeftVisibleTile = new Map.Position(focusTileX - leftTiles, topLeftTileY);</span>
+        
+<span class="nc" id="L419">        this.topLeftVisibleTilePoint = new Point(</span>
+<span class="nc bnc" id="L420" title="All 2 branches missed.">                ((extraSpaceX == 0) ? 0 : -(tileBounds.getWidth() - extraSpaceX)) - tileBounds.getHalfWidth(),</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">                ((extraSpaceY == 0) ? 0 : -(tileBounds.getHalfHeight() - extraSpaceY)) - tileBounds.getHalfHeight()</span>
+                );
+        
+<span class="nc" id="L424">        final int visibleTilesX = (size.width - topLeftVisibleTilePoint.x) / tileBounds.getWidth()</span>
+<span class="nc bnc" id="L425" title="All 2 branches missed.">                + ((((size.width - topLeftVisibleTilePoint.x) % tileBounds.getWidth()) &gt; 0) ? 1 : 0);</span>
+        
+<span class="nc" id="L427">        final int visibleTilesY = (size.height - topLeftVisibleTilePoint.y) / tileBounds.getHalfHeight()</span>
+<span class="nc bnc" id="L428" title="All 2 branches missed.">                + ((((size.height - topLeftVisibleTilePoint.y) % tileBounds.getHalfHeight()) &gt; 0) ? 1 : 0);</span>
+        
+<span class="nc" id="L430">        this.bottomRightVisibleTile = new Map.Position(topLeftVisibleTile.x + visibleTilesX - 1, topLeftVisibleTile.y + visibleTilesY - 1);</span>
+<span class="nc" id="L431">    }</span>
+
+    /**
+     * Convert tile coordinates to pixel coordinates.
+     *
+     * Beware:  Only safe to call if the tile is known non-null and
+     * currently visible.
+     *
+     * @param tile The {@code Tile} to convert coordinates.
+     * @return The new {@code Point}.
+     */
+    Point tileToPoint(Tile tile) {
+<span class="nc" id="L443">        final int tileX = tile.getX(), tileY = tile.getY();</span>
+<span class="nc" id="L444">        final int x = topLeftVisibleTilePoint.x</span>
+<span class="nc" id="L445">                + tileBounds.getWidth() * (tileX - topLeftVisibleTile.getX())</span>
+<span class="nc" id="L446">                + (tileY &amp; 1) * tileBounds.getHalfWidth();</span>
+<span class="nc" id="L447">        final int y = topLeftVisibleTilePoint.y</span>
+<span class="nc" id="L448">                + tileBounds.getHalfHeight() * (tileY - topLeftVisibleTile.getY());</span>
+
+<span class="nc" id="L450">        return new Point(x, y);</span>
+    }
+    
+    /**
+     * Calculate the bounds of the rectangle containing a Tile on the
+     * screen.
+     *
+     * If the Tile is not on-screen an empty rectangle is returned.
+     * The bounds includes a one-tile padding area above the Tile and
+     * half a tile padding to each side. There is currently no padding
+     * below the tile. Feel free to add more padding if we start using
+     * larger images.
+     *
+     * @param tile The {@code Tile} on the screen.
+     * @return The bounds {@code Rectangle}.
+     */
+    public Rectangle calculateDrawnTileBounds(Tile tile) {
+<span class="nc bnc" id="L467" title="All 2 branches missed.">        if (!isTileVisible(tile)) {</span>
+<span class="nc" id="L468">            return new Rectangle(0, 0, -1, -1);</span>
+        }
+            
+<span class="nc" id="L471">        final Point p = tileToPoint(tile);</span>
+<span class="nc" id="L472">        return new Rectangle(p.x - tileBounds.getHalfWidth(),</span>
+<span class="nc" id="L473">                p.y - tileBounds.getHeight(),</span>
+<span class="nc" id="L474">                tileBounds.getWidth() * 2,</span>
+<span class="nc" id="L475">                tileBounds.getHeight() * 2);</span>
+    }
+
+    Map.Position getTopLeftVisibleTile() {
+<span class="nc" id="L479">        return topLeftVisibleTile;</span>
+    }
+
+    Point getTopLeftVisibleTilePoint() {
+<span class="nc" id="L483">        return topLeftVisibleTilePoint;</span>
+    }
+    
+    Map.Position getBottomRightVisibleTile() {
+<span class="nc" id="L487">        return bottomRightVisibleTile;</span>
+    }
+
+    Dimension getSize() {
+<span class="nc" id="L491">        return size;</span>
+    }
+
+    /**
+     * Gets the focus tile, that is, the center tile of the displayed map.
+     *
+     * @return The center {@code Tile}.
+     */
+    public Tile getFocus() {
+<span class="nc" id="L500">        return this.focus;</span>
+    }
+
+    /**
+     * Converts the given screen coordinates to Map coordinates.
+     * It checks to see to which Tile the given pixel 'belongs'.
+     *
+     * @param map The {@code Map} to convert within.
+     * @param x The x-coordinate in pixels.
+     * @param y The y-coordinate in pixels.
+     * @return The {@code Tile} that is located at the given position
+     *     on the screen.
+     */
+    Tile convertToMapTile(Map map, int x, int y) {
+<span class="nc bnc" id="L514" title="All 4 branches missed.">        if (map == null || this.focus == null) return null;</span>
+
+        // Set (leftOffset, topOffset) to the center of the focus tile
+<span class="nc" id="L517">        final Point p = tileToPoint(this.focus);</span>
+<span class="nc" id="L518">        int leftOffset = p.x + tileBounds.getHalfWidth();</span>
+<span class="nc" id="L519">        int topOffset = p.y + tileBounds.getHalfHeight();</span>
+
+        // Next, we can calculate the center pixel of the tile-sized
+        // rectangle that was clicked. First, we calculate the
+        // difference in units of rows and columns.
+<span class="nc" id="L524">        final int fx = this.focus.getX(), fy = this.focus.getY();</span>
+<span class="nc bnc" id="L525" title="All 2 branches missed.">        int dcol = (x - leftOffset + (x &gt; leftOffset ? tileBounds.getHalfWidth() : -tileBounds.getHalfWidth()))</span>
+<span class="nc" id="L526">                / tileBounds.getWidth();</span>
+<span class="nc bnc" id="L527" title="All 2 branches missed.">        int drow = (y - topOffset + (y &gt; topOffset ? tileBounds.getHalfHeight() : -tileBounds.getHalfHeight()))</span>
+<span class="nc" id="L528">                / tileBounds.getHeight();</span>
+<span class="nc" id="L529">        int px = leftOffset + dcol * tileBounds.getWidth();</span>
+<span class="nc" id="L530">        int py = topOffset + drow * tileBounds.getHeight();</span>
+        // Since rows are shifted, we need to correct.
+<span class="nc" id="L532">        int newCol = fx + dcol;</span>
+<span class="nc" id="L533">        int newRow = fy + drow * 2;</span>
+        // Now, we check whether the central diamond of the calculated
+        // rectangle was clicked, and adjust rows and columns
+        // accordingly. See Direction.
+<span class="nc" id="L537">        Direction direction = null;</span>
+<span class="nc bnc" id="L538" title="All 2 branches missed.">        if (x &gt; px) { // right half of the rectangle</span>
+<span class="nc bnc" id="L539" title="All 2 branches missed.">            if (y &gt; py) { // bottom right</span>
+<span class="nc bnc" id="L540" title="All 2 branches missed.">                if ((y - py) &gt; tileBounds.getHalfHeight() - (x - px)/2) {</span>
+<span class="nc" id="L541">                    direction = Direction.SE;</span>
+                }
+            } else { // top right
+<span class="nc bnc" id="L544" title="All 2 branches missed.">                if ((y - py) &lt; (x - px)/2 - tileBounds.getHalfHeight()) {</span>
+<span class="nc" id="L545">                    direction = Direction.NE;</span>
+                }
+            }
+        } else { // left half of the rectangle
+<span class="nc bnc" id="L549" title="All 2 branches missed.">            if (y &gt; py) { // bottom left</span>
+<span class="nc bnc" id="L550" title="All 2 branches missed.">                if ((y - py) &gt; (x - px)/2 + tileBounds.getHalfHeight()) {</span>
+<span class="nc" id="L551">                    direction = Direction.SW;</span>
+                }
+            } else { // top left
+<span class="nc bnc" id="L554" title="All 2 branches missed.">                if ((y - py) &lt; (px - x)/2 - tileBounds.getHalfHeight()) {</span>
+<span class="nc" id="L555">                    direction = Direction.NW;</span>
+                }
+            }
+        }
+<span class="nc" id="L559">        int col = newCol;</span>
+<span class="nc" id="L560">        int row = newRow;</span>
+<span class="nc bnc" id="L561" title="All 2 branches missed.">        if (direction != null) {</span>
+<span class="nc" id="L562">            Map.Position step = direction.step(newCol, newRow);</span>
+<span class="nc" id="L563">            col = step.x;</span>
+<span class="nc" id="L564">            row = step.y;</span>
+        }
+<span class="nc" id="L566">        return map.getTile(col, row);</span>
+    }
+
+    void changeSize(Dimension size, TileBounds tileBounds) {
+<span class="nc" id="L570">        this.size = size;</span>
+        
+<span class="nc" id="L572">        updateSizeVariables(tileBounds);</span>
+<span class="nc" id="L573">    }</span>
+
+    /**
+     * Strict check for tile visibility (unlike onScreen).
+     *
+     * @param tile The {@code Tile} to check.
+     * @return True if the tile is visible.
+     */
+    boolean isTileVisible(Tile tile) {
+<span class="nc bnc" id="L582" title="All 2 branches missed.">        if (tile == null) return false;</span>
+<span class="nc bnc" id="L583" title="All 4 branches missed.">        return tile.getX() &gt;= topLeftVisibleTile.getX() &amp;&amp; tile.getX() &lt;= bottomRightVisibleTile.getX()</span>
+<span class="nc bnc" id="L584" title="All 4 branches missed.">                &amp;&amp; tile.getY() &gt;= topLeftVisibleTile.getY() &amp;&amp; tile.getY() &lt;= bottomRightVisibleTile.getY();</span>
+    }
+    
+    TileBounds getTileBounds() {
+<span class="nc" id="L588">        return tileBounds;</span>
+    }
+    
+    public void resetScrollSpeed() {
+<span class="nc" id="L592">        scrollSpeed = 1;</span>
+<span class="nc" id="L593">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

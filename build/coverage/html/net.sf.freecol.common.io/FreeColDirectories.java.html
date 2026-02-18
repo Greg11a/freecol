@@ -1,0 +1,1293 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FreeColDirectories.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.io</a> &gt; <span class="el_source">FreeColDirectories.java</span></div><h1>FreeColDirectories.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+package net.sf.freecol.common.io;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermission;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
+import javax.swing.filechooser.FileSystemView;
+
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.debug.FreeColDebugger;
+import net.sf.freecol.common.model.StringTemplate;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import static net.sf.freecol.common.util.OSUtils.*;
+import static net.sf.freecol.common.util.StringUtils.*;
+import static net.sf.freecol.common.util.Utils.*;
+
+
+/**
+ * Simple container for the freecol file and directory structure model.
+ */
+<span class="nc" id="L52">public class FreeColDirectories {</span>
+
+    // No logger!  Many of these routines are called before logging is
+    // initialized.
+
+<span class="fc" id="L57">    private static final Comparator&lt;File&gt; fileModificationComparator</span>
+<span class="fc" id="L58">        = Comparator.comparingLong(File::lastModified);</span>
+
+<span class="fc" id="L60">    private static final Comparator&lt;File&gt; fileNameComparator</span>
+<span class="fc" id="L61">        = Comparator.comparing(File::getName);</span>
+
+
+    private static final String AUTOSAVE_DIRECTORY = &quot;autosave&quot;;
+
+    private static final String BASE_DIRECTORY = &quot;base&quot;;
+
+    private static final String CLASSIC_DIRECTORY = &quot;classic&quot;;
+
+    private static final String DATA_DIRECTORY = &quot;data&quot;;
+
+    private static final String FREECOL_DIRECTORY = &quot;freecol&quot;;
+
+    private static final String HIGH_SCORE_FILE = &quot;HighScores.xml&quot;;
+
+    private static final String I18N_DIRECTORY = &quot;strings&quot;;
+
+    private static final String LOG_FILE = &quot;FreeCol.log&quot;;
+
+    private static final String LOG_COMMS_FILE_NAME = &quot;FreeColComms.log&quot;;
+
+    private static final String MAPS_DIRECTORY = &quot;maps&quot;;
+
+    private static final String MESSAGE_FILE_PREFIX = &quot;FreeColMessages&quot;;
+
+    private static final String MESSAGE_FILE_SUFFIX = &quot;.properties&quot;;
+
+    private static final String MODS_DIRECTORY = &quot;mods&quot;;
+
+    private static final String MOD_FILE_SUFFIX = &quot;.fmd&quot;;
+
+    private static final String MOD_MESSAGE_FILE_PREFIX = &quot;ModMessages&quot;;
+
+    private static final String PLURALS_FILE_NAME = &quot;plurals.xml&quot;;
+
+    private static final String RESOURCE_FILE_PREFIX = &quot;resources&quot;;
+
+    private static final String RESOURCE_FILE_SUFFIX = &quot;.properties&quot;;
+
+    private static final String RULES_DIRECTORY = &quot;rules&quot;;
+
+    private static final String SAVE_DIRECTORY = &quot;save&quot;;
+
+    private static final String SPECIFICATION_FILE_NAME = &quot;specification.xml&quot;;
+
+    private static final String START_MAP_NAME = &quot;startMap.fsg&quot;;
+
+<span class="fc" id="L108">    private static final String SEPARATOR</span>
+<span class="fc" id="L109">        = System.getProperty(&quot;file.separator&quot;);</span>
+
+    private static final String USER_MAPS_DIRECTORY = &quot;maps&quot;;
+
+    private static final String ZIP_FILE_SUFFIX = &quot;.zip&quot;;
+    
+    private static final String XDG_CONFIG_HOME_ENV = &quot;XDG_CONFIG_HOME&quot;;
+    private static final String XDG_CONFIG_HOME_DEFAULT = &quot;.config&quot;;
+    private static final String XDG_DATA_HOME_ENV = &quot;XDG_DATA_HOME&quot;;
+    private static final String XDG_DATA_HOME_DEFAULT = &quot;.local/share&quot;;
+    private static final String XDG_CACHE_HOME_ENV = &quot;XDG_CACHE_HOME&quot;;
+    private static final String XDG_CACHE_HOME_DEFAULT = &quot;.cache&quot;;
+
+
+    // Public names, used by the respective dialogs
+
+    public static final String BASE_CLIENT_OPTIONS_FILE_NAME = &quot;client-options.xml&quot;;
+
+    public static final String CLIENT_OPTIONS_FILE_NAME = &quot;options.xml&quot;;
+
+    public static final String CUSTOM_DIFFICULTY_FILE_NAME = &quot;custom.xml&quot;;
+
+    public static final String GAME_OPTIONS_FILE_NAME = &quot;game_options.xml&quot;;
+
+    public static final String MAP_FILE_NAME = &quot;my_map.fsg&quot;;
+
+    public static final String MAP_EDITOR_FILE_NAME = &quot;my_map.fsm&quot;;
+
+    public static final String MAP_GENERATOR_OPTIONS_FILE_NAME
+        = &quot;map_generator_options.xml&quot;;
+
+    public static final String MOD_DESCRIPTOR_FILE_NAME = &quot;mod.xml&quot;;
+
+    /** Predicate to filter suitable candidates to be made into mods. */
+<span class="fc" id="L143">    private static final Predicate&lt;File&gt; modFileFilter = f -&gt;</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">        fileAnySuffix(f, MOD_FILE_SUFFIX, ZIP_FILE_SUFFIX)</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">            || directoryAllPresent(f, MOD_DESCRIPTOR_FILE_NAME);</span>
+
+    /**
+     * Predicate to select readable files that look like saved games.
+     * Public for SaveGameValidator.
+     */
+<span class="fc" id="L151">    public static final Predicate&lt;File&gt; saveGameFilter = f -&gt;</span>
+<span class="nc bnc" id="L152" title="All 4 branches missed.">        f.isFile() &amp;&amp; f.canRead()</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">            &amp;&amp; f.getName().endsWith(&quot;.&quot; + FreeCol.FREECOL_SAVE_EXTENSION);</span>
+
+    /**
+     * Predicate to select readable files that look like maps.
+     */
+<span class="fc" id="L158">    private static final Predicate&lt;File&gt; mapFilter = f -&gt;</span>
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">        f.isFile() &amp;&amp; f.canRead()</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">            &amp;&amp; f.getName().endsWith(&quot;.&quot; + FreeCol.FREECOL_MAP_EXTENSION);</span>
+
+    /** Predicate to filter suitable candidates to be made into TCs. */
+<span class="fc" id="L163">    private static final Predicate&lt;File&gt; rulesFileFilter = f -&gt;</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        fileAnySuffix(f, ZIP_FILE_SUFFIX)</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            || directoryAllPresent(f, MOD_DESCRIPTOR_FILE_NAME,</span>
+                                   SPECIFICATION_FILE_NAME);
+
+    /** Posix file mode 0700. */
+<span class="fc" id="L169">    private static final Set&lt;PosixFilePermission&gt; mode0700</span>
+<span class="fc" id="L170">        = makeUnmodifiableSet(PosixFilePermission.OWNER_READ,</span>
+                              PosixFilePermission.OWNER_WRITE,
+                              PosixFilePermission.OWNER_EXECUTE);
+        
+    
+    /**
+     * The directory containing automatically created save games.  At
+     * program start, the path of this directory is based on the path
+     * where to store regular save games.  If the saved game is
+     * changed by the user during the game, then the value of
+     * autosaveDirectory will not change.
+     */
+<span class="fc" id="L182">    private static File autosaveDirectory = null;</span>
+
+    /**
+     * A file containing the client options.
+     *
+     * Can be overridden at the command line.
+     */
+<span class="fc" id="L189">    private static File clientOptionsFile = null;</span>
+
+    /**
+     * The directory where the standard freecol data is installed.
+     *
+     * Can be overridden at the command line.
+     *
+     * FIXME: defaults lamely to ./data.  Do something better in the
+     * installer.
+     */
+<span class="fc" id="L199">    private static File dataDirectory = new File(DATA_DIRECTORY);</span>
+
+    /**
+     * The path to the log file.
+     *
+     * Can be overridden at the command line.
+     */
+<span class="fc" id="L206">    private static String logFilePath = null;</span>
+
+    /**
+     * Where games are saved.
+     *
+     * Can be overridden in game or from the command line by
+     * specifying the save game file.
+     */
+<span class="fc" id="L214">    private static File saveDirectory = null;</span>
+
+    /**
+     * The current save game file.
+     *
+     * Can be modified in game.
+     */
+<span class="fc" id="L221">    private static File savegameFile = null;</span>
+
+    /**
+     * The directory where freecol saves transient information.
+     */
+<span class="fc" id="L226">    private static File userCacheDirectory = null;</span>
+
+    /**
+     * The directory where freecol saves user configuration.
+     *
+     * This will be set by default but can be overridden at the
+     * command line.
+     */
+<span class="fc" id="L234">    private static File userConfigDirectory = null;</span>
+
+    /**
+     * The directory where freecol saves user data.
+     *
+     * This will be set by default but can be overridden at the
+     * command line.
+     */
+<span class="fc" id="L242">    private static File userDataDirectory = null;</span>
+
+    /**
+     * An optional directory containing user mods.
+     */
+<span class="fc" id="L247">    private static File userModsDirectory = null;</span>
+
+    /** The comms writer. */
+<span class="fc" id="L250">    private static AtomicReference&lt;Writer&gt; commsWriter</span>
+        = new AtomicReference&lt;Writer&gt;(null);
+
+    
+    /**
+     * Get the user home directory.
+     *
+     * @return The user home directory.
+     */
+    private static File getUserDefaultDirectory() {
+<span class="nc" id="L260">        return FileSystemView.getFileSystemView().getDefaultDirectory();</span>
+    }
+
+    /**
+     * Check a directory for read and write access.
+     *
+     * @param dir The {@code File} that must be a usable directory.
+     * @return Null on success, an error message key on failure.
+     */
+    public static String checkDir(File dir) {
+<span class="nc bnc" id="L270" title="All 4 branches missed.">        return (dir == null || !dir.exists()) ? &quot;cli.error.home.notExists&quot;</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            : (!dir.isDirectory()) ? &quot;cli.error.home.notDir&quot;</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">            : (!dir.canRead()) ? &quot;cli.error.home.noRead&quot;</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">            : (!dir.canWrite()) ? &quot;cli.error.home.noWrite&quot;</span>
+<span class="nc" id="L274">            : null;</span>
+    }
+
+    /**
+     * Is the specified file a writable directory?
+     *
+     * @param f The {@code File} to check.
+     * @return True if the file is a writable directory.
+     */
+    private static boolean isGoodDirectory(File f) {
+<span class="pc bpc" id="L284" title="7 of 8 branches missed.">        return f != null &amp;&amp; f.exists() &amp;&amp; f.isDirectory() &amp;&amp; f.canWrite();</span>
+    }
+
+    /**
+     * Create the given directory if it does not exist, otherwise expect
+     * it to be writable.
+     *
+     * @param dir The {@code File} specifying the required directory.
+     * @return The required directory, or null on failure.
+     */
+    private static File requireDirectory(File dir) {
+<span class="nc bnc" id="L295" title="All 2 branches missed.">        if (dir.exists()) {</span>
+<span class="nc bnc" id="L296" title="All 4 branches missed.">            if (dir.isDirectory() &amp;&amp; dir.canWrite()) return dir;</span>
+        } else {
+<span class="nc bnc" id="L298" title="All 2 branches missed.">            if (dir.mkdir()) {</span>
+                try {
+<span class="nc" id="L300">                    Files.setPosixFilePermissions(dir.toPath(), mode0700);</span>
+<span class="nc" id="L301">                } catch (IOException|UnsupportedOperationException ex) {</span>
+                    // Just log, error is not fatal
+<span class="nc" id="L303">                    System.err.println(&quot;Failed to change permissions of &quot;</span>
+<span class="nc" id="L304">                        + dir.getPath());</span>
+<span class="nc" id="L305">                }</span>
+<span class="nc" id="L306">                return dir;</span>
+            }
+        }
+<span class="nc" id="L309">        return null;</span>
+    }
+
+    private static StringTemplate bad() {
+<span class="nc" id="L313">        return StringTemplate.key(&quot;main.userDir.fail&quot;);</span>
+    }
+
+    private static StringTemplate badHome() {
+<span class="nc" id="L317">        return StringTemplate.key(&quot;main.userDir.noHome&quot;);</span>
+    }
+
+    private static StringTemplate badDir(File d) {
+<span class="nc" id="L321">        return StringTemplate.template(&quot;main.userDir.badDir&quot;)</span>
+<span class="nc" id="L322">            .addName(&quot;%name%&quot;, d.getPath());</span>
+    }
+
+    private static StringTemplate badConfig(File f) {
+<span class="nc" id="L326">        return StringTemplate.template(&quot;main.userDir.badConfig&quot;)</span>
+<span class="nc" id="L327">            .addName(&quot;%name%&quot;, f.getPath());</span>
+    }
+
+    private static StringTemplate badData(File f) {
+<span class="nc" id="L331">        return StringTemplate.template(&quot;main.userDir.badData&quot;)</span>
+<span class="nc" id="L332">            .addName(&quot;%name%&quot;, f.getPath());</span>
+    }
+
+    private static StringTemplate badCache(File f) {
+<span class="nc" id="L336">        return StringTemplate.template(&quot;main.userDir.badCache&quot;)</span>
+<span class="nc" id="L337">            .addName(&quot;%name%&quot;, f.getPath());</span>
+    }
+
+    /**
+     * Get directories for XDG compliant systems.
+     *
+     * XDG say: 
+     *   If, when attempting to write a file, the destination
+     *   directory is non-existant an attempt should be made to create
+     *   it with permission 0700.
+     *
+     * @param dirs An array of {@code File} to be filled in with the
+     *     XDG directory if it is present or created.
+     * @return Null on success, an error message on error.
+     */
+    private static StringTemplate getXDGDirs(File[] dirs) {
+<span class="nc" id="L353">        File home = getUserDefaultDirectory();</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">        if (home == null) return badHome();</span>
+
+<span class="nc" id="L356">        String env = System.getenv(XDG_CONFIG_HOME_ENV);</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        File d = (env != null) ? new File(env)</span>
+<span class="nc" id="L358">            : new File(home, XDG_CONFIG_HOME_DEFAULT);</span>
+        File xd;
+<span class="nc bnc" id="L360" title="All 2 branches missed.">        if ((xd = requireDirectory(d)) == null) return badDir(d);</span>
+<span class="nc" id="L361">        File f = new File(xd, FREECOL_DIRECTORY);</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">        if ((d = requireDirectory(f)) == null) return badConfig(f);</span>
+<span class="nc" id="L363">        dirs[0] = d;</span>
+
+<span class="nc" id="L365">        env = System.getenv(XDG_DATA_HOME_ENV);</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">        d = (env != null) ? new File(env)</span>
+<span class="nc" id="L367">            : new File(home, XDG_DATA_HOME_DEFAULT);</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">        if ((xd = requireDirectory(d)) == null) return badDir(d);</span>
+<span class="nc" id="L369">        f = new File(xd, FREECOL_DIRECTORY);</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">        if ((d = requireDirectory(f)) == null) return badData(f);</span>
+<span class="nc" id="L371">        dirs[1] = d;</span>
+
+<span class="nc" id="L373">        env = System.getenv(XDG_CACHE_HOME_ENV);</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">        d = (env != null) ? new File(env)</span>
+<span class="nc" id="L375">            : new File(home, XDG_CACHE_HOME_DEFAULT);</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">        if ((xd = requireDirectory(d)) == null) return badDir(d);</span>
+<span class="nc" id="L377">        f = new File(xd, FREECOL_DIRECTORY);</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">        if ((d = requireDirectory(f)) == null) return badCache(f);</span>
+<span class="nc" id="L379">        dirs[2] = d;</span>
+
+<span class="nc" id="L381">        return null;</span>
+    }
+
+    /**
+     * Get FreeCol directories for MacOSX.
+     *
+     * No separate cache directory here.
+     *
+     * @param dirs An array of {@code File} to be filled in with the
+     *     MacOSX freecol directories.
+     * @return Null on success, an error message on failure.
+     */
+    private static StringTemplate getMacOSXDirs(File[] dirs) {
+<span class="nc" id="L394">        File home = getUserDefaultDirectory();</span>
+<span class="nc bnc" id="L395" title="All 2 branches missed.">        if (home == null) return badHome();</span>
+<span class="nc" id="L396">        File libDir = new File(home, &quot;Library&quot;);</span>
+<span class="nc bnc" id="L397" title="All 2 branches missed.">        if (!isGoodDirectory(libDir)) return badDir(libDir);</span>
+
+<span class="nc" id="L399">        File prefsDir = new File(libDir, &quot;Preferences&quot;);</span>
+<span class="nc bnc" id="L400" title="All 2 branches missed.">        if (!isGoodDirectory(prefsDir)) return badDir(prefsDir);</span>
+<span class="nc" id="L401">        File d = new File(prefsDir, FREECOL_DIRECTORY);</span>
+<span class="nc" id="L402">        File d2 = requireDirectory(d);</span>
+<span class="nc bnc" id="L403" title="All 2 branches missed.">        if (d2 == null) return badConfig(d);</span>
+<span class="nc" id="L404">        dirs[0] = d2;</span>
+
+<span class="nc" id="L406">        File appsDir = new File(libDir, &quot;Application Support&quot;);</span>
+<span class="nc bnc" id="L407" title="All 2 branches missed.">        if (!isGoodDirectory(appsDir)) return badDir(appsDir);</span>
+<span class="nc" id="L408">        d = new File(appsDir, FREECOL_DIRECTORY);</span>
+<span class="nc" id="L409">        d2 = requireDirectory(d);</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">        if (d2 == null) return badData(d);</span>
+<span class="nc" id="L411">        dirs[1] = dirs[2] = d2;</span>
+
+<span class="nc" id="L413">        return null;</span>
+    }
+
+
+    /**
+     * Get FreeCol directories for Windows.
+     *
+     * Simple case, everything is in the one directory.
+     *
+     * Result is:
+     * - Negative on failure.
+     * - Zero if a migration is needed.
+     * - Positive if no migration is needed.
+     *
+     * @param dirs An array of {@code File} to be filled in with the
+     *     Windows freecol directories.
+     * @return Null on success, an error message on failure.
+     */
+    private static StringTemplate getWindowsDirs(File[] dirs) {
+<span class="nc" id="L432">        File home = getUserDefaultDirectory();</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">        if (home == null) return badHome();</span>
+
+<span class="nc" id="L435">        File d = new File(home, FREECOL_DIRECTORY);</span>
+<span class="nc" id="L436">        File d2 = requireDirectory(d);</span>
+<span class="nc bnc" id="L437" title="All 2 branches missed.">        if (d2 == null) return badDir(d);</span>
+<span class="nc" id="L438">        dirs[0] = dirs[1] = dirs[2] = d;</span>
+<span class="nc" id="L439">        return null;</span>
+    }
+
+    /**
+     * Insist that a directory either already exists, or is created.
+     *
+     * @param file A {@code File} specifying where to make the directory.
+     * @return True if the directory is now there.
+     */
+    private static boolean insistDirectory(File file) {
+        boolean ret;
+<span class="pc bpc" id="L450" title="1 of 2 branches missed.">        if (file.exists()) {</span>
+<span class="pc bpc" id="L451" title="1 of 2 branches missed.">            if (!(ret = file.isDirectory())) {</span>
+<span class="nc" id="L452">                System.err.println(&quot;Could not create directory &quot;</span>
+<span class="nc" id="L453">                    + file.getPath() + &quot; because a non-directory with that name is already there.&quot;);</span>
+            }
+        } else {
+            try {
+<span class="nc" id="L457">                ret = file.mkdir();</span>
+<span class="nc" id="L458">            } catch (Exception e) {</span>
+<span class="nc" id="L459">                ret = false;</span>
+<span class="nc" id="L460">                System.err.println(&quot;Could not make directory &quot; + file.getPath()</span>
+<span class="nc" id="L461">                    + &quot;: &quot; + e.getMessage());</span>
+<span class="nc" id="L462">            }</span>
+        }
+<span class="fc" id="L464">        return ret;</span>
+    }
+
+    /**
+     * Safely derive a subdirectory of a root.
+     *
+     * @param root The root directory.
+     * @param subdir The name of the subdirectory to find or create.
+     * @return The directory found, or null on error.
+     */
+    private static File deriveDirectory(File root, String subdir) {
+        File dir;
+<span class="pc bpc" id="L476" title="1 of 2 branches missed.">        return (isGoodDirectory(root)</span>
+<span class="pc bnc" id="L477" title="All 2 branches missed.">            &amp;&amp; insistDirectory(dir = new File(root, subdir))) ? dir : null;</span>
+    }
+
+    /**
+     * Derive the directory for the autosave files from the save directory.
+     *
+     * @return The new autosave directory, or null if not possible.
+     */
+    private static File deriveAutosaveDirectory() {
+<span class="pc bpc" id="L486" title="1 of 2 branches missed.">        if (saveDirectory != null</span>
+<span class="nc bnc" id="L487" title="All 2 branches missed.">            &amp;&amp; saveDirectory.toPath().endsWith(AUTOSAVE_DIRECTORY)) {</span>
+            // Do not create autosave directories inside autosave
+            // directories (BR#3276).  However, having save==autosave
+            // is not a good idea either.  Lets see who that next
+            // complaint is.
+<span class="nc" id="L492">            return saveDirectory;</span>
+        }
+<span class="fc" id="L494">        return deriveDirectory(saveDirectory, AUTOSAVE_DIRECTORY);</span>
+    }
+
+    /**
+     * Collect files from a directory that match a predicate.
+     *
+     * @param dir The directory to load from.
+     * @param pred A {@code Predicate} to match files with.
+     * @return A list of {@code File}s.
+     */
+    private static List&lt;File&gt; collectFiles(File dir, Predicate&lt;File&gt; pred) {
+<span class="fc" id="L505">        return transform(fileStream(dir), pred, Function.&lt;File&gt;identity(),</span>
+                         fileNameComparator);
+    }
+
+
+    // Main initialization/bootstrap routines.
+    // These need to be called early before the subsidiary directory
+    // accessors are used.
+
+    /**
+     * Sets the data directory.
+     *
+     * Insist that the base resources and i18n subdirectories are present.
+     *
+     * @param path The path to the new data directory, or null to
+     *     apply the default.
+     * @return A (non-i18n) error message on failure, null on success.
+     */
+    public static String setDataDirectory(String path) {
+<span class="nc bnc" id="L524" title="All 2 branches missed.">        if (path == null) path = DATA_DIRECTORY;</span>
+<span class="nc" id="L525">        File dir = new File(path);</span>
+<span class="nc bnc" id="L526" title="All 2 branches missed.">        if (!dir.isDirectory()) return &quot;Not a directory: &quot; + path;</span>
+<span class="nc bnc" id="L527" title="All 2 branches missed.">        if (!dir.canRead()) return &quot;Can not read directory: &quot; + path;</span>
+<span class="nc" id="L528">        dataDirectory = dir;</span>
+<span class="nc bnc" id="L529" title="All 2 branches missed.">        if (!getBaseDirectory().exists()) {</span>
+<span class="nc" id="L530">            return &quot;Base data directory missing from: &quot; + path;</span>
+        }
+<span class="nc" id="L532">        return null;</span>
+    }
+
+    /**
+     * Set the user directories for the current user.
+     *
+     * - on XDG standard compliant Unixes:
+     *   - config:  ~/.config/freecol
+     *   - data:    ~/.local/share/freecol
+     *   - logging: ~/.cache/freecol
+     * - on Mac:
+     *   - config:  ~/Library/Preferences/freecol
+     *   - else:    ~/Library/Application Support/freecol
+     * - on Windows:
+     *   - everything in &lt;em&gt;default directory&lt;/em&gt;/freecol
+     *
+     * Note: the freecol data directory is set independently and earlier
+     * in initialization than this routine.
+     *
+     * FIXME: Should the default location of the main user and data
+     * directories be determined by the installer?
+     *
+     * @return Null on success, otherwise an error message template.
+     */
+    public static synchronized StringTemplate setUserDirectories() {
+        // Find the OS-specific directories.
+        // Check OSX before XDG because OSX is still unix-like.
+<span class="nc" id="L559">        File[] dirs = { null, null, null };</span>
+<span class="nc bnc" id="L560" title="All 2 branches missed.">        StringTemplate err = (onMacOSX()) ? getMacOSXDirs(dirs)</span>
+<span class="nc bnc" id="L561" title="All 2 branches missed.">            : (onUnix()) ? getXDGDirs(dirs)</span>
+<span class="nc bnc" id="L562" title="All 2 branches missed.">            : (onWindows()) ? getWindowsDirs(dirs)</span>
+<span class="nc" id="L563">            : bad();</span>
+<span class="nc bnc" id="L564" title="All 2 branches missed.">        if (err != null) return err;</span>
+
+        // Override directories if not set or not valid.
+<span class="nc bnc" id="L567" title="All 2 branches missed.">        if (userConfigDirectory == null</span>
+<span class="nc bnc" id="L568" title="All 2 branches missed.">            || !isGoodDirectory(userConfigDirectory)) {</span>
+<span class="nc" id="L569">            userConfigDirectory = dirs[0];</span>
+        }
+<span class="nc bnc" id="L571" title="All 2 branches missed.">        if (userDataDirectory == null</span>
+<span class="nc bnc" id="L572" title="All 2 branches missed.">            || !isGoodDirectory(userDataDirectory)) {</span>
+<span class="nc" id="L573">            userDataDirectory = dirs[1];</span>
+        }
+<span class="nc bnc" id="L575" title="All 2 branches missed.">        if (userCacheDirectory == null</span>
+<span class="nc bnc" id="L576" title="All 2 branches missed.">            || !isGoodDirectory(userCacheDirectory)) {</span>
+<span class="nc" id="L577">            userCacheDirectory = dirs[2];</span>
+        }
+
+        // Derive the other directories and files
+<span class="nc bnc" id="L581" title="All 2 branches missed.">        if (logFilePath == null) {</span>
+<span class="nc" id="L582">            logFilePath = getUserCacheDirectory() + SEPARATOR + LOG_FILE;</span>
+        }
+<span class="nc bnc" id="L584" title="All 2 branches missed.">        if (saveDirectory == null) {</span>
+<span class="nc" id="L585">            saveDirectory = new File(getUserDataDirectory(), SAVE_DIRECTORY);</span>
+<span class="nc bnc" id="L586" title="All 2 branches missed.">            if (!insistDirectory(saveDirectory)) return badDir(saveDirectory);</span>
+        }
+        // TODO: Drop trace when BR#3097b is settled
+<span class="nc" id="L589">        File dir = deriveAutosaveDirectory();</span>
+<span class="nc" id="L590">        setAutosaveDirectory(dir);</span>
+<span class="nc" id="L591">        userModsDirectory = new File(getUserDataDirectory(), MODS_DIRECTORY);</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">        if (!insistDirectory(userModsDirectory)) userModsDirectory = null;</span>
+
+<span class="nc" id="L594">        return null;</span>
+    }
+
+    /**
+     * Remove disallowed parts of a user supplied file name.
+     *
+     * @param fileName The input file name.
+     * @return A sanitized file name.
+     */
+    private static String sanitize(String fileName) {
+<span class="fc" id="L604">        List&lt;String&gt; strings = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L605" title="All 2 branches covered.">        for (int i = 0; i &lt; fileName.length(); i++) {</span>
+<span class="fc" id="L606">            String s = fileName.substring(i, i+1);</span>
+<span class="pc bpc" id="L607" title="1 of 2 branches missed.">            if (SEPARATOR.equals(s)) continue;</span>
+<span class="fc" id="L608">            strings.add(s);</span>
+        }
+<span class="fc" id="L610">        return join(&quot;&quot;, strings);</span>
+    }
+
+
+    // Directory accessors.
+    // Where there are supported command line arguments there will also
+    // be a mutator.
+
+    /**
+     * Gets the directory where the automatically saved games should be put.
+     *
+     * @return The autosave directory.
+     */
+    public static File getAutosaveDirectory() {
+        // Re-establish the autosave directory if it has gone away
+<span class="pc bpc" id="L625" title="1 of 2 branches missed.">        if (!isGoodDirectory(autosaveDirectory)) {</span>
+<span class="fc" id="L626">            File dir = deriveAutosaveDirectory();</span>
+<span class="fc" id="L627">            setAutosaveDirectory(dir);</span>
+        }
+<span class="fc" id="L629">        return autosaveDirectory;</span>
+    }
+
+    /**
+     * Set the autosave directory.
+     *
+     * @param dir The new autosave directory.
+     */
+    private static void setAutosaveDirectory(File dir) {
+<span class="fc" id="L638">        autosaveDirectory = dir;</span>
+<span class="fc" id="L639">    }</span>
+
+    /**
+     * Get a specific autosave file.
+     *
+     * @param fileName The name of the file.
+     * @return The {@code File} found, or null on error.
+     */
+    public static File getAutosaveFile(String fileName) {
+<span class="nc" id="L648">        File dir = getAutosaveDirectory();</span>
+<span class="nc bnc" id="L649" title="All 2 branches missed.">        return (dir == null) ? null : new File(dir, sanitize(fileName));</span>
+    }
+
+    /**
+     * Get the autosave files.
+     *
+     * @param prefix The autosave file prefix.
+     * @param pred A {@code Predicate} to select files with.
+     * @return A list of of autosaved {@code File}s.
+     */
+    private static List&lt;File&gt; getAutosaveFiles(String prefix,
+                                               Predicate&lt;File&gt; pred) {
+<span class="nc" id="L661">        final String suffix = &quot;.&quot; + FreeCol.FREECOL_SAVE_EXTENSION;</span>
+<span class="nc" id="L662">        final File asd = getAutosaveDirectory();</span>
+<span class="nc" id="L663">        final Predicate&lt;File&gt; fullPred = pred.and(f -&gt;</span>
+<span class="nc bnc" id="L664" title="All 4 branches missed.">            f.getName().startsWith(prefix) &amp;&amp; f.getName().endsWith(suffix));</span>
+<span class="nc bnc" id="L665" title="All 2 branches missed.">        return (asd == null) ? Collections.emptyList()</span>
+<span class="nc" id="L666">            : collectFiles(asd, fullPred);</span>
+    }
+
+    /**
+     * Remove out of date autosaves. This only removed generic autosaves, not
+     * the last-turn autosave, which can be useful for continuing the game on
+     * the next play-session.
+     *
+     * @param prefix The autosave file prefix.
+     * @param excludeSuffixes Only files not ending with any of these prefixes
+     *     will be removed.
+     * @param validDays Only files older than this amount of days will
+     *     be removed.
+     * @return A suitable log message, or null if nothing was deleted.
+     */
+    public static String removeOutdatedAutosaves(String prefix,
+        List&lt;String&gt; excludeSuffixes, long validDays) {
+<span class="nc bnc" id="L683" title="All 2 branches missed.">        if (validDays &lt;= 0L) return null;</span>
+<span class="nc" id="L684">        final long validMS = 1000L * 24L * 60L * 60L * validDays; // days to ms</span>
+<span class="nc" id="L685">        final long timeNow = now();</span>
+<span class="nc" id="L686">        final Predicate&lt;File&gt; outdatedPred = f -&gt; </span>
+<span class="nc bnc" id="L687" title="All 2 branches missed.">            f.lastModified() + validMS &lt; timeNow;</span>
+<span class="nc" id="L688">        final String extension = &quot;.&quot; + FreeCol.FREECOL_SAVE_EXTENSION;</span>
+<span class="nc" id="L689">        final List&lt;String&gt; ex = transform(excludeSuffixes, alwaysTrue(),</span>
+<span class="nc" id="L690">                                          s -&gt; sanitize(s));</span>
+<span class="nc" id="L691">        final Predicate&lt;File&gt; suffixPred = f -&gt;</span>
+<span class="nc" id="L692">            ex.stream().noneMatch(suf -&gt; f.getName().endsWith(suf + extension));</span>
+
+<span class="nc" id="L694">        List&lt;File&gt; files = getAutosaveFiles(sanitize(prefix),</span>
+<span class="nc" id="L695">                                            outdatedPred.and(suffixPred)); </span>
+<span class="nc bnc" id="L696" title="All 2 branches missed.">        if (files.isEmpty()) return null;</span>
+<span class="nc" id="L697">        deleteFiles(files);</span>
+<span class="nc" id="L698">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L699">        sb.append(&quot;Deleted outdated (&gt; &quot;).append(validDays)</span>
+<span class="nc" id="L700">            .append(&quot; old) autosave/s: &quot;);</span>
+<span class="nc bnc" id="L701" title="All 2 branches missed.">        for (File f : files) sb.append(' ').append(f.getPath());</span>
+<span class="nc" id="L702">        return sb.toString();        </span>
+    }
+
+    /**
+     * Remove all autosave files.
+     *
+     * @param prefix The autosave file prefix.
+     * @return A suitable log message, or null if nothing was deleted.
+     */
+    public static String removeAutosaves(String prefix) {
+<span class="nc" id="L712">        List&lt;File&gt; files = getAutosaveFiles(sanitize(prefix), alwaysTrue());</span>
+<span class="nc bnc" id="L713" title="All 2 branches missed.">        if (files.isEmpty()) return null;</span>
+<span class="nc" id="L714">        deleteFiles(files);</span>
+<span class="nc" id="L715">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L716">        sb.append(&quot;Deleted autosave/s: &quot;);</span>
+<span class="nc bnc" id="L717" title="All 2 branches missed.">        for (File f : files) sb.append(' ').append(f.getPath());</span>
+<span class="nc" id="L718">        return sb.toString();        </span>
+    }
+
+    /**
+     * Gets the base resources directory.
+     *
+     * @return The base resources directory.
+     */
+    public static File getBaseDirectory() {
+<span class="fc" id="L727">        return new File(getDataDirectory(), BASE_DIRECTORY);</span>
+    }
+
+    /**
+     * Gets the base client options file.
+     *
+     * @return The base client options file.
+     */
+    public static File getBaseClientOptionsFile() {
+<span class="fc" id="L736">        return new File(getBaseDirectory(), BASE_CLIENT_OPTIONS_FILE_NAME);</span>
+    }
+
+    /**
+     * Gets the file containing the client options.
+     *
+     * @return The client options file, if any.
+     */
+    public static File getClientOptionsFile() {
+<span class="pc bpc" id="L745" title="1 of 2 branches missed.">        return (clientOptionsFile != null) ? clientOptionsFile</span>
+<span class="fc" id="L746">            : getOptionsFile(CLIENT_OPTIONS_FILE_NAME);</span>
+    }
+
+    /**
+     * Sets the client options file.
+     *
+     * @param path The new client options file.
+     * @return True if the file was set successfully.
+     */
+    public static boolean setClientOptionsFile(String path) {
+<span class="nc" id="L756">        File file = new File(path);</span>
+<span class="nc bnc" id="L757" title="All 6 branches missed.">        if (file.exists() &amp;&amp; file.isFile() &amp;&amp; file.canRead()) {</span>
+<span class="nc" id="L758">            clientOptionsFile = file;</span>
+<span class="nc" id="L759">            return true;</span>
+        }
+<span class="nc" id="L761">        return false;</span>
+    }
+
+    /**
+     * Get a compatibility file.
+     *
+     * Not sanitizing the file name as it is fixed in all current uses.
+     *
+     * @param fileName The name of the compatibility file.
+     * @return The {@code File} found.
+     */
+    public static File getCompatibilityFile(String fileName) {
+<span class="nc" id="L773">        return new File(getBaseDirectory(), fileName);</span>
+    }
+
+    /**
+     * Gets the data directory.
+     *
+     * @return The directory where the data files are located.
+     */
+    public static File getDataDirectory() {
+<span class="fc" id="L782">        return dataDirectory;</span>
+    }
+
+    /**
+     * Get the debug-run save file.
+     *
+     * @return The save {@code File}, if any.
+     */
+    public static File getDebugRunSaveFile() {
+<span class="nc" id="L791">        return new File(System.getProperty(&quot;user.dir&quot;),</span>
+<span class="nc" id="L792">                        FreeColDebugger.getDebugRunSave());</span>
+    }
+
+    /**
+     * Gets the high score file.
+     *
+     * @return The high score file, if it exists.
+     */
+    public static File getHighScoreFile() {
+<span class="nc" id="L801">        return new File(getUserDataDirectory(), HIGH_SCORE_FILE);</span>
+    }
+
+    /**
+     * Gets the directory containing language property files.
+     *
+     * @return The FreeCol i18n directory.
+     */
+    public static File getI18nDirectory() {
+<span class="fc" id="L810">        return new File(getDataDirectory(), I18N_DIRECTORY);</span>
+    }
+
+    /**
+     * Get the contents of the log file.
+     *
+     * @return A string of the log file contents, or null on error.
+     */
+    public static String getLogFileContents() {
+<span class="nc" id="L819">        return getUTF8Contents(new File(getLogFilePath()));</span>
+    }
+
+    /**
+     * Get a list of candidate message file names for a given locale.
+     *
+     * @param locale The {@code Locale} to generate file names for.
+     * @return A list of message {@code File}s.
+     */
+    public static List&lt;File&gt; getI18nMessageFileList(Locale locale) {
+<span class="fc" id="L829">        List&lt;File&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L830">        File i18nDirectory = getI18nDirectory();</span>
+<span class="fc bfc" id="L831" title="All 2 branches covered.">        for (String name : getMessageFileNameList(locale)) {</span>
+<span class="fc" id="L832">            File f = new File(i18nDirectory, name);</span>
+<span class="fc bfc" id="L833" title="All 2 branches covered.">            if (f.canRead()) result.add(f);</span>
+<span class="fc" id="L834">        }</span>
+<span class="fc" id="L835">        return result;</span>
+    }
+
+    /**
+     * Get the i18n plurals file.
+     *
+     * @return The plurals {@code File}.
+     */
+    public static File getI18nPluralsFile() {
+<span class="fc" id="L844">        return new File(getI18nDirectory(), PLURALS_FILE_NAME);</span>
+    }
+
+    /**
+     * Get a list of all the supported language identifiers.
+     *
+     * @return A list of language identifiers for which there is an
+     *     i18n-message file.
+     */
+    public static List&lt;String&gt; getLanguageIdList() {
+<span class="fc" id="L854">        File[] files = getI18nDirectory().listFiles();</span>
+<span class="pc bpc" id="L855" title="1 of 2 branches missed.">        return (files == null) ? Collections.&lt;String&gt;emptyList()</span>
+<span class="fc" id="L856">            : transform(files, File::canRead, f -&gt; getLanguageId(f));</span>
+    }
+    
+    /**
+     * If this a messages file, work out which language identifier it
+     * belongs to.
+     *
+     * @param file The {@code File} to test.
+     * @return The language identifier found, or null on failure.
+     */
+    public static String getLanguageId(File file) {
+<span class="pc bpc" id="L867" title="1 of 2 branches missed.">        if (file == null) return null;</span>
+<span class="fc" id="L868">        final String name = file.getName();</span>
+        // Make sure it is at least a messages file.
+<span class="pc bpc" id="L870" title="1 of 2 branches missed.">        if (name == null</span>
+<span class="fc bfc" id="L871" title="All 2 branches covered.">            || !name.startsWith(MESSAGE_FILE_PREFIX)</span>
+<span class="pc bpc" id="L872" title="1 of 2 branches missed.">            || !name.endsWith(MESSAGE_FILE_SUFFIX)) return null;</span>
+<span class="fc" id="L873">        String languageId = name.substring(MESSAGE_FILE_PREFIX.length(),</span>
+<span class="fc" id="L874">            name.length() - MESSAGE_FILE_SUFFIX.length());</span>
+<span class="fc bfc" id="L875" title="All 2 branches covered.">        return (&quot;&quot;.equals(languageId)) ? &quot;en&quot; // FreeColMessages.properties</span>
+<span class="fc bfc" id="L876" title="All 2 branches covered.">            : (&quot;_qqq&quot;.equals(languageId)) ? null // qqq is explanations only</span>
+<span class="pc bpc" id="L877" title="1 of 2 branches missed.">            : (languageId.startsWith(&quot;_&quot;)) ? languageId.substring(1)</span>
+<span class="nc" id="L878">            : languageId;</span>
+    }
+
+    /**
+     * Gets a list containing the names of all possible message files
+     * for a locale.
+     *
+     * @param prefix The file name prefix.
+     * @param suffix The file name suffix.
+     * @param locale The {@code Locale} to generate file names for.
+     * @return A list of candidate file names.
+     */
+    public static List&lt;String&gt; getLocaleFileNames(String prefix,
+                                                  String suffix,
+                                                  Locale locale) {
+<span class="fc" id="L893">        String language = locale.getLanguage();</span>
+<span class="fc" id="L894">        String country = locale.getCountry();</span>
+<span class="fc" id="L895">        String variant = locale.getVariant();</span>
+
+<span class="fc" id="L897">        List&lt;String&gt; result = new ArrayList&lt;&gt;(4);</span>
+
+<span class="pc bpc" id="L899" title="1 of 2 branches missed.">        if (!language.isEmpty()) language = &quot;_&quot; + language;</span>
+<span class="fc bfc" id="L900" title="All 2 branches covered.">        if (!country.isEmpty()) country = &quot;_&quot; + country;</span>
+<span class="pc bpc" id="L901" title="1 of 2 branches missed.">        if (!variant.isEmpty()) variant = &quot;_&quot; + variant;</span>
+
+<span class="fc" id="L903">        result.add(prefix + suffix);</span>
+<span class="fc" id="L904">        String filename = prefix + language + suffix;</span>
+<span class="pc bpc" id="L905" title="1 of 2 branches missed.">        if (!result.contains(filename)) result.add(filename);</span>
+<span class="fc" id="L906">        filename = prefix + language + country + suffix;</span>
+<span class="fc bfc" id="L907" title="All 2 branches covered.">        if (!result.contains(filename)) result.add(filename);</span>
+<span class="fc" id="L908">        filename = prefix + language + country + variant + suffix;</span>
+<span class="pc bpc" id="L909" title="1 of 2 branches missed.">        if (!result.contains(filename)) result.add(filename);</span>
+<span class="fc" id="L910">        return result;</span>
+    }
+
+    /**
+     * Gets the log file path.
+     *
+     * @return The log file path.
+     */
+    public static String getLogFilePath() {
+<span class="fc" id="L919">        return logFilePath;</span>
+    }
+
+    /**
+     * Sets the log file path.
+     *
+     * @param path The new log file path.
+     */
+    public static void setLogFilePath(String path) {
+<span class="nc" id="L928">        logFilePath = path;</span>
+<span class="nc" id="L929">    }</span>
+
+    /**
+     * Gets a new log writer.
+     *
+     * @return The log {@code Writer}.
+     * @exception FreeColException if there was a problem creating the writer.
+     */
+    public static Writer getLogWriter() throws FreeColException {
+<span class="nc" id="L938">        String path = getLogFilePath();</span>
+<span class="nc" id="L939">        File file = new File(path);</span>
+<span class="nc bnc" id="L940" title="All 2 branches missed.">        if (file.exists()) {</span>
+<span class="nc bnc" id="L941" title="All 2 branches missed.">            if (file.isDirectory()) {</span>
+<span class="nc" id="L942">                throw new FreeColException(&quot;Log file \&quot;&quot; + path</span>
+                    + &quot;\&quot; could not be created.&quot;);
+<span class="nc bnc" id="L944" title="All 2 branches missed.">            } else if (file.isFile()) {</span>
+<span class="nc" id="L945">                deleteFile(file);</span>
+            }
+        }
+        try {
+<span class="nc bnc" id="L949" title="All 2 branches missed.">            if (!file.createNewFile()) {</span>
+<span class="nc" id="L950">                throw new FreeColException(&quot;Log file \&quot;&quot; + path</span>
+                    + &quot;\&quot; creation failed.&quot;);
+            }
+<span class="nc" id="L953">        } catch (IOException|SecurityException e) {</span>
+<span class="nc" id="L954">            throw new FreeColException(&quot;Log file \&quot;&quot; + path</span>
+                + &quot;\&quot; could not be created.&quot;, e);
+<span class="nc" id="L956">        }</span>
+<span class="nc bnc" id="L957" title="All 2 branches missed.">        if (!file.canWrite()) {</span>
+<span class="nc" id="L958">            throw new FreeColException(&quot;Can not write in log file \&quot;&quot;</span>
+                + path + &quot;\&quot;.&quot;);
+        }
+<span class="nc" id="L961">        Writer writer = getFileUTF8Writer(file);</span>
+<span class="nc bnc" id="L962" title="All 2 branches missed.">        if (writer == null) {</span>
+<span class="nc" id="L963">            throw new FreeColException(&quot;Can not create writer for log file \&quot;&quot;</span>
+                + path + &quot;\&quot;.&quot;);
+        }
+<span class="nc" id="L966">        return writer;</span>
+    }
+
+    /**
+     * Get a writer for the comms log file.
+     *
+     * @return A suitable {@code Writer}.
+     * @exception FreeColException on error.
+     */
+    public static Writer getLogCommsWriter() throws FreeColException {
+<span class="nc" id="L976">        Writer writer = commsWriter.get();</span>
+<span class="nc bnc" id="L977" title="All 2 branches missed.">        if (writer == null) {</span>
+<span class="nc" id="L978">            File file = new File(getUserCacheDirectory(),</span>
+<span class="nc" id="L979">                FreeCol.getName() + &quot;-&quot; + LOG_COMMS_FILE_NAME);</span>
+<span class="nc bnc" id="L980" title="All 2 branches missed.">            if (file.exists()) deleteFile(file);</span>
+<span class="nc" id="L981">            writer = getFileUTF8AppendWriter(file);</span>
+<span class="nc bnc" id="L982" title="All 2 branches missed.">            if (writer == null) {</span>
+<span class="nc" id="L983">                throw new FreeColException(&quot;Can not create writer for comms log file: &quot; + file.getPath());</span>
+            }
+<span class="nc" id="L985">            commsWriter.set(writer);</span>
+        }
+<span class="nc" id="L987">        return writer;</span>
+    }        
+                             
+    /**
+     * Gets the directory containing the predefined maps.
+     *
+     * @return The predefined maps.
+     */
+    public static File getMapsDirectory() {
+<span class="fc" id="L996">        return new File(getDataDirectory(), MAPS_DIRECTORY);</span>
+    }
+
+    /**
+     * Get the map files.
+     *
+     * @return A list of map files which may be empty.
+     */
+    public static List&lt;File&gt; getMapFileList() {
+<span class="fc" id="L1005">        List&lt;File&gt; ret = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L1006" title="All 2 branches covered.">        for (File f : new File[] { getMapsDirectory(), getUserMapsDirectory() }) {</span>
+<span class="pc bpc" id="L1007" title="1 of 4 branches missed.">            if (f != null &amp;&amp; f.isDirectory()) {</span>
+<span class="fc" id="L1008">                ret.addAll(collectFiles(f, mapFilter));</span>
+            }
+        }
+<span class="fc" id="L1011">        return ret;</span>
+    }
+
+    /**
+     * Get the message file names for a given locale.
+     *
+     * @param locale The {@code Locale} to generate names for.
+     * @return A list of potential message file names.
+     */
+    public static List&lt;String&gt; getMessageFileNameList(Locale locale) {
+<span class="fc" id="L1021">        return getLocaleFileNames(MESSAGE_FILE_PREFIX, MESSAGE_FILE_SUFFIX,</span>
+                                  locale);
+    }
+
+    /**
+     * Get the mod message file names for a given locale.
+     *
+     * @param locale The {@code Locale} to generate names for.
+     * @return A list of potential mod message file names.
+     */
+    public static List&lt;String&gt; getModMessageFileNames(Locale locale) {
+<span class="nc" id="L1032">        return getLocaleFileNames(MOD_MESSAGE_FILE_PREFIX, MESSAGE_FILE_SUFFIX,</span>
+                                  locale);
+    }
+
+    /**
+     * Get a list of the standard and current user mod files.
+     *
+     * @return A list of mod {@code File}s.
+     */
+    public static List&lt;File&gt; getModFileList() {
+<span class="fc" id="L1042">        List&lt;File&gt; ret = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L1043">        ret.addAll(collectFiles(getStandardModsDirectory(), modFileFilter));</span>
+<span class="fc" id="L1044">        ret.addAll(collectFiles(getUserModsDirectory(), modFileFilter));</span>
+<span class="fc" id="L1045">        return ret;</span>
+    }
+
+    /**
+     * Gets the directory where the user options are saved.
+     *
+     * @return The directory to save user options in.
+     */
+    public static File getOptionsDirectory() {
+        // Keeping this for now, but we should probably use the &quot;tc&quot; instead.
+<span class="fc" id="L1055">        File dir = new File(getUserConfigDirectory(), FreeCol.getRules());</span>
+<span class="pc bpc" id="L1056" title="1 of 2 branches missed.">        return (insistDirectory(dir)) ? dir : null;</span>
+    }
+
+    /**
+     * Get an options file from the options directory.
+     *
+     * @param fileName The name of the file within the options directory.
+     * @return The options file.
+     */
+    public static File getOptionsFile(String fileName) {
+<span class="fc" id="L1066">        File dir = getOptionsDirectory();</span>
+<span class="pc bpc" id="L1067" title="1 of 2 branches missed.">        return (dir == null) ? null : new File(dir, sanitize(fileName));</span>
+    }
+
+    /**
+     * Get a list of candidate resource file names for a given locale.
+     *
+     * @return A list of resource file names.
+     */
+    public static List&lt;String&gt; getResourceFileNames() {
+<span class="fc" id="L1076">        return getLocaleFileNames(RESOURCE_FILE_PREFIX, RESOURCE_FILE_SUFFIX,</span>
+<span class="fc" id="L1077">                                  Locale.getDefault());</span>
+    }
+
+    /**
+     * Gets the directory containing the classic rules.
+     *
+     * @return The classic rules directory.
+     */
+    public static File getRulesClassicDirectory() {
+<span class="nc" id="L1086">        return new File(getRulesDirectory(), CLASSIC_DIRECTORY);</span>
+    }
+
+    /**
+     * Gets the directory containing the various rulesets.
+     *
+     * @return The ruleset directory.
+     */
+    public static File getRulesDirectory() {
+<span class="fc" id="L1095">        return new File(getDataDirectory(), RULES_DIRECTORY);</span>
+    }
+
+    /**
+     * Gets the directory where the savegames should be put.
+     *
+     * @return The save directory.
+     */
+    public static File getSaveDirectory() {
+<span class="fc" id="L1104">        return saveDirectory;</span>
+    }
+
+    /**
+     * Gets the save game file.
+     *
+     * @return The save game file.
+     */
+    public static File getSavegameFile() {
+<span class="nc" id="L1113">        return savegameFile;</span>
+    }
+
+    /**
+     * Gets the save game files in a given directory.
+     *
+     * @param directory The base directory, or the default locations if null.
+     * @return A stream of save game {@code File}s.
+     */
+    public static Stream&lt;File&gt; getSavegameFiles(File directory) {
+<span class="nc bnc" id="L1123" title="All 2 branches missed.">        return (directory == null)</span>
+<span class="nc" id="L1124">            ? flatten(Stream.of(FreeColDirectories.getSaveDirectory(),</span>
+<span class="nc" id="L1125">                                FreeColDirectories.getAutosaveDirectory()),</span>
+<span class="nc" id="L1126">                      d -&gt; fileStream(d, saveGameFilter))</span>
+<span class="nc" id="L1127">            : fileStream(directory, saveGameFilter);</span>
+    }
+
+    /**
+     * Gets the save game files in a given directory.
+     *
+     * @param directory The base directory, or the default locations if null.
+     * @return A list of save game {@code File}s.
+     */
+    public static List&lt;File&gt; getSavegameFileList(File directory) {
+<span class="nc" id="L1137">        return toList(getSavegameFiles(directory));</span>
+    }
+
+    /**
+     * Sets the save game file.
+     *
+     * @param path The path to the new save game file.
+     * @return True if the setting succeeds.
+     */
+    public static boolean setSavegameFile(String path) {
+<span class="nc" id="L1147">        File file = new File(path);</span>
+<span class="nc bnc" id="L1148" title="All 6 branches missed.">        if (!file.exists() || !file.isFile() || !file.canRead()) {</span>
+<span class="nc" id="L1149">            file = new File(getSaveDirectory(), path);</span>
+<span class="nc bnc" id="L1150" title="All 6 branches missed.">            if (!file.exists() || !file.isFile() || !file.canRead()) return false;</span>
+        }
+<span class="nc" id="L1152">        savegameFile = file;</span>
+<span class="nc" id="L1153">        File parent = file.getParentFile();</span>
+<span class="nc bnc" id="L1154" title="All 2 branches missed.">        if (parent == null) parent = new File(&quot;.&quot;);</span>
+<span class="nc" id="L1155">        saveDirectory = parent;</span>
+        // TODO: Drop trace when BR#3097b is settled
+<span class="nc" id="L1157">        File dir = deriveAutosaveDirectory();</span>
+<span class="nc" id="L1158">        setAutosaveDirectory(dir);</span>
+<span class="nc" id="L1159">        return true;</span>
+    }
+
+    /**
+     * Gets the most recently saved game file, or &lt;b&gt;null&lt;/b&gt;.  (This
+     * may be either from a recent arbitrary user operation or an
+     * autosave function.)
+     *
+     * @return The recent save game {@code File}, or null if not found.
+     */
+    public static File getLastSaveGameFile() {
+<span class="nc" id="L1170">        return maximize(getSavegameFiles(null),</span>
+                        fileModificationComparator);
+    }
+
+    /**
+     * Gets the standard mods directory.
+     *
+     * @return The directory where the standard mods are located.
+     */
+    public static File getStandardModsDirectory() {
+<span class="fc" id="L1180">        return new File(getDataDirectory(), MODS_DIRECTORY);</span>
+    }
+
+    /**
+     * Get the map file to start from, if any.
+     *
+     * @return The start map file, or null on error.
+     */
+    public static File getStartMapFile() {
+<span class="fc" id="L1189">        File dir = getAutosaveDirectory();</span>
+<span class="pc bpc" id="L1190" title="1 of 2 branches missed.">        return (dir == null) ? null : new File(dir, START_MAP_NAME);</span>
+    }
+
+    /**
+     * Get all available rules files.
+     *
+     * @return A list of {@code File}s containing rulesets.
+     */
+    public static List&lt;File&gt; getRulesFileList() {
+<span class="fc" id="L1199">        return collectFiles(getRulesDirectory(), rulesFileFilter);</span>
+    }
+
+    /**
+     * Gets the user cache directory, that is the directory under which
+     * the transient user files live.
+     *
+     * @return The user cache directory.
+     */
+    public static File getUserCacheDirectory() {
+<span class="nc" id="L1209">        return userCacheDirectory;</span>
+    }
+
+    /**
+     * Sets the user cache directory, that is the directory under which
+     * the user-specific cache files live.
+     *
+     * @param path The path to the new user cache directory.
+     * @return Null on success, an error message key on failure.
+     */
+    public static String setUserCacheDirectory(String path) {
+<span class="nc" id="L1220">        File dir = new File(path);</span>
+<span class="nc" id="L1221">        String ret = checkDir(dir);</span>
+<span class="nc bnc" id="L1222" title="All 2 branches missed.">        if (ret == null) userCacheDirectory = dir;</span>
+<span class="nc" id="L1223">        return ret;</span>
+    }
+
+    /**
+     * Gets the user config directory, that is the directory under which
+     * the user-specific config files live.
+     *
+     * @return The user config directory.
+     */
+    public static File getUserConfigDirectory() {
+<span class="fc" id="L1233">        return userConfigDirectory;</span>
+    }
+
+    /**
+     * Sets the user config directory, that is the directory under which
+     * the user-specific config files live.
+     *
+     * @param path The path to the new user config directory.
+     * @return Null on success, an error message key on failure.
+     */
+    public static String setUserConfigDirectory(String path) {
+<span class="nc" id="L1244">        File dir = new File(path);</span>
+<span class="nc" id="L1245">        String ret = checkDir(dir);</span>
+<span class="nc bnc" id="L1246" title="All 2 branches missed.">        if (ret == null) userConfigDirectory = dir;</span>
+<span class="nc" id="L1247">        return ret;</span>
+    }
+
+    /**
+     * Gets the user data directory, that is the directory under which
+     * the user-specific data lives.
+     *
+     * @return The user data directory.
+     */
+    public static File getUserDataDirectory() {
+<span class="fc" id="L1257">        return userDataDirectory;</span>
+    }
+
+    /**
+     * Sets the main user data directory, creating it if necessary.
+     * If pre-existing, it must be a directory, readable and writable.
+     *
+     * @param path The path to the new main data user directory, or
+     *     null to apply the default.
+     * @return Null on success, an error message key on failure.
+     */
+    public static String setUserDataDirectory(String path) {
+<span class="nc" id="L1269">        File dir = new File(path);</span>
+<span class="nc" id="L1270">        String ret = checkDir(dir);</span>
+<span class="nc bnc" id="L1271" title="All 2 branches missed.">        if (ret == null) userDataDirectory = dir;</span>
+<span class="nc" id="L1272">        return ret;</span>
+    }
+
+    /**
+     * Get the user maps directory.
+     *
+     * @return The directory to save user maps to, or null if none.
+     */
+    public static File getUserMapsDirectory() {
+<span class="fc" id="L1281">        return deriveDirectory(getUserDataDirectory(), USER_MAPS_DIRECTORY);</span>
+    }
+
+    /**
+     * Gets the user mods directory.
+     *
+     * @return The directory where user mods are located, or null if none.
+     */
+    public static File getUserModsDirectory() {
+<span class="fc" id="L1290">        return userModsDirectory;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

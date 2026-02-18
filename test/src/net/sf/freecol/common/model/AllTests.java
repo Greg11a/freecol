@@ -51,6 +51,7 @@ public class AllTests {
         suite.addTestSuite(MovementTest.class);
         suite.addTestSuite(PartitionMovementValidityTest.class); // New added Testcase
         suite.addTestSuite(MovementFSMTest.class); // New added Testcase
+        suite.addTestSuite(net.sf.freecol.common.model.PlayerCoverageTest.class); // New added Testcase
 
         suite.addTestSuite(NationTypeTest.class);
         suite.addTestSuite(PlayerTest.class);

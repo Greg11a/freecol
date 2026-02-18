@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseTileTransitionImageCreator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.images</a> &gt; <span class="el_source">BaseTileTransitionImageCreator.java</span></div><h1>BaseTileTransitionImageCreator.java</h1><pre class="source lang-java linenums">package net.sf.freecol.client.gui.images;
+
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.util.Random;
+
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.resources.ImageCache;
+import net.sf.freecol.common.resources.ImageResource;
+import net.sf.freecol.common.util.ImageUtils;
+
+/**
+ * Creates a transition between base tiles. For example, this transition will make the prairie graphics blend into the grassland graphics.
+ */
+public final class BaseTileTransitionImageCreator {
+    
+    private final ImageLibrary lib;
+    private final ImageCache imageCache;
+    
+<span class="nc" id="L22">    public BaseTileTransitionImageCreator(ImageLibrary lib, ImageCache imageCache) {</span>
+<span class="nc" id="L23">        this.lib = lib;</span>
+<span class="nc" id="L24">        this.imageCache = imageCache;</span>
+<span class="nc" id="L25">    }</span>
+    
+
+    /**
+     * Returns a transparent image for making a transition between
+     * the given tiles.
+     *  
+     * @param tile The tile that should get a transition.
+     * @param direction The direction to get the bordering tile from.
+     * @param useNiceCorners Determines if the corners of the base transitions
+     *      should be rendered nicely (takes more time).
+     * @param useVariations Uses variations of the transition.
+     * @return The image, or {@code null} if there is no transition that
+     *      should be drawn.
+     */
+    public BufferedImage getBaseTileTransitionImage(Tile tile, Direction direction, boolean useNiceCorners, boolean useVariations) {
+        /*
+         * 1. Transitions between tiles in NE and SW directions are made using only the
+         * graphics for the other tile (using a mask in order to make it fade out).
+         *  
+         * 2. When making transitions in NW and SE directions, we need to make the transition
+         * using not only the graphics for the other tile -- but also with the transitions
+         * mentioned in point 1 included. This is a costly operation, however, so it can be
+         * activated using the &quot;useNiceCorners&quot; parameter.
+         */
+        
+<span class="nc" id="L51">        final Tile borderingTile = tile.getNeighbourOrNull(direction);</span>
+        
+        /*
+         * If true, we need to render the transition as mentioned in point 2 of the previous
+         * comment.
+         */
+<span class="nc bnc" id="L57" title="All 6 branches missed.">        final boolean renderSpecialTransition = useNiceCorners &amp;&amp; (direction == Direction.NW || direction == Direction.SE);</span>
+        
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        if (borderingTile == null</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">                || !borderingTile.isExplored()</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">                || !tile.isExplored()) {</span>
+            // No transition needed in these cases.
+<span class="nc" id="L63">            return null;</span>
+        }
+        
+<span class="nc bnc" id="L66" title="All 4 branches missed.">        if (tile.getType() == borderingTile.getType()</span>
+                &amp;&amp; !renderSpecialTransition) {
+            // No transition needed in these cases.
+<span class="nc" id="L69">            return null;</span>
+        }
+        
+<span class="nc" id="L72">        final ImageResource terrainImageResource = getTerrainOrBeachImageResource(tile, borderingTile);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        if (terrainImageResource == null) {</span>
+            // Handles missing resource gracefully.
+<span class="nc" id="L75">            return null;</span>
+        }
+        
+<span class="nc" id="L78">        final ImageResource tileImageResource = ImageCache.getImageResource(ImageLibrary.getTerrainImageKey(tile.getType()));</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (tileImageResource == null) {</span>
+            // Handles missing resource gracefully.
+<span class="nc" id="L81">            return null;</span>
+        }
+<span class="nc bnc" id="L83" title="All 4 branches missed.">        if (terrainImageResource.getCachingKey().equals(tileImageResource.getCachingKey())</span>
+                &amp;&amp; !renderSpecialTransition) {
+            /*
+             * No reason to make transitions between tiles with the same graphics.. 
+             */
+<span class="nc" id="L88">            return null;</span>
+        }
+        
+        final boolean beachTransitionNe;
+        final boolean beachTransitionSw;
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (renderSpecialTransition) {</span>
+<span class="nc" id="L94">            beachTransitionNe = shouldIncludeSpecialBeachTransitionInDirection(tile, borderingTile, Direction.NE);</span>
+<span class="nc" id="L95">            beachTransitionSw = shouldIncludeSpecialBeachTransitionInDirection(tile, borderingTile, Direction.SW);</span>
+        } else {
+<span class="nc" id="L97">            beachTransitionNe = false;</span>
+<span class="nc" id="L98">            beachTransitionSw = false;</span>
+        }
+        
+<span class="nc" id="L101">        final ImageResource terrainMaskResource = lib.getTerrainMaskResource(direction);</span>
+        final int maskVariationNumber;
+<span class="nc bnc" id="L103" title="All 4 branches missed.">        if (useVariations &amp;&amp; terrainMaskResource.getNumberOfVariations() &gt; 1) {</span>
+            // Choose the same variation for both sides of the transition.
+<span class="nc bnc" id="L105" title="All 4 branches missed.">            final Tile transitionSeedTile = (direction == Direction.NW || direction == Direction.NE) ? tile : borderingTile;</span>
+<span class="nc" id="L106">            final int seed = ImageLibrary.variationSeedUsing(transitionSeedTile.getX(), transitionSeedTile.getY());</span>
+            
+            // This never picks the last variation as that's just a simple, almost completely straight line, transition.
+<span class="nc" id="L109">            maskVariationNumber = new Random(seed).nextInt(terrainMaskResource.getNumberOfVariations() - 1);</span>
+<span class="nc" id="L110">        } else {</span>
+<span class="nc" id="L111">            maskVariationNumber = terrainMaskResource.getNumberOfVariations() - 1;</span>
+        }
+        
+        /*
+         * The transitionKey is used for caching, and needs to be unique for every transition.
+         */
+        final String transitionKey;
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (renderSpecialTransition) {</span>
+<span class="nc" id="L119">            final Tile neBorderingTile = borderingTile.getNeighbourOrNull(Direction.NE);</span>
+<span class="nc" id="L120">            final Tile swBorderingTile = borderingTile.getNeighbourOrNull(Direction.SW);</span>
+
+<span class="nc" id="L122">            transitionKey = terrainImageResource.getCachingKey()</span>
+                    + &quot;,&quot;
+<span class="nc bnc" id="L124" title="All 4 branches missed.">                    + (neBorderingTile != null &amp;&amp; neBorderingTile.getType() != null ? neBorderingTile.getType().getId() : &quot;null&quot;)</span>
+                    + &quot;,&quot;
+<span class="nc bnc" id="L126" title="All 4 branches missed.">                    + (swBorderingTile != null &amp;&amp; swBorderingTile.getType() != null ? swBorderingTile.getType().getId() : &quot;null&quot;)</span>
+                    + &quot;,&quot;
+                    + maskVariationNumber
+                    + &quot;,&quot;
+                    + beachTransitionNe
+                    + beachTransitionSw
+                    + &quot;$baseTransition$gen&quot;;
+<span class="nc" id="L133">        } else {</span>
+<span class="nc" id="L134">            transitionKey = terrainImageResource.getCachingKey() + &quot;,&quot; + maskVariationNumber + &quot;$baseTransition$gen&quot;;</span>
+        }
+        
+        /*
+         * Using direction.ordinal() as the cached variation in order to get different
+         * image cache hash values.
+         */
+<span class="nc" id="L141">        final BufferedImage transitionImage = imageCache.getCachedImageOrGenerate(transitionKey, lib.getTileSize(), false, direction.ordinal(), () -&gt; {</span>
+            
+            /*
+             * Uses variation 0 to get the same variation every time as this reduces the amount
+             * of memory used.
+             */
+<span class="nc" id="L147">            final BufferedImage terrainImage = imageCache.getCachedImage(terrainImageResource, lib.getTileSize(), false, 0);</span>
+            
+            final BufferedImage transitionTileImage;
+<span class="nc bnc" id="L150" title="All 2 branches missed.">            if (!renderSpecialTransition) {</span>
+<span class="nc" id="L151">                transitionTileImage = terrainImage;</span>
+            } else {
+                /*
+                 * When doing the transitions for NW and SE, the base terrain should
+                 * be the blended version of the neighbouring tiles. That is, the
+                 * result after applying the transitions for NE and SW.
+                 */
+                
+<span class="nc" id="L159">                transitionTileImage = ImageUtils.createBufferedImage(terrainImage.getWidth(), terrainImage.getHeight());</span>
+<span class="nc" id="L160">                final Graphics2D tranitionG2d = transitionTileImage.createGraphics();</span>
+                
+<span class="nc bnc" id="L162" title="All 4 branches missed.">                if (tile.isLand() || borderingTile.isLand()) {</span>
+<span class="nc" id="L163">                    tranitionG2d.drawImage(terrainImage, 0, 0, null);</span>
+                } else {
+                    /*
+                     * This handles the case where neither the tile nor the borderingTile are land tiles,
+                     * but they are adjacent to land tiles.
+                     * 
+                     *  In this case, we need to include the beach in the transition. This only happens for
+                     *  corners, but we are never-the-less using a mask for the entire edge. The reason being
+                     *  that the terrain mask applied last to the transitionTileImage (before returning it)
+                     *  reduces the edges to only the relevant two corners.
+                     */
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                    if (beachTransitionNe) {</span>
+<span class="nc" id="L175">                        tranitionG2d.drawImage(getSpecialBeachBaseTileTransitionImage(Direction.NE), 0, 0, null);</span>
+                    }
+<span class="nc bnc" id="L177" title="All 2 branches missed.">                    if (beachTransitionSw) {</span>
+<span class="nc" id="L178">                        tranitionG2d.drawImage(getSpecialBeachBaseTileTransitionImage(Direction.SW), 0, 0, null);</span>
+                    }
+                }
+                
+                /*+
+                 * These two includes the neighboring tiles to the bordering tiles, so that
+                 * we get the correct blended transition for the cornes.
+                 * 
+                 * This is only needed for corners, but we are never-the-less using a mask for
+                 * the entire edge. The reason being that the terrain mask applied last to the
+                 * transitionTileImage (before returning it) reduces the edges to only the
+                 * relevant two corners.
+                 */
+<span class="nc" id="L191">                final BufferedImage transitionImage2 = getBaseTileTransitionImage(borderingTile, Direction.NE, false, false);</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">                if (transitionImage2 != null) {</span>
+<span class="nc" id="L193">                    tranitionG2d.drawImage(transitionImage2, 0, 0, null);</span>
+                }
+<span class="nc" id="L195">                final BufferedImage transitionImage3 = getBaseTileTransitionImage(borderingTile, Direction.SW, false, false);</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">                if (transitionImage3 != null) {</span>
+<span class="nc" id="L197">                    tranitionG2d.drawImage(transitionImage3, 0, 0, null);</span>
+                }
+                
+<span class="nc" id="L200">                tranitionG2d.dispose();</span>
+            }
+            
+<span class="nc" id="L203">            final BufferedImage terrainMaskImage = imageCache.getCachedImage(terrainMaskResource, lib.getTileSize(), false, maskVariationNumber);</span>
+<span class="nc" id="L204">            return ImageUtils.imageWithAlphaFromMask(transitionTileImage, terrainMaskImage);</span>
+        });
+
+<span class="nc" id="L207">        return transitionImage;</span>
+    }
+
+    /**
+     * Checks if the beach should be included when making the transition for a corner.
+     * 
+     * @param tile The tile that should get a transition.
+     * @param borderingTile The main tile used for making the transition (the neighboring tiles
+     *      are used as well when making corners).
+     * @param direction The direction to the neighboring tile that should be checked in order to
+     *      determine if a beach corner transition is needed.
+     * @return {@code true} if the beach should be rendered at the corner, and {@code false} otherwise.
+     */
+    private boolean shouldIncludeSpecialBeachTransitionInDirection(Tile tile, Tile borderingTile, Direction direction) {
+<span class="nc bnc" id="L221" title="All 4 branches missed.">        if (tile.isLand() || borderingTile.isLand()) {</span>
+<span class="nc" id="L222">            return false;</span>
+        }
+<span class="nc" id="L224">        final Tile tileNeighbour = tile.getNeighbourOrNull(direction);</span>
+<span class="nc" id="L225">        final Tile borderingTileNeighbour = borderingTile.getNeighbourOrNull(direction);</span>
+<span class="nc bnc" id="L226" title="All 6 branches missed.">        return tileNeighbour != null &amp;&amp; tileNeighbour.isLand()</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">                || borderingTileNeighbour != null &amp;&amp; borderingTileNeighbour.isLand();</span>
+    }
+
+    /**
+     * Gets the beach overlay to use when making base tile transitions with beach.
+     */
+    private BufferedImage getSpecialBeachBaseTileTransitionImage(Direction direction) {
+<span class="nc" id="L234">        final String transitionKey = &quot;specialBeachTransition.&quot; + direction.toString() + &quot;$gen&quot;;</span>
+<span class="nc" id="L235">        final BufferedImage resultImage = imageCache.getCachedImageOrGenerate(transitionKey, lib.getTileSize(), false, direction.ordinal(), () -&gt; {</span>
+<span class="nc" id="L236">            final BufferedImage beachImage = imageCache.getCachedImage(ImageLibrary.getBeachCenterImageResource(), lib.getTileSize(), false, 0);</span>
+<span class="nc" id="L237">            return ImageUtils.imageWithAlphaFromMask(beachImage, getSpecialBeachBaseTileTransitionMask(direction));</span>
+        });
+        
+<span class="nc" id="L240">        return resultImage;</span>
+    }
+    
+    private BufferedImage getSpecialBeachBaseTileTransitionMask(Direction direction) {
+<span class="nc" id="L244">        final String key = &quot;image.mask.special.beach.&quot; + direction.toString().toLowerCase();</span>
+<span class="nc" id="L245">        return this.imageCache.getSizedImage(key, lib.getTileSize(), false);</span>
+    }
+
+    /**
+     * Gets the terrain image resource, or the beach, in order to create transitions.
+     */
+    private ImageResource getTerrainOrBeachImageResource(Tile tile, final Tile borderingTile) {
+<span class="nc bnc" id="L252" title="All 2 branches missed.">        if (borderingTile == null) {</span>
+<span class="nc" id="L253">            return null;</span>
+        }
+        final ImageResource terrainImageResource;
+<span class="nc bnc" id="L256" title="All 6 branches missed.">        final boolean notABeachTransition = borderingTile.isLand() || !borderingTile.isLand() &amp;&amp; !tile.isLand();;</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        if (notABeachTransition) {</span>
+<span class="nc" id="L258">            terrainImageResource = ImageCache.getImageResource(ImageLibrary.getTerrainImageKey(borderingTile.getType()));</span>
+        } else {
+<span class="nc" id="L260">            terrainImageResource = ImageLibrary.getBeachCenterImageResource();</span>
+        }
+<span class="nc" id="L262">        return terrainImageResource;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

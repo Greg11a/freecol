@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EditSettlementDialog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.dialog</a> &gt; <span class="el_source">EditSettlementDialog.java</span></div><h1>EditSettlementDialog.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.dialog;
+
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
+import java.util.List;
+import java.util.logging.Logger;
+
+import javax.swing.DefaultComboBoxModel;
+import javax.swing.ImageIcon;
+import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
+import javax.swing.JFrame;
+import javax.swing.JPanel;
+import javax.swing.JSpinner;
+import javax.swing.JTextField;
+import javax.swing.SpinnerNumberModel;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ChoiceItem;
+import net.sf.freecol.client.gui.GUI;
+import net.sf.freecol.client.gui.panel.MapEditorTransformPanel;
+import net.sf.freecol.client.gui.panel.MigPanel;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.client.gui.plaf.FreeColComboBoxRenderer;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.IndianNationType;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Nation;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.SettlementType;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.util.RandomChoice;
+import net.sf.freecol.server.model.ServerUnit;
+
+
+/**
+ * This dialog is used to edit an Indian settlement (map editor only).
+ */
+public final class EditSettlementDialog extends DeprecatedFreeColDialog&lt;IndianSettlement&gt;
+    implements ItemListener {
+
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L66">    private static final Logger logger = Logger.getLogger(EditSettlementDialog.class.getName());</span>
+
+    /** The settlement to edit. */
+    private final IndianSettlement is;
+
+    /** The settlement name. */
+    private final JTextField name;
+
+    /** The selected settlement owner. */
+    private final JComboBox&lt;Nation&gt; owner;
+
+    /** Is this settlement the capital? */
+    private final JCheckBox capital;
+
+    /** The skill to learn at the settlement. */
+    private final JComboBox&lt;UnitType&gt; skill;
+
+    /** The number of units. */
+    private final JSpinner units;
+
+
+    /**
+     * Create an EditSettlementDialog.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param frame The owner frame.
+     * @param is The {@code IndianSettlement} to edit.
+     */
+    public EditSettlementDialog(FreeColClient freeColClient, JFrame frame,
+                                final IndianSettlement is) {
+<span class="nc" id="L96">        super(freeColClient, frame);</span>
+
+<span class="nc" id="L98">        this.is = is;</span>
+
+<span class="nc" id="L100">        this.name = new JTextField(is.getName(), 30);</span>
+
+<span class="nc" id="L102">        DefaultComboBoxModel&lt;Nation&gt; nationModel</span>
+            = new DefaultComboBoxModel&lt;&gt;();
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        for (Nation n : getSpecification().getIndianNations()) {</span>
+<span class="nc" id="L105">            nationModel.addElement(n);</span>
+<span class="nc" id="L106">        }</span>
+<span class="nc" id="L107">        this.owner = new JComboBox&lt;&gt;(nationModel);</span>
+<span class="nc" id="L108">        this.owner.setSelectedItem(is.getOwner().getNation());</span>
+<span class="nc" id="L109">        this.owner.addItemListener(this);</span>
+<span class="nc" id="L110">        this.owner.setRenderer(new FreeColComboBoxRenderer&lt;Nation&gt;());</span>
+
+<span class="nc" id="L112">        this.capital = new JCheckBox();</span>
+<span class="nc" id="L113">        this.capital.setSelected(is.isCapital());</span>
+
+<span class="nc" id="L115">        this.skill = new JComboBox&lt;&gt;(getSkillModel());</span>
+<span class="nc" id="L116">        this.skill.setSelectedItem(is.getLearnableSkill());</span>
+<span class="nc" id="L117">        this.skill.setRenderer(new FreeColComboBoxRenderer&lt;UnitType&gt;());</span>
+
+<span class="nc" id="L119">        int unitCount = is.getUnitCount();</span>
+<span class="nc" id="L120">        SpinnerNumberModel spinnerModel</span>
+            = new SpinnerNumberModel(unitCount, 1, 20, 1);
+<span class="nc" id="L122">        this.units = new JSpinner(spinnerModel);</span>
+<span class="nc" id="L123">        spinnerModel.setValue(unitCount);</span>
+
+<span class="nc" id="L125">        JPanel panel = new MigPanel(new MigLayout(&quot;wrap 2, gapx 20&quot;));</span>
+<span class="nc" id="L126">        panel.add(Utility.localizedLabel(&quot;name&quot;));</span>
+<span class="nc" id="L127">        panel.add(this.name);</span>
+<span class="nc" id="L128">        panel.add(Utility.localizedLabel(&quot;nation&quot;));</span>
+<span class="nc" id="L129">        panel.add(this.owner);</span>
+<span class="nc" id="L130">        panel.add(Utility.localizedLabel(&quot;capital&quot;));</span>
+<span class="nc" id="L131">        panel.add(this.capital);</span>
+<span class="nc" id="L132">        panel.add(Utility.localizedLabel(&quot;skillTaught&quot;));</span>
+<span class="nc" id="L133">        panel.add(this.skill);</span>
+<span class="nc" id="L134">        panel.add(Utility.localizedLabel(&quot;units&quot;));</span>
+<span class="nc" id="L135">        panel.add(this.units);</span>
+
+<span class="nc" id="L137">        List&lt;ChoiceItem&lt;IndianSettlement&gt;&gt; c = choices();</span>
+<span class="nc" id="L138">        c.add(new ChoiceItem&lt;&gt;(Messages.message(&quot;ok&quot;), is).okOption());</span>
+<span class="nc" id="L139">        c.add(new ChoiceItem&lt;&gt;(Messages.message(&quot;editSettlementDialog.removeSettlement&quot;), null));</span>
+<span class="nc" id="L140">        c.add(new ChoiceItem&lt;&gt;(Messages.message(&quot;cancel&quot;),</span>
+<span class="nc" id="L141">                               (IndianSettlement)null).cancelOption().defaultOption());</span>
+<span class="nc" id="L142">        initializeDialog(frame, DialogType.QUESTION, true, panel, new ImageIcon(</span>
+<span class="nc" id="L143">            getImageLibrary().getSmallSettlementImage(is)), c);</span>
+<span class="nc" id="L144">    }</span>
+
+    private Nation getOwnerNation() {
+<span class="nc" id="L147">        return (Nation)this.owner.getSelectedItem();</span>
+    }
+
+    private IndianNationType getOwnerNationType() {
+<span class="nc" id="L151">        Nation n = getOwnerNation();</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        return (n == null) ? null : (IndianNationType)n.getType();</span>
+    }
+
+    private Player getOwnerPlayer() {
+<span class="nc" id="L156">        return is.getGame().getPlayerByNation(getOwnerNation());</span>
+    }
+
+    private SettlementType getSettlementType() {
+<span class="nc" id="L160">        return getOwnerNationType().getSettlementType(this.capital.isSelected());</span>
+    }
+        
+    private DefaultComboBoxModel&lt;UnitType&gt; getSkillModel() {
+<span class="nc" id="L164">        IndianNationType ownerType = getOwnerNationType();</span>
+<span class="nc" id="L165">        DefaultComboBoxModel&lt;UnitType&gt; skillModel</span>
+            = new DefaultComboBoxModel&lt;&gt;();
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        for (RandomChoice&lt;UnitType&gt; skill : ownerType.getSkills()) {</span>
+<span class="nc" id="L168">            skillModel.addElement(skill.getObject());</span>
+<span class="nc" id="L169">        }</span>
+<span class="nc" id="L170">        return skillModel;</span>
+    }
+
+
+    // Interface ItemListener
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void itemStateChanged(ItemEvent e) {
+<span class="nc" id="L181">        Player player = getOwnerPlayer();</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (player != null) {</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">            this.name.setText((this.capital.isSelected())</span>
+<span class="nc" id="L184">                ? player.getCapitalName(null)</span>
+<span class="nc" id="L185">                : player.getSettlementName(null));</span>
+        }
+<span class="nc" id="L187">        this.skill.setModel(getSkillModel());</span>
+<span class="nc" id="L188">        this.skill.setSelectedItem(is.getLearnableSkill());</span>
+<span class="nc" id="L189">        this.units.getModel().setValue(is.getUnitCount());</span>
+<span class="nc" id="L190">    }</span>
+
+
+    // Override FreeColDialog
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IndianSettlement getResponse() {
+<span class="nc" id="L200">        final Specification spec = freeColClient.getGame().getSpecification();</span>
+<span class="nc" id="L201">        final GUI gui = getGUI();</span>
+<span class="nc" id="L202">        IndianSettlement ret = null;</span>
+<span class="nc" id="L203">        Object value = getValue();</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        if (options.get(0).equals(value)) { // OK</span>
+<span class="nc" id="L205">            is.setName(this.name.getText());</span>
+<span class="nc" id="L206">            Nation newNation = getOwnerNation();</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            if (newNation != is.getOwner().getNation()) {</span>
+<span class="nc" id="L208">                Player newPlayer = getOwnerPlayer();</span>
+                // FIXME: recalculate tile ownership properly, taking
+                // settlement radius into account
+<span class="nc" id="L211">                is.setOwner(newPlayer);</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">                for (Unit u : is.getAllUnitsList()) {</span>
+<span class="nc" id="L213">                    u.setOwner(newPlayer);</span>
+<span class="nc" id="L214">                    u.setEthnicity(newNation.getId());</span>
+<span class="nc" id="L215">                    u.setNationality(newNation.getId());</span>
+<span class="nc" id="L216">                }</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">                for (Tile t : is.getOwnedTiles()) {</span>
+<span class="nc" id="L218">                    t.setOwner(newPlayer);//-til</span>
+<span class="nc" id="L219">                }</span>
+<span class="nc" id="L220">                MapEditorTransformPanel.setNativeNation(newNation);</span>
+            }
+<span class="nc bnc" id="L222" title="All 4 branches missed.">            if (this.capital.isSelected() &amp;&amp; !is.isCapital()) {</span>
+                // make sure we downgrade the old capital
+                for (IndianSettlement indianSettlement
+<span class="nc bnc" id="L225" title="All 2 branches missed.">                         : is.getOwner().getIndianSettlementList()) {</span>
+<span class="nc" id="L226">                    indianSettlement.setCapital(false);</span>
+<span class="nc" id="L227">                }</span>
+<span class="nc" id="L228">                is.setCapital(true);</span>
+<span class="nc bnc" id="L229" title="All 4 branches missed.">            } else if (!this.capital.isSelected() &amp;&amp; is.isCapital()) {</span>
+<span class="nc" id="L230">                is.setCapital(false);</span>
+            }
+<span class="nc" id="L232">            is.setLearnableSkill((UnitType)this.skill.getSelectedItem());</span>
+<span class="nc" id="L233">            int numberOfUnits = (Integer)this.units.getValue()</span>
+<span class="nc" id="L234">                - is.getUnitCount();</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">            if (numberOfUnits &gt; 0) {</span>
+<span class="nc" id="L236">                Player owner = is.getOwner();</span>
+<span class="nc" id="L237">                UnitType brave = spec.getDefaultUnitType(owner);</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">                for (int index = 0; index &lt; numberOfUnits; index++) {</span>
+<span class="nc" id="L239">                    is.add(new ServerUnit(is.getGame(), is, owner, brave));</span>
+                }
+<span class="nc bnc" id="L241" title="All 2 branches missed.">            } else if (numberOfUnits &lt; 0) {</span>
+<span class="nc" id="L242">                List&lt;Unit&gt; unitList</span>
+<span class="nc" id="L243">                    = is.getUnitList().subList(0, -numberOfUnits);</span>
+<span class="nc bnc" id="L244" title="All 2 branches missed.">                for (Unit unit : unitList) {</span>
+<span class="nc" id="L245">                    unit.dispose();</span>
+<span class="nc" id="L246">                }</span>
+            }
+<span class="nc" id="L248">            SettlementType oldType = is.getType();</span>
+<span class="nc" id="L249">            SettlementType type = getSettlementType();</span>
+<span class="nc" id="L250">            is.setType(type);</span>
+<span class="nc" id="L251">            is.getFeatureContainer().replaceSource(oldType, type);</span>
+<span class="nc" id="L252">            ret = is;</span>
+
+<span class="nc bnc" id="L254" title="All 2 branches missed.">        } else if (options.get(1).equals(value)) {</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">            if (!gui.modalConfirmDialog(&quot;editSettlementDialog.removeSettlement.text&quot;, </span>
+                             &quot;ok&quot;, &quot;cancel&quot;, true)) {
+<span class="nc" id="L257">                return is;</span>
+            }
+            // Dispose of units and settlement on tile
+<span class="nc" id="L260">            Tile tile = is.getTile();</span>
+<span class="nc bnc" id="L261" title="All 2 branches missed.">            for (Unit unit : tile.getUnitList()) unit.dispose();</span>
+<span class="nc" id="L262">            is.exciseSettlement();</span>
+        }
+<span class="nc" id="L264">        return ret;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

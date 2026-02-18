@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PreGameController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.control</a> &gt; <span class="el_source">PreGameController.java</span></div><h1>PreGameController.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.control;
+
+import java.awt.Color;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Nation;
+import net.sf.freecol.common.model.NationOptions.NationState;
+import net.sf.freecol.common.model.NationType;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.networking.ChangeSet;
+import net.sf.freecol.common.networking.ReadyMessage;
+import net.sf.freecol.common.networking.SetAvailableMessage;
+import net.sf.freecol.common.networking.SetColorMessage;
+import net.sf.freecol.common.networking.SetNationMessage;
+import net.sf.freecol.common.networking.SetNationTypeMessage;
+import net.sf.freecol.common.networking.UpdateGameOptionsMessage;
+import net.sf.freecol.common.networking.UpdateMapGeneratorOptionsMessage;
+import net.sf.freecol.common.networking.VacantPlayersMessage;
+import net.sf.freecol.common.option.OptionGroup;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The control object that is responsible for setting parameters and
+ * starting a new game.
+ *
+ * The game enters the state
+ * {@link net.sf.freecol.server.FreeColServer.ServerState#IN_GAME}, when the
+ *  has successfully been invoked.
+ */
+public final class PreGameController extends Controller {
+
+<span class="fc" id="L60">    private static final Logger logger = Logger.getLogger(PreGameController.class.getName());</span>
+
+
+    /** Is the game launching yet. */
+<span class="fc" id="L64">    private boolean launching = false;</span>
+
+
+    /**
+     * The constructor to use.
+     *
+     * @param freeColServer The main {@code FreeColServer} object.
+     */
+    public PreGameController(FreeColServer freeColServer) {
+<span class="fc" id="L73">        super(freeColServer);</span>
+<span class="fc" id="L74">    }</span>
+
+
+    /**
+     * Set the launching state.
+     *
+     * @param launching The new launching state.
+     * @return The former launching state.
+     */
+    private synchronized boolean setLaunching(boolean launching) {
+<span class="nc" id="L84">        boolean old = this.launching;</span>
+<span class="nc" id="L85">        this.launching = launching;</span>
+<span class="nc" id="L86">        return old;</span>
+    }
+
+    /**
+     * A player changes its readiness.
+     *
+     * @param serverPlayer The {@code ServerPlayer} that changes its state.
+     * @param ready The new readiness.
+     * @return A {@code ChangeSet} encapsulating this action.
+     */
+    public ChangeSet ready(ServerPlayer serverPlayer, boolean ready) {
+<span class="nc" id="L97">        serverPlayer.setReady(ready);</span>
+<span class="nc" id="L98">        getFreeColServer().sendToAll(new ReadyMessage(serverPlayer, ready),</span>
+                                     serverPlayer);
+<span class="nc" id="L100">        return null;</span>
+    }
+        
+    /**
+     * Launch the game if possible.
+     * 
+     * @param serverPlayer The {@code ServerPlayer} that requested launching.
+     * @return A {@code ChangeSet} encapsulating this action.
+     */
+    public ChangeSet requestLaunch(ServerPlayer serverPlayer) {
+<span class="nc" id="L110">        logger.info(&quot;Launching for &quot; + serverPlayer);</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (setLaunching(true)) {</span>
+<span class="nc" id="L112">            logger.warning(&quot;Already launching&quot;);</span>
+<span class="nc" id="L113">            return null;</span>
+        }
+
+<span class="nc" id="L116">        final FreeColServer freeColServer = getFreeColServer();</span>
+<span class="nc" id="L117">        final Game game = getGame();</span>
+<span class="nc" id="L118">        final Specification spec = game.getSpecification();</span>
+
+        // Check if launching player is an admin.
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (!serverPlayer.isAdmin()) {</span>
+<span class="nc" id="L122">            setLaunching(false);</span>
+<span class="nc" id="L123">            return serverPlayer.clientError(StringTemplate</span>
+<span class="nc" id="L124">                .template(&quot;server.onlyAdminCanLaunch&quot;));</span>
+        }
+<span class="nc" id="L126">        serverPlayer.setReady(true);</span>
+
+        // Check that no two players have the same nation
+<span class="nc" id="L129">        List&lt;Player&gt; players = game.getLivePlayerList();</span>
+<span class="nc" id="L130">        List&lt;Nation&gt; nations = new ArrayList&lt;&gt;(players.size());</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        for (Player p : players) {</span>
+<span class="nc" id="L132">            final Nation nation = spec.getNation(p.getNationId());</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">            if (nations.contains(nation)) {</span>
+<span class="nc" id="L134">                setLaunching(false);</span>
+<span class="nc" id="L135">                return serverPlayer.clientError(StringTemplate</span>
+<span class="nc" id="L136">                    .template(&quot;server.invalidPlayerNations&quot;));</span>
+            }
+<span class="nc" id="L138">            nations.add(nation);</span>
+<span class="nc" id="L139">        }</span>
+
+        // Check if all players are ready.
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (!game.allPlayersReadyToLaunch()) {</span>
+<span class="nc" id="L143">            setLaunching(false);</span>
+<span class="nc" id="L144">            return serverPlayer.clientError(StringTemplate</span>
+<span class="nc" id="L145">                .template(&quot;server.notAllReady&quot;));</span>
+        }
+        try {
+<span class="nc" id="L148">            freeColServer.startGame();</span>
+<span class="nc" id="L149">        } catch (FreeColException|RuntimeException fce) {</span>
+<span class="nc" id="L150">            logger.log(Level.WARNING, &quot;Exception while trying to start the game&quot;, fce);</span>
+<span class="nc" id="L151">            return serverPlayer.clientError(fce.getMessage());</span>
+<span class="nc" id="L152">        }</span>
+
+<span class="nc" id="L154">        return null;</span>
+    }
+
+    /**
+     * Handle a player changing its availability.
+     *
+     * @param serverPlayer The {@code ServerPlayer} that changed.
+     * @param nation The changed {@code Nation}.
+     * @param state The new {@code NationState}.
+     * @return A {@code ChangeSet} encapsulating this action.
+     */
+    public ChangeSet setAvailable(ServerPlayer serverPlayer, Nation nation,
+                                  NationState state) {
+<span class="nc" id="L167">        getGame().getNationOptions().setNationState(nation, state);</span>
+<span class="nc" id="L168">        getFreeColServer().sendToAll(new SetAvailableMessage(nation, state),</span>
+                                     serverPlayer);
+<span class="nc" id="L170">        return null;</span>
+    }
+
+    /**
+     * Handle a player changing its color.
+     *
+     * @param serverPlayer The {@code ServerPlayer} that changed.
+     * @param nation The changed {@code Nation}.
+     * @param color The new {@code Color}.
+     * @return A {@code ChangeSet} encapsulating this action.
+     */
+    public ChangeSet setColor(ServerPlayer serverPlayer, Nation nation,
+                              Color color) {
+<span class="nc" id="L183">        nation.setColor(color);</span>
+<span class="nc" id="L184">        getFreeColServer().sendToAll(new SetColorMessage(nation, color),</span>
+                                     serverPlayer);
+<span class="nc" id="L186">        return null;</span>
+    }
+
+    /**
+     * Handle a player changing its nation.
+     *
+     * @param serverPlayer The {@code ServerPlayer} that changed.
+     * @param nation The changed {@code Nation}.
+     * @return A {@code ChangeSet} encapsulating this action.
+     */
+    public ChangeSet setNation(ServerPlayer serverPlayer, Nation nation) {
+<span class="nc" id="L197">        serverPlayer.setNation(nation);</span>
+<span class="nc" id="L198">        getFreeColServer().sendToAll(new SetNationMessage(serverPlayer, nation),</span>
+                                     serverPlayer);
+<span class="nc" id="L200">        return null;</span>
+    }
+
+    /**
+     * Handle a player changing its nation type.
+     *
+     * @param serverPlayer The {@code ServerPlayer} that changed.
+     * @param nationType The changed {@code NationType}.
+     * @return A {@code ChangeSet} encapsulating this action.
+     */
+    public ChangeSet setNationType(ServerPlayer serverPlayer,
+                                   NationType nationType) {
+<span class="nc" id="L212">        serverPlayer.changeNationType(nationType);</span>
+<span class="nc" id="L213">        getFreeColServer().sendToAll(new SetNationTypeMessage(serverPlayer, nationType),</span>
+                                     serverPlayer);
+<span class="nc" id="L215">        return null;</span>
+    }
+
+    /**
+     * Handle a player changing its game options.
+     *
+     * @param serverPlayer The {@code ServerPlayer} that changed.
+     * @param options The new {@code OptionGroup} containing the game options.
+     * @return A {@code ChangeSet} encapsulating this action.
+     */
+    public ChangeSet updateGameOptions(ServerPlayer serverPlayer,
+                                       OptionGroup options) {
+<span class="nc" id="L227">        final FreeColServer fcs = getFreeColServer();</span>
+<span class="nc" id="L228">        final Game game = fcs.getGame();</span>
+<span class="nc" id="L229">        final Specification spec = game.getSpecification();</span>
+
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (!spec.mergeGameOptions(options, &quot;server&quot;)) {</span>
+<span class="nc" id="L232">            return serverPlayer.clientError(&quot;Game option merge failed&quot;);</span>
+        }
+<span class="nc" id="L234">        fcs.sendToAll(new UpdateGameOptionsMessage(spec.getGameOptions()),</span>
+                                                   serverPlayer);
+<span class="nc" id="L236">        return null;</span>
+    }
+
+    /**
+     * Handle a player changing its map generator options.
+     *
+     * @param serverPlayer The {@code ServerPlayer} that changed.
+     * @param options The new {@code OptionGroup} containing the map
+     *     generator options.
+     * @return A {@code ChangeSet} encapsulating this action.
+     */
+    public ChangeSet updateMapGeneratorOptions(ServerPlayer serverPlayer,
+                                               OptionGroup options) {
+<span class="nc" id="L249">        final FreeColServer fcs = getFreeColServer();</span>
+<span class="nc" id="L250">        final Game game = fcs.getGame();</span>
+<span class="nc" id="L251">        final Specification spec = game.getSpecification();</span>
+        
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        if (!spec.mergeMapGeneratorOptions(options, &quot;server&quot;)) {</span>
+<span class="nc" id="L254">            return serverPlayer.clientError(&quot;Map option merge failed&quot;);</span>
+        }
+<span class="nc" id="L256">        fcs.sendToAll(new UpdateMapGeneratorOptionsMessage(spec.getMapGeneratorOptions()),</span>
+                                                           serverPlayer);
+<span class="nc" id="L258">        return null;</span>
+    }
+
+    /**
+     * Handle a request for vacant players.
+     *
+     * @return A {@code ChangeSet} encapsulating this action.
+     */
+    public ChangeSet vacantPlayers() {
+<span class="nc" id="L267">        return ChangeSet.simpleChange((Player)null,</span>
+            new VacantPlayersMessage()
+<span class="nc" id="L269">                .setVacantPlayers(getFreeColServer().getGame()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndianNationType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">IndianNationType.java</span></div><h1>IndianNationType.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import net.sf.freecol.common.util.RandomChoice;
+
+
+/**
+ * Represents one of the native nations present in the game.
+ */
+public class IndianNationType extends NationType {
+
+    public static final String TAG = &quot;indian-nation-type&quot;;
+
+    /** Stores the ids of the skills taught by this Nation. */
+<span class="fc" id="L45">    private List&lt;RandomChoice&lt;UnitType&gt;&gt; skills = null;</span>
+
+    /** Identifiers for the regions that can be settled by this Nation. */
+<span class="fc" id="L48">    private List&lt;String&gt; regions = null;</span>
+
+
+    /**
+     * Create a new native nation type.
+     *
+     * @param id The object identifier.
+     * @param specification The {@code Specification} to refer to.
+     */
+    public IndianNationType(String id, Specification specification) {
+<span class="fc" id="L58">        super(id, specification);</span>
+<span class="fc" id="L59">    }</span>
+
+
+    /**
+     * Is this a European nation type?
+     *
+     * @return False.
+     */
+    @Override
+    public boolean isEuropean() {
+<span class="fc" id="L69">        return false;</span>
+    }
+
+    /**
+     * Is this a native nation type?
+     *
+     * @return True.
+     */
+    @Override
+    public boolean isIndian() {
+<span class="fc" id="L79">        return true;</span>
+    }
+
+    /**
+     * Is this a REF nation type?
+     *
+     * @return False.
+     */
+    @Override
+    public boolean isREF() {
+<span class="fc" id="L89">        return false;</span>
+    }
+
+    /**
+     * Get a message id for the general type of settlements of this nation.
+     *
+     * @param plural Choose the plural form or not.
+     * @return A suitable message id.
+     */
+    public final String getSettlementTypeKey(boolean plural) {
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        return getSettlementType(false).getId() + ((plural) ? &quot;.plural&quot; : &quot;&quot;);</span>
+    }
+
+    /**
+     * Gets a list of this Nation's skills.
+     *
+     * @return A list of national skills.
+     */
+    public List&lt;RandomChoice&lt;UnitType&gt;&gt; getSkills() {
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        return (this.skills == null)</span>
+<span class="nc" id="L109">            ? Collections.&lt;RandomChoice&lt;UnitType&gt;&gt;emptyList()</span>
+<span class="fc" id="L110">            : this.skills;</span>
+    }
+
+    /**
+     * Set the skills of this nation.
+     *
+     * @param skills The new skills list.
+     */
+    protected void setSkills(List&lt;RandomChoice&lt;UnitType&gt;&gt; skills) {
+<span class="nc" id="L119">        this.skills.clear();</span>
+<span class="nc" id="L120">        this.skills.addAll(skills);</span>
+<span class="nc" id="L121">    }</span>
+
+    /**
+     * Add a skill.
+     *
+     * @param unitType The {@code UnitType} skill taught.
+     * @param probability The probability of the skill.
+     */
+    private void addSkill(UnitType unitType, int probability) {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (skills == null) skills = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L131">        skills.add(new RandomChoice&lt;&gt;(unitType, probability));</span>
+<span class="fc" id="L132">    }</span>
+
+    /**
+     * Generates choices for skill that could be taught from a settlement on
+     * a given Tile.
+     *
+     * @param tile The {@code Tile} where the settlement will be located.
+     * @return A random choice set of skills.
+     */
+    public List&lt;RandomChoice&lt;UnitType&gt;&gt; generateSkillsForTile(Tile tile) {
+<span class="fc" id="L142">        final List&lt;RandomChoice&lt;UnitType&gt;&gt; skills = getSkills();</span>
+<span class="fc" id="L143">        final Map&lt;GoodsType, Integer&gt; scale</span>
+<span class="fc" id="L144">            = transform(skills, alwaysTrue(),</span>
+<span class="fc" id="L145">                        Function.&lt;RandomChoice&lt;UnitType&gt;&gt;identity(),</span>
+<span class="fc" id="L146">                        Collectors.toMap(rc -&gt;</span>
+<span class="fc" id="L147">                            rc.getObject().getExpertProduction(), rc -&gt; 1));</span>
+
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        for (Tile t: tile.getSurroundingTiles(1)) {</span>
+<span class="fc" id="L150">            forEachMapEntry(scale, e -&gt; {</span>
+<span class="fc" id="L151">                    GoodsType goodsType = e.getKey();</span>
+<span class="fc" id="L152">                    scale.put(goodsType, e.getValue()</span>
+<span class="fc" id="L153">                        + t.getPotentialProduction(goodsType, null));</span>
+<span class="fc" id="L154">                });</span>
+<span class="fc" id="L155">        }</span>
+
+<span class="fc" id="L157">        final Function&lt;RandomChoice&lt;UnitType&gt;, RandomChoice&lt;UnitType&gt;&gt; mapper = rc -&gt; {</span>
+<span class="fc" id="L158">            UnitType ut = rc.getObject();</span>
+<span class="fc" id="L159">            int scaleValue = scale.get(ut.getExpertProduction());</span>
+<span class="fc" id="L160">            return new RandomChoice&lt;&gt;(ut, rc.getProbability() * scaleValue);</span>
+        };
+<span class="fc" id="L162">        return transform(skills, alwaysTrue(), mapper);</span>
+    }
+
+    /**
+     * Gets the list of regions in which this tribe may settle.
+     *
+     * @return A list of regions identifiers.
+     */
+    public List&lt;String&gt; getRegions() {
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        return (regions == null) ? Collections.&lt;String&gt;emptyList()</span>
+<span class="fc" id="L172">            : regions;</span>
+    }
+
+    /**
+     * Set the settleable regions list.
+     *
+     * @param regions The new list of region identifiers.
+     */    
+    protected void setRegions(List&lt;String&gt; regions) {
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        if (this.regions == null) {</span>
+<span class="nc" id="L182">            this.regions = new ArrayList&lt;&gt;();</span>
+        } else {
+<span class="nc" id="L184">            this.regions.clear();</span>
+        }
+<span class="nc" id="L186">        this.regions.addAll(regions);</span>
+<span class="nc" id="L187">    }</span>
+
+    /**
+     * Add a region identifier.
+     *
+     * @param id The object identifier.
+     */
+    private void addRegion(String id) {
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (regions == null) regions = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L196">        regions.add(id);</span>
+<span class="fc" id="L197">    }</span>
+
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L208">        IndianNationType o = copyInCast(other, IndianNationType.class);</span>
+<span class="nc bnc" id="L209" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L210">        this.setSkills(o.getSkills());</span>
+<span class="nc" id="L211">        this.setRegions(o.getRegions());</span>
+<span class="nc" id="L212">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String PROBABILITY_TAG = &quot;probability&quot;;
+    private static final String SKILL_TAG = &quot;skill&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L227">        super.writeChildren(xw);</span>
+
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        for (RandomChoice&lt;UnitType&gt; choice : getSkills()) {</span>
+<span class="fc" id="L230">            xw.writeStartElement(SKILL_TAG);</span>
+
+<span class="fc" id="L232">            xw.writeAttribute(ID_ATTRIBUTE_TAG, choice.getObject());</span>
+
+<span class="fc" id="L234">            xw.writeAttribute(PROBABILITY_TAG, choice.getProbability());</span>
+
+<span class="fc" id="L236">            xw.writeEndElement();</span>
+<span class="fc" id="L237">        }</span>
+
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        for (String region : getRegions()) {</span>
+<span class="fc" id="L240">            xw.writeStartElement(Region.TAG);</span>
+
+<span class="fc" id="L242">            xw.writeAttribute(ID_ATTRIBUTE_TAG, region);</span>
+
+<span class="fc" id="L244">            xw.writeEndElement();</span>
+<span class="fc" id="L245">        }</span>
+<span class="fc" id="L246">    }</span>
+    
+    /**
+    * {@inheritDoc}
+    */
+    @Override
+    protected void clearContainers(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L253">        super.clearContainers(xr);</span>
+<span class="fc" id="L254">        skills = null;</span>
+<span class="fc" id="L255">        regions = null;</span>
+<span class="fc" id="L256">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L263">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L264">        IndianNationType parent = xr.getAlreadyInitializedType(spec, EXTENDS_TAG, IndianNationType.class, this);</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (parent != this) {</span>
+<span class="pc bpc" id="L266" title="1 of 4 branches missed.">            if (parent.skills != null &amp;&amp; !parent.skills.isEmpty()) {</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">                if (skills == null) skills = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L268">                skills.addAll(parent.skills);</span>
+            }
+
+<span class="pc bpc" id="L271" title="3 of 4 branches missed.">            if (parent.regions != null &amp;&amp; !parent.regions.isEmpty()) {</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">                if (regions == null) regions = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L273">                regions.addAll(parent.regions);</span>
+            }
+        }
+
+<span class="fc" id="L277">        super.readChildren(xr);</span>
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L285">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L286">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        if (SKILL_TAG.equals(tag)) {</span>
+<span class="fc" id="L289">            addSkill(xr.getType(spec, ID_ATTRIBUTE_TAG,</span>
+                                UnitType.class, (UnitType)null),
+<span class="fc" id="L291">                     xr.getAttribute(PROBABILITY_TAG, 0));</span>
+<span class="fc" id="L292">            xr.closeTag(SKILL_TAG);</span>
+
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        } else if (Region.TAG.equals(tag)) {</span>
+<span class="fc" id="L295">            addRegion(xr.readId());</span>
+<span class="fc" id="L296">            xr.closeTag(Region.TAG);</span>
+
+        } else {
+<span class="fc" id="L299">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L301">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L306">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

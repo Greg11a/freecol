@@ -1,0 +1,585 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Building.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">Building.java</span></div><h1>Building.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import static net.sf.freecol.common.util.CollectionUtils.any;
+import static net.sf.freecol.common.util.CollectionUtils.concat;
+import static net.sf.freecol.common.util.CollectionUtils.sum;
+import static net.sf.freecol.common.util.CollectionUtils.toList;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+import static net.sf.freecol.common.util.StringUtils.lastPart;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.production.BuildingProductionCalculator;
+import net.sf.freecol.common.model.production.WorkerAssignment;
+
+
+/**
+ * Represents a building in a colony.
+ */
+public class Building extends WorkLocation
+    implements Named, Consumer {
+
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="fc" id="L51">    private static final Logger logger = Logger.getLogger(Building.class.getName());</span>
+
+    public static final String TAG = &quot;building&quot;;
+    
+    public static final String UNIT_CHANGE = &quot;UNIT_CHANGE&quot;;
+
+
+    /** The type of building. */
+    protected BuildingType buildingType;
+
+
+    /**
+     * Constructor for ServerBuilding.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param colony The {@code Colony} in which this building is located.
+     * @param type The {@code BuildingType} of building.
+     */
+    protected Building(Game game, Colony colony, BuildingType type) {
+<span class="fc" id="L70">        super(game);</span>
+
+<span class="fc" id="L72">        this.colony = colony;</span>
+<span class="fc" id="L73">        this.buildingType = type;</span>
+        // set production type to default value
+<span class="fc" id="L75">        updateProductionType();</span>
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * Create a new {@code Building} with the given identifier.
+     * The object should later be initialized by calling
+     * {@link #readFromXML(FreeColXMLReader)}.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param id The object identifier.
+     */
+    public Building(Game game, String id) {
+<span class="fc" id="L87">        super(game, id);</span>
+<span class="fc" id="L88">    }</span>
+
+
+    /**
+     * Gets the type of this building.
+     *
+     * @return The building type.
+     */
+    public BuildingType getType() {
+<span class="fc" id="L97">        return buildingType;</span>
+    }
+
+    /**
+     * Changes the type of the Building.  The type of a building may
+     * change when it is upgraded or damaged.
+     *
+     * -til: If this is a defensive building.
+     *
+     * @see #upgrade
+     * @see #downgrade
+     * @param newBuildingType The new {@code BuildingType}.
+     * @return A list of units present that need to be removed.
+     */
+    private List&lt;Unit&gt; setType(final BuildingType newBuildingType) {
+        // remove features from current type
+<span class="fc" id="L113">        final Colony colony = getColony();</span>
+<span class="fc" id="L114">        colony.removeFeatures(buildingType);</span>
+<span class="fc" id="L115">        List&lt;Unit&gt; eject = new ArrayList&lt;&gt;();</span>
+
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        if (newBuildingType != null) {</span>
+<span class="fc" id="L118">            buildingType = newBuildingType;</span>
+
+            // change default production type
+<span class="fc" id="L121">            updateProductionType();</span>
+
+            // add new features and abilities from new type
+<span class="fc" id="L124">            colony.addFeatures(buildingType);</span>
+
+            // Colonists which can't work here must be put outside
+<span class="fc" id="L127">            eject.addAll(transform(getUnits(),</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">                                   u -&gt; !canAddType(u.getType())));</span>
+        }
+
+        // Colonists exceding units limit must be put outside
+<span class="fc" id="L132">        int extra = getUnitCount() - getUnitCapacity() - eject.size();</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        for (Unit unit : getUnitList()) {</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">            if (extra &lt;= 0) break;</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (!eject.contains(unit)) {</span>
+<span class="nc" id="L136">                eject.add(unit);</span>
+<span class="nc" id="L137">                extra -= 1;</span>
+            }
+<span class="nc" id="L139">        }</span>
+
+<span class="fc" id="L141">        return eject;</span>
+    }
+        
+    /**
+     * Does this building have a higher level?
+     *
+     * @return True if this {@code Building} can have a higher level.
+     */
+    public boolean canBuildNext() {
+<span class="fc" id="L150">        return getColony().canBuild(getType().getUpgradesTo());</span>
+    }
+
+    /**
+     * Can this building can be damaged?
+     *
+     * @return True if this building can be damaged.
+     */
+    public boolean canBeDamaged() {
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        return !getType().isAutomaticBuild()</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">            &amp;&amp; !getColony().isAutomaticBuild(getType());</span>
+    }
+
+    /**
+     * Downgrade this building.
+     *
+     * -til: If this is a defensive building.
+     *
+     * @return A list of units to eject (usually empty) if the
+     *     building was downgraded, or null on failure.
+     */
+    public List&lt;Unit&gt; downgrade() {
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (!canBeDamaged()) return null;</span>
+<span class="nc" id="L173">        List&lt;Unit&gt; ret = setType(getType().getUpgradesFrom());</span>
+<span class="nc" id="L174">        getColony().invalidateCache();</span>
+<span class="nc" id="L175">        return ret;</span>
+    }
+
+    /**
+     * Upgrade this building to next level.
+     *
+     * -til: If this is a defensive building.
+     *
+     * @return A list of units to eject (usually empty) if the
+     *     building was upgraded, or null on failure.
+     */
+    public List&lt;Unit&gt; upgrade() {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        if (!canBuildNext()) return null;</span>
+<span class="fc" id="L188">        List&lt;Unit&gt; ret = setType(getType().getUpgradesTo());</span>
+<span class="fc" id="L189">        getColony().invalidateCache();</span>
+<span class="fc" id="L190">        return ret;</span>
+    }
+
+    /**
+     * Can a particular type of unit be added to this building?
+     *
+     * @param unitType The {@code UnitType} to check.
+     * @return True if unit type can be added to this building.
+     */
+    public boolean canAddType(UnitType unitType) {
+<span class="pc bpc" id="L200" title="2 of 4 branches missed.">        return canBeWorked() &amp;&amp; getType().canAdd(unitType);</span>
+    }
+
+    /**
+     * Gets the production information for this building taking account
+     * of the available input and output goods.
+     *
+     * @param inputs The input goods available.
+     * @param outputs The output goods already available in the colony,
+     *     necessary in order to avoid excess production.
+     * @return The production information.
+     * @see ProductionCache#update
+     */
+    public ProductionInfo getAdjustedProductionInfo(List&lt;AbstractGoods&gt; inputs, List&lt;AbstractGoods&gt; outputs) {
+<span class="fc" id="L214">        final BuildingProductionCalculator pc = new BuildingProductionCalculator(getOwner(), getColony().getFeatureContainer(), getColony().getProductionBonus());</span>
+<span class="fc" id="L215">        final List&lt;WorkerAssignment&gt; workerAssignments = getUnits()</span>
+<span class="fc" id="L216">                .map(u -&gt; new WorkerAssignment(u.getType(), getProductionType()))</span>
+<span class="fc" id="L217">                .collect(Collectors.toList());</span>
+<span class="fc" id="L218">        final Turn turn = getGame().getTurn();</span>
+<span class="fc" id="L219">        final int warehouseCapacity = getColony().getWarehouseCapacity();</span>
+<span class="fc" id="L220">        return pc.getAdjustedProductionInfo(buildingType, turn, workerAssignments, inputs, outputs, warehouseCapacity);</span>
+    }
+
+    /**
+     * Evaluate this work location for a given player.
+     *
+     * @param player The {@code Player} to evaluate for.
+     * @return A value for the player.
+     */
+    @Override
+    public int evaluateFor(Player player) {
+<span class="nc" id="L231">        return super.evaluateFor(player)</span>
+<span class="nc" id="L232">            + sum(getType().getRequiredGoods(), ag -&gt; ag.evaluateFor(player));</span>
+    }
+        
+
+    // Interface Location
+    // Inherits:
+    //   FreeColObject.getId
+    //   WorkLocation.getTile
+    //   UnitLocation.getLocationLabelFor
+    //   UnitLocation.contains
+    //   UnitLocation.canAdd
+    //   WorkLocation.remove
+    //   UnitLocation.getUnitCount
+    //   UnitLocation.getUnitList
+    //   UnitLocation.getGoodsContainer
+    //   final WorkLocation.getSettlement
+    //   final WorkLocation.getColony
+    //   final WorkLocation.getRank
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getLocationLabel() {
+<span class="nc" id="L256">        return StringTemplate.template(&quot;model.building.locationLabel&quot;)</span>
+<span class="nc" id="L257">            .addNamed(&quot;%location%&quot;, this);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location up() {
+<span class="fc" id="L265">        return getColony();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toShortString() {
+<span class="fc" id="L273">        return getColony().getName() + &quot;-&quot; + getType().getSuffix();</span>
+    }
+
+
+    // Interface UnitLocation
+    // Inherits:
+    //   UnitLocation.getSpaceTaken
+    //   UnitLocation.moveToFront
+    //   UnitLocation.clearUnitList
+    //   UnitLocation.equipForRole
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public NoAddReason getNoAddReason(Locatable locatable) {
+<span class="fc" id="L288">        NoAddReason reason = super.getNoAddReason(locatable);</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">        if (reason == NoAddReason.NONE) {</span>
+<span class="fc" id="L290">            reason = getType().getNoAddReason(((Unit) locatable).getType());</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">            if (reason == NoAddReason.NONE) reason = getNoWorkReason();</span>
+        }
+<span class="fc" id="L293">        return reason;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getUnitCapacity() {
+<span class="fc" id="L301">        return getType().getWorkPlaces();</span>
+    }
+
+
+    // Interface WorkLocation
+    // Inherits:
+    //   WorkLocation.getClaimTemplate: buildings do not need to be claimed.
+
+    @Override
+    public boolean goodSuggestionCheck(UnitType better, Unit unit, GoodsType goodsType) {
+        // Make sure the type can be added.
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        if (this.canAddType(better)) {</span>
+<span class="nc" id="L313">            Colony colony = getColony();</span>
+            BuildableType bt;
+            // Assume work is worth doing if a unit is already
+            // there, or if the building has been upgraded, or if
+            // the goods are required for the current building job.
+<span class="nc bnc" id="L318" title="All 4 branches missed.">            if (this.getLevel() &gt; 1 || unit != null) {</span>
+<span class="nc" id="L319">                return true;</span>
+<span class="nc bnc" id="L320" title="All 2 branches missed.">            } else if (colony.getTotalProductionOf(goodsType) == 0</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">                    &amp;&amp; (bt = colony.getCurrentlyBuilding()) != null</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">                    &amp;&amp; any(bt.getRequiredGoods(), AbstractGoods.matches(goodsType))) {</span>
+<span class="nc" id="L323">                return true;</span>
+            }
+        }
+<span class="nc" id="L326">        return false;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getLabel() {
+<span class="nc bnc" id="L334" title="All 2 branches missed.">        return (buildingType == null) ? null</span>
+<span class="nc" id="L335">            : StringTemplate.key(buildingType);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isAvailable() {
+<span class="fc" id="L343">        return true;</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isCurrent() {
+<span class="fc" id="L351">        return true;</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public NoAddReason getNoWorkReason() {
+<span class="fc" id="L359">        return NoAddReason.NONE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Tile getWorkTile() {
+<span class="fc" id="L367">        return null;</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    public int getLevel() {
+<span class="nc" id="L374">        return getType().getLevel(); // Delegate to type</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canAutoProduce() {
+<span class="fc" id="L382">        return hasAbility(Ability.AUTO_PRODUCTION);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canProduce(GoodsType goodsType, UnitType unitType) {
+<span class="fc" id="L390">        final BuildingType type = getType();</span>
+<span class="pc bpc" id="L391" title="1 of 4 branches missed.">        return type != null &amp;&amp; type.canProduce(goodsType, unitType);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getBaseProduction(ProductionType productionType,
+                                 GoodsType goodsType, UnitType unitType) {
+<span class="fc" id="L400">        final BuildingType type = getType();</span>
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">        return (type == null) ? 0</span>
+<span class="fc" id="L402">            : getType().getBaseProduction(productionType, goodsType, unitType);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Stream&lt;Modifier&gt; getProductionModifiers(GoodsType goodsType,
+                                                   UnitType unitType) {
+<span class="fc" id="L411">        final BuildingType type = getType();</span>
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">        final String id = (goodsType == null) ? null : goodsType.getId();</span>
+<span class="fc" id="L413">        final Colony colony = getColony();</span>
+<span class="fc" id="L414">        final Player owner = getOwner();</span>
+<span class="fc" id="L415">        final Turn turn = getGame().getTurn();</span>
+
+<span class="fc bfc" id="L417" title="All 2 branches covered.">        return (unitType != null)</span>
+            // With a unit, unit specific bonuses apply
+<span class="fc" id="L419">            ? concat(this.getModifiers(id, unitType, turn),</span>
+<span class="fc" id="L420">                     colony.getProductionModifiers(goodsType, unitType, this),</span>
+<span class="fc" id="L421">                     getType().getCompetenceModifiers(id, unitType, turn),</span>
+<span class="fc" id="L422">                     owner.getModifiers(id, unitType, turn))</span>
+            // With no unit, only the building-specific bonuses 
+<span class="fc" id="L424">            : concat(colony.getModifiers(id, type, turn),</span>
+<span class="fc" id="L425">                     owner.getModifiers(id, type, turn));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;ProductionType&gt; getAvailableProductionTypes(boolean unattended) {
+<span class="pc bpc" id="L433" title="1 of 2 branches missed.">        return (buildingType == null) ? Collections.&lt;ProductionType&gt;emptyList()</span>
+<span class="fc" id="L434">            : getType().getAvailableProductionTypes(unattended);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public float getCompetenceFactor() {
+<span class="nc" id="L442">        return getType().getCompetenceFactor();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public float getRebelFactor() {
+<span class="fc" id="L450">        return getType().getRebelFactor();</span>
+    }
+
+
+    // Interface Consumer
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;AbstractGoods&gt; getConsumedGoods() {
+<span class="fc" id="L461">        return toList(getInputs());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getPriority() {
+<span class="fc" id="L469">        return getType().getPriority();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Stream&lt;Modifier&gt; getConsumptionModifiers(String id) {
+<span class="fc" id="L477">        return getModifiers(id);</span>
+    }
+
+
+    // Interface Named
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String getNameKey() {
+<span class="fc" id="L488">        return getType().getNameKey();</span>
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Stream&lt;Ability&gt; getAbilities(String id, FreeColSpecObjectType type,
+                                        Turn turn) {
+        // Buildings have no abilities independent of their type (for now).
+<span class="fc" id="L501">        return getType().getAbilities(id, type, turn);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Stream&lt;Modifier&gt; getModifiers(String id, FreeColSpecObjectType fcgot,
+                                         Turn turn) {
+        // Buildings have no modifiers independent of type
+<span class="fc" id="L511">        return getType().getModifiers(id, fcgot, turn);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L519">        Building o = copyInCast(other, Building.class);</span>
+<span class="nc bnc" id="L520" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L521">        this.buildingType = o.getType();</span>
+<span class="nc" id="L522">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColObject getDisplayObject() {
+<span class="nc" id="L530">        return getType();</span>
+    }
+
+
+    // Serialization
+
+    private static final String BUILDING_TYPE_TAG = &quot;buildingType&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L544">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L546">        xw.writeAttribute(BUILDING_TYPE_TAG, buildingType);</span>
+<span class="fc" id="L547">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L554">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L556">        final Specification spec = getSpecification();</span>
+
+<span class="fc" id="L558">        buildingType = xr.getType(spec, BUILDING_TYPE_TAG,</span>
+                                  BuildingType.class, (BuildingType)null);
+<span class="fc" id="L560">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L565">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L575">        StringBuilder sb = new StringBuilder(32);</span>
+<span class="fc" id="L576">        Colony c =  getColony();</span>
+<span class="fc" id="L577">        sb.append('[').append(getId())</span>
+<span class="pc bpc" id="L578" title="1 of 2 branches missed.">            .append(' ').append((buildingType == null) ? &quot;&quot;</span>
+<span class="fc" id="L579">                : lastPart(buildingType.getId(), &quot;.&quot;))</span>
+<span class="pc bpc" id="L580" title="1 of 2 branches missed.">            .append('/').append((c == null) ? &quot;NO-COLONY&quot; : c.getName())</span>
+<span class="fc" id="L581">            .append(']');</span>
+<span class="fc" id="L582">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

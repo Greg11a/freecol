@@ -1,0 +1,638 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultTransferHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">DefaultTransferHandler.java</span></div><h1>DefaultTransferHandler.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import static net.sf.freecol.common.util.CollectionUtils.any;
+import static net.sf.freecol.common.util.CollectionUtils.matchKeyEquals;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+import static net.sf.freecol.common.util.ImageUtils.createResizedImage;
+
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.Point;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.dnd.DragGestureEvent;
+import java.awt.dnd.DragGestureListener;
+import java.awt.dnd.DragGestureRecognizer;
+import java.awt.dnd.DragSource;
+import java.awt.dnd.DragSourceContext;
+import java.awt.dnd.DragSourceDragEvent;
+import java.awt.dnd.DragSourceDropEvent;
+import java.awt.dnd.DragSourceEvent;
+import java.awt.dnd.DragSourceListener;
+import java.awt.event.InputEvent;
+import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.util.List;
+import java.util.logging.Logger;
+
+import javax.swing.ImageIcon;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.TransferHandler;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.label.AbstractGoodsLabel;
+import net.sf.freecol.client.gui.label.Draggable;
+import net.sf.freecol.client.gui.label.GoodsLabel;
+import net.sf.freecol.client.gui.label.GoodsTypeLabel;
+import net.sf.freecol.client.gui.label.MarketLabel;
+import net.sf.freecol.client.gui.label.UnitLabel;
+import net.sf.freecol.client.gui.label.AbstractGoodsLabel.AmountType;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.GoodsContainer;
+import net.sf.freecol.common.model.GoodsLocation;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Role;
+import net.sf.freecol.common.model.Unit;
+
+
+/**
+ * A {@code TransferHandler} for {@code ImageSelection} {@code Transferable}s.
+ *
+ * The DefaultTransferHandler should be attached to JPanels or custom JLabels.
+ */
+public final class DefaultTransferHandler extends TransferHandler {
+
+<span class="nc" id="L79">    private static final Logger logger = Logger.getLogger(DefaultTransferHandler.class.getName());</span>
+    
+
+    /**
+     * This is the default drag handler for drag and drop operations that
+     * use the {@code TransferHandler}.
+     */
+    private static class FreeColDragHandler
+        implements DragGestureListener, DragSourceListener {
+
+        private boolean scrolls;
+
+
+        private void updatePartialChosen(JComponent comp, boolean partial) {
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            if (comp instanceof AbstractGoodsLabel) {</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">                if (partial) {</span>
+<span class="nc" id="L95">                    ((AbstractGoodsLabel)comp).setAmountType(AmountType.PARTIAL);</span>
+                }
+            }
+<span class="nc" id="L98">        }</span>
+
+        /**
+         * Get a suitable cursor for the given component.
+         *
+         * @param c The component to consider.
+         * @return A suitable {@code Cursor}, or null on failure.
+         */
+        private Cursor getCursor(JComponent c) {
+<span class="nc bnc" id="L107" title="All 2 branches missed.">            if (c instanceof JLabel</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">                &amp;&amp; ((JLabel)c).getIcon() instanceof ImageIcon) {</span>
+<span class="nc" id="L109">                Toolkit tk = Toolkit.getDefaultToolkit();</span>
+<span class="nc" id="L110">                ImageIcon imageIcon = ((ImageIcon)((JLabel)c).getIcon());</span>
+<span class="nc" id="L111">                Dimension bestSize = tk.getBestCursorSize(imageIcon.getIconWidth(),</span>
+<span class="nc" id="L112">                    imageIcon.getIconHeight());</span>
+                    
+<span class="nc bnc" id="L114" title="All 4 branches missed.">                if (bestSize.width == 0 || bestSize.height == 0) return null;</span>
+                   
+<span class="nc bnc" id="L116" title="All 2 branches missed.">                if (bestSize.width &gt; bestSize.height) {</span>
+<span class="nc" id="L117">                    bestSize.height = (int)((((double)bestSize.width)</span>
+<span class="nc" id="L118">                            / ((double)imageIcon.getIconWidth()))</span>
+<span class="nc" id="L119">                        * imageIcon.getIconHeight());</span>
+                } else {
+<span class="nc" id="L121">                    bestSize.width = (int)((((double)bestSize.height)</span>
+<span class="nc" id="L122">                            / ((double)imageIcon.getIconHeight()))</span>
+<span class="nc" id="L123">                        * imageIcon.getIconWidth());</span>
+                }
+<span class="nc" id="L125">                BufferedImage scaled</span>
+<span class="nc" id="L126">                    = createResizedImage(imageIcon.getImage(),</span>
+                                         bestSize.width, bestSize.height);
+<span class="nc" id="L128">                Point point = new Point(bestSize.width / 2,</span>
+                                        bestSize.height / 2);
+<span class="nc" id="L130">                return tk.createCustomCursor(scaled, point,</span>
+                                             &quot;freeColDragIcon&quot;);
+            }
+<span class="nc" id="L133">            return null;</span>
+        }
+        
+
+        // Interface DragGestureListener
+
+        /**
+         * {@inheritDoc}
+         */
+        public void dragGestureRecognized(DragGestureEvent dge) {
+<span class="nc" id="L143">            JComponent c = (JComponent)dge.getComponent();</span>
+<span class="nc" id="L144">            DefaultTransferHandler th</span>
+<span class="nc" id="L145">                = (DefaultTransferHandler)c.getTransferHandler();</span>
+<span class="nc" id="L146">            Transferable t = th.createTransferable(c);</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">            if (t == null) {</span>
+<span class="nc" id="L148">                logger.warning(&quot;Unable to create transferable for: &quot; + dge);</span>
+<span class="nc" id="L149">                th.exportDone(c, null, NONE);</span>
+<span class="nc" id="L150">                return;</span>
+            }
+
+<span class="nc" id="L153">            this.scrolls = c.getAutoscrolls();</span>
+<span class="nc" id="L154">            c.setAutoscrolls(false);</span>
+            try {
+<span class="nc" id="L156">                Cursor cursor = getCursor(c);</span>
+<span class="nc" id="L157">                dge.startDrag(cursor, t, this);</span>
+<span class="nc" id="L158">            } catch (RuntimeException re) {</span>
+<span class="nc" id="L159">                c.setAutoscrolls(this.scrolls);</span>
+<span class="nc" id="L160">            }</span>
+<span class="nc" id="L161">        }</span>
+
+
+        // Interface DragSourceListener
+
+        /**
+         * {@inheritDoc}
+         */
+<span class="nc" id="L169">        public void dragEnter(DragSourceDragEvent dsde) {}</span>
+
+        /**
+         * {@inheritDoc}
+         */
+<span class="nc" id="L174">        public void dragOver(DragSourceDragEvent dsde) {}</span>
+
+        /**
+         * {@inheritDoc}
+         */
+<span class="nc" id="L179">        public void dragExit(DragSourceEvent dsde) {}</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        public void dragDropEnd(DragSourceDropEvent dsde) {
+<span class="nc" id="L185">            DragSourceContext dsc = dsde.getDragSourceContext();</span>
+<span class="nc" id="L186">            JComponent c = (JComponent)dsc.getComponent();</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">            if (c.getTransferHandler() instanceof DefaultTransferHandler) {</span>
+<span class="nc" id="L188">                DefaultTransferHandler dth</span>
+<span class="nc" id="L189">                    = (DefaultTransferHandler)(c.getTransferHandler());</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">                if (dsde.getDropSuccess()) {</span>
+<span class="nc" id="L191">                    dth.exportDone(c, dsc.getTransferable(),</span>
+<span class="nc" id="L192">                                   dsde.getDropAction());</span>
+                } else {
+<span class="nc" id="L194">                    dth.exportDone(c, null, NONE);</span>
+                }
+<span class="nc" id="L196">                c.setAutoscrolls(this.scrolls);</span>
+            }
+<span class="nc" id="L198">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        public void dropActionChanged(DragSourceDragEvent dsde) {
+<span class="nc" id="L204">            DragSourceContext dsc = dsde.getDragSourceContext();</span>
+<span class="nc" id="L205">            JComponent comp = (JComponent)dsc.getComponent();</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">            updatePartialChosen(comp, dsde.getUserAction() == MOVE);</span>
+<span class="nc" id="L207">        }</span>
+    }
+
+    private static class FreeColDragGestureRecognizer
+        extends DragGestureRecognizer {
+
+        FreeColDragGestureRecognizer(DragGestureListener dgl) {
+<span class="nc" id="L214">            super(DragSource.getDefaultDragSource(), null, NONE, dgl);</span>
+<span class="nc" id="L215">        }</span>
+
+        public void gestured(JComponent c, MouseEvent e, int srcActions,
+                             int action) {
+<span class="nc" id="L219">            setComponent(c);</span>
+<span class="nc" id="L220">            setSourceActions(srcActions);</span>
+<span class="nc" id="L221">            appendEvent(e);</span>
+
+<span class="nc" id="L223">            fireDragGestureRecognized(action, e.getPoint());</span>
+<span class="nc" id="L224">        }</span>
+
+        // Implement DragGestureRecognizer
+
+        /**
+         * {@inheritDoc}
+         */
+<span class="nc" id="L231">        protected void registerListeners() {}</span>
+
+        /**
+         * {@inheritDoc}
+         */
+<span class="nc" id="L236">        protected void unregisterListeners() {}</span>
+    }
+
+
+<span class="nc" id="L240">    public static final DataFlavor flavor</span>
+        = new DataFlavor(ImageSelection.class, &quot;ImageSelection&quot;);
+
+<span class="nc" id="L243">    private static final FreeColDragGestureRecognizer recognizer</span>
+        = new FreeColDragGestureRecognizer(new FreeColDragHandler());
+
+    /** The enclosing client. */
+    private final FreeColClient freeColClient;
+
+    /** The panel where the transfer begins. */
+    private final FreeColPanel parentPanel;
+
+
+    /**
+     * Creates the default FreeCol transfer handler.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param parentPanel The layered pane that holds all kinds of information.
+     */
+    public DefaultTransferHandler(FreeColClient freeColClient,
+<span class="nc" id="L260">                                  FreeColPanel parentPanel) {</span>
+<span class="nc" id="L261">        this.freeColClient = freeColClient;</span>
+<span class="nc" id="L262">        this.parentPanel = parentPanel;</span>
+<span class="nc" id="L263">    }</span>
+
+
+    private JComponent getDropTarget(JComponent component) {
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        return (component instanceof DropTarget)</span>
+<span class="nc" id="L268">            ? component</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">            : (component.getParent() instanceof JComponent)</span>
+<span class="nc" id="L270">            ? getDropTarget((JComponent)component.getParent())</span>
+<span class="nc" id="L271">            : null;</span>
+    }
+
+    private void restoreSelection(UnitLabel oldSelectedUnit) {
+<span class="nc bnc" id="L275" title="All 2 branches missed.">        if (oldSelectedUnit != null</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">            &amp;&amp; oldSelectedUnit.getParent() instanceof InPortPanel) {</span>
+<span class="nc" id="L277">            ((PortPanel) parentPanel).setSelectedUnitLabel(oldSelectedUnit);</span>
+        }
+<span class="nc" id="L279">    }</span>
+
+    private boolean equipUnitIfPossible(UnitLabel unitLabel,
+                                        AbstractGoods goods) {
+<span class="nc" id="L283">        final Unit unit = unitLabel.getUnit();</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        if (!unit.hasAbility(Ability.CAN_BE_EQUIPPED)</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">            || unit.getRole().hasAbility(Ability.ESTABLISH_MISSION)) {</span>
+            // Do not equip missionaries.  The test below will succeed
+            // when dragging incompatible goods (anything:-) because
+            // there is no actual missionary equipment.
+<span class="nc" id="L289">            return false;</span>
+        }
+
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        for (Role role : transform(unit.getAvailableRoles(null),</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">                                   r -&gt; !r.isDefaultRole())) {</span>
+<span class="nc" id="L294">            List&lt;AbstractGoods&gt; required = unit.getGoodsDifference(role, 1);</span>
+            int count;
+<span class="nc bnc" id="L296" title="All 2 branches missed.">            if (required.size() == 1</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">                &amp;&amp; required.get(0).getType() == goods.getType()</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">                &amp;&amp; (count = Math.min(role.getMaximumCount(),</span>
+<span class="nc" id="L299">                        goods.getAmount() / required.get(0).getAmount())) &gt; 0</span>
+<span class="nc bnc" id="L300" title="All 4 branches missed.">                &amp;&amp; (role != unit.getRole() || count != unit.getRoleCount())) {</span>
+<span class="nc" id="L301">                freeColClient.getInGameController()</span>
+<span class="nc" id="L302">                    .equipUnitForRole(unit, role, count);</span>
+<span class="nc" id="L303">                unitLabel.updateIcon();</span>
+<span class="nc" id="L304">                return true;</span>
+            }
+<span class="nc" id="L306">        }</span>
+<span class="nc" id="L307">        return false;</span>
+    }
+
+    /**
+     * Displays an input dialog box where the user should specify a
+     * goods transfer amount.
+     *
+     * @param goodsType The {@code GoodsType} to transfer.
+     * @param available The amount of goods available.
+     * @param defaultAmount The default amount of goods to offer.
+     * @param needToPay If true limit by available funds.
+     * @return The selected amount of goods.
+     */
+    private int getAmount(GoodsType goodsType, int available,
+                          int defaultAmount, boolean needToPay) {
+<span class="nc" id="L322">        return this.freeColClient.getGUI()</span>
+<span class="nc" id="L323">            .showSelectAmountDialog(goodsType, available, defaultAmount,</span>
+                                    needToPay);
+    }
+
+    /**
+     * Complain about import failure.
+     *
+     * @param comp The importing component.
+     * @param data A description of the data being imported.
+     * @return Always false.
+     */
+    private boolean importFail(JComponent comp, String data) {
+<span class="nc" id="L335">        logger.warning(&quot;Transfer of &quot; + data + &quot; invalid at: &quot; + comp);</span>
+<span class="nc" id="L336">        return false;</span>
+    }
+
+    /**
+     * Import goods type specified by label to a component.
+     *
+     * @param comp The component to import to.
+     * @param label The {@code GoodsTypeLabel} specifying the goods.
+     * @return True if the import succeeds.
+     */
+    private boolean importGoodsType(JComponent comp, GoodsTypeLabel label) {
+<span class="nc bnc" id="L347" title="All 2 branches missed.">        if (comp instanceof GoodsTypePanel) {</span>
+<span class="nc" id="L348">            GoodsTypePanel gtp = (GoodsTypePanel)comp;</span>
+<span class="nc" id="L349">            GoodsType gt = label.getType();</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">            if (!gtp.accepts(gt)) {</span>
+<span class="nc" id="L351">                return importFail(gtp, &quot;unacceptable goods type: &quot; + gt);</span>
+            }
+<span class="nc bnc" id="L353" title="All 2 branches missed.">            return gtp.add(label, false) != null;</span>
+        }
+<span class="nc" id="L355">        return false;</span>
+    }
+            
+    /**
+     * Import goods specified by label to a component.
+     *
+     * @param comp The component to import to.
+     * @param label The {@code GoodsLabel} specifying the goods.
+     * @param oldSelectedUnit A label for the old {@code Unit} to restore
+     *     selection to.
+     * @return True if the import succeeds.
+     */
+    private boolean importGoods(JComponent comp, GoodsLabel label,
+                                UnitLabel oldSelectedUnit) {
+<span class="nc" id="L369">        Goods goods = label.getGoods();</span>
+        
+<span class="nc bnc" id="L371" title="All 4 branches missed.">        if (!(comp instanceof UnitLabel) &amp;&amp; !(comp instanceof DropTarget)) {</span>
+<span class="nc" id="L372">            return importFail(comp, &quot;goods&quot;);</span>
+        }
+
+        // Special handling for goods amount.
+<span class="nc bnc" id="L376" title="All 2 branches missed.">        if (label.isSuperFullChosen()) {</span>
+<span class="nc bnc" id="L377" title="All 2 branches missed.">            if (goods.getLocation() instanceof GoodsLocation) {</span>
+<span class="nc" id="L378">                GoodsLocation loc = (GoodsLocation)goods.getLocation();</span>
+<span class="nc" id="L379">                int amountToTransfer = loc.getGoodsCount(goods.getType());</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">                if (comp instanceof DropTarget) {</span>
+<span class="nc" id="L381">                    DropTarget dt = (DropTarget) comp;</span>
+<span class="nc bnc" id="L382" title="All 2 branches missed.">                    if (dt instanceof CargoPanel) {</span>
+<span class="nc" id="L383">                        CargoPanel cp = (CargoPanel) dt;</span>
+<span class="nc" id="L384">                        Unit carrier = cp.getCarrier();</span>
+<span class="nc" id="L385">                        int spaceTaken = carrier.getCargoSpaceTaken();</span>
+<span class="nc" id="L386">                        int availableHolds = carrier.getCargoCapacity() - spaceTaken;</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">                        if (amountToTransfer &gt; GoodsContainer.CARGO_SIZE * availableHolds) {</span>
+<span class="nc" id="L388">                            amountToTransfer = GoodsContainer.CARGO_SIZE * availableHolds;</span>
+<span class="nc" id="L389">                            label.setAmount(amountToTransfer);</span>
+                        }
+                    }
+                }
+<span class="nc" id="L393">            }</span>
+<span class="nc bnc" id="L394" title="All 2 branches missed.">        } else if (label.isPartialChosen()) {</span>
+<span class="nc" id="L395">            int defaultAmount = goods.getAmount();</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">            if (goods.getLocation() instanceof GoodsLocation) {</span>
+<span class="nc" id="L397">                GoodsLocation loc = (GoodsLocation)goods.getLocation();</span>
+<span class="nc bnc" id="L398" title="All 2 branches missed.">                if (goods.getAmount() &gt; loc.getGoodsCapacity()) {</span>
+                    // If over capacity, favour the amount that would
+                    // correct the problem.
+<span class="nc" id="L401">                    defaultAmount = Math.min(GoodsContainer.CARGO_SIZE,</span>
+<span class="nc" id="L402">                        goods.getAmount() - loc.getGoodsCapacity());</span>
+                }
+            }
+<span class="nc bnc" id="L405" title="All 2 branches missed.">            if (comp instanceof DropTarget) {</span>
+<span class="nc" id="L406">                int alt = ((DropTarget)comp).suggested(goods.getType());</span>
+<span class="nc bnc" id="L407" title="All 4 branches missed.">                if (alt &gt;= 0 &amp;&amp; alt &lt; defaultAmount) defaultAmount = alt;</span>
+            }
+            
+<span class="nc bnc" id="L410" title="All 2 branches missed.">            if (comp instanceof DropTarget) {</span>
+                // Verifies that goods can be imported before showing the dialog.
+<span class="nc" id="L412">                final int origAmount = goods.getAmount();</span>
+<span class="nc" id="L413">                DropTarget target = (DropTarget) comp;</span>
+<span class="nc" id="L414">                goods.setAmount(defaultAmount);</span>
+<span class="nc bnc" id="L415" title="All 4 branches missed.">                if (defaultAmount &lt;= 0 || !target.accepts(goods)) {</span>
+<span class="nc" id="L416">                    return importFail(comp, &quot;unacceptable goods pre dialog (&quot; + goods + &quot;)&quot;);</span>
+                }
+<span class="nc" id="L418">                goods.setAmount(origAmount);</span>
+            }
+<span class="nc" id="L420">            final int amount = getAmount(goods.getType(), goods.getAmount(), defaultAmount, false);</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">            if (amount &lt;= 0) {</span>
+<span class="nc" id="L422">                return importFail(comp, &quot;weird goods amount (&quot; + amount + &quot;)&quot;);</span>
+            }
+<span class="nc" id="L424">            goods.setAmount(amount);</span>
+<span class="nc bnc" id="L425" title="All 2 branches missed.">        } else if (label.isFullChosen()) {</span>
+            ; // Amount correct
+<span class="nc bnc" id="L427" title="All 2 branches missed.">        } else if (goods.getAmount() &gt; GoodsContainer.CARGO_SIZE) {</span>
+<span class="nc" id="L428">            goods.setAmount(GoodsContainer.CARGO_SIZE);</span>
+        }
+
+<span class="nc bnc" id="L431" title="All 2 branches missed.">        if (comp instanceof UnitLabel) {</span>
+<span class="nc" id="L432">            return equipUnitIfPossible((UnitLabel)comp, goods);</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">        } else if (comp instanceof DropTarget) {</span>
+<span class="nc" id="L434">            DropTarget target = (DropTarget)comp;</span>
+<span class="nc bnc" id="L435" title="All 2 branches missed.">            if (!target.accepts(goods)) {</span>
+<span class="nc" id="L436">                return importFail(comp, &quot;unacceptable goods (&quot; + goods + &quot;)&quot;);</span>
+            }
+<span class="nc" id="L438">            target.add(label, true);</span>
+<span class="nc" id="L439">            restoreSelection(oldSelectedUnit);</span>
+<span class="nc" id="L440">            comp.revalidate();</span>
+<span class="nc" id="L441">            return true;</span>
+        }
+<span class="nc" id="L443">        return importFail(comp, &quot;goods&quot;);</span>
+    }
+
+    /**
+     * Import from a market specified by label to a component.
+     *
+     * @param comp The component to import to.
+     * @param label The {@code MarketLabel} specifying the goods.
+     * @return True if the import succeeds.
+     */
+    private boolean importMarket(JComponent comp, MarketLabel label) {
+<span class="nc bnc" id="L454" title="All 4 branches missed.">        if (!(comp instanceof UnitLabel) &amp;&amp; !(comp instanceof CargoPanel)) {</span>
+<span class="nc" id="L455">            return false;</span>
+        }
+        
+<span class="nc bnc" id="L458" title="All 2 branches missed.">        if (label.isPartialChosen()) {</span>
+<span class="nc bnc" id="L459" title="All 2 branches missed.">            if (comp instanceof CargoPanel) {</span>
+                // Verifies that goods can be imported before showing the dialog.
+<span class="nc" id="L461">                final CargoPanel cargoPanel = (CargoPanel) comp;</span>
+<span class="nc bnc" id="L462" title="All 2 branches missed.">                if (cargoPanel.getCarrier() == null) {</span>
+<span class="nc" id="L463">                    return false;</span>
+                }
+<span class="nc bnc" id="L465" title="All 2 branches missed.">                if (cargoPanel.getCarrier().getLoadableAmount(label.getType()) &lt;= 0) {</span>
+<span class="nc" id="L466">                    return false;</span>
+                }
+            }
+            
+<span class="nc" id="L470">            int amount = getAmount(label.getType(), label.getAmount(), -1, true);</span>
+<span class="nc bnc" id="L471" title="All 2 branches missed.">            if (amount &lt;= 0) return false;</span>
+<span class="nc" id="L472">            label.setAmount(amount);</span>
+        }
+<span class="nc bnc" id="L474" title="All 2 branches missed.">        if (comp instanceof UnitLabel) {</span>
+<span class="nc bnc" id="L475" title="All 2 branches missed.">            if (equipUnitIfPossible((UnitLabel)comp,</span>
+<span class="nc" id="L476">                                    label.getAbstractGoods())) return true;</span>
+            // Try again with parent
+<span class="nc bnc" id="L478" title="All 2 branches missed.">            if (comp.getParent() instanceof JComponent) {</span>
+<span class="nc" id="L479">                comp = (JComponent)comp.getParent();</span>
+            } else {
+<span class="nc" id="L481">                return importFail(comp, &quot;equipping market goods&quot;);</span>
+            }
+        }
+<span class="nc bnc" id="L484" title="All 2 branches missed.">        if (comp instanceof CargoPanel) {</span>
+<span class="nc" id="L485">            ((CargoPanel)comp).add(label, true);</span>
+<span class="nc" id="L486">            comp.revalidate();</span>
+<span class="nc" id="L487">            return true;</span>
+        }
+<span class="nc" id="L489">        return importFail(comp, &quot;market goods&quot;);</span>
+    }
+
+    /**
+     * Import a unit specified by its label to a component.
+     *
+     * @param comp The component to import to.
+     * @param label The {@code UnitLabel} specifying the unit.
+     * @param oldSelectedUnit A label for the old {@code Unit} to restore
+     *     selection to.
+     * @return True if the import succeeds.
+     */
+    private boolean importUnit(JComponent comp, UnitLabel label,
+                               UnitLabel oldSelectedUnit) {
+<span class="nc bnc" id="L503" title="All 2 branches missed.">        if (!(comp instanceof DropTarget)) return importFail(comp, &quot;unit&quot;);</span>
+<span class="nc" id="L504">        final DropTarget target = (DropTarget)comp;</span>
+
+        // Check if the unit can be dragged to comp.
+<span class="nc" id="L507">        final Unit unit = label.getUnit();</span>
+<span class="nc bnc" id="L508" title="All 2 branches missed.">        if (!target.accepts(unit)) {</span>
+<span class="nc" id="L509">            return importFail(comp, &quot;unacceptable unit (&quot; + unit + &quot;)&quot;);</span>
+        }
+
+        // OK, add it.
+<span class="nc" id="L513">        target.add(label, true);</span>
+
+        // Update unit selection.
+        // New unit selection has already been taken care of
+        // if this unit was moved to ToAmericaPanel
+<span class="nc" id="L518">        restoreSelection(oldSelectedUnit);</span>
+<span class="nc" id="L519">        comp.revalidate();</span>
+<span class="nc" id="L520">        return true;</span>
+    }
+
+    // Override TransferHandler
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canImport(JComponent comp, DataFlavor[] flavor) {
+<span class="nc bnc" id="L530" title="All 4 branches missed.">        return (comp instanceof JPanel || comp instanceof JLabel)</span>
+<span class="nc bnc" id="L531" title="All 2 branches missed.">            &amp;&amp; any(flavor, matchKeyEquals(DefaultTransferHandler.flavor));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Transferable createTransferable(JComponent comp) {
+<span class="nc bnc" id="L539" title="All 2 branches missed.">        return (comp instanceof JLabel)</span>
+<span class="nc" id="L540">            ? new ImageSelection((JLabel)comp)</span>
+<span class="nc" id="L541">            : null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void exportAsDrag(JComponent comp, InputEvent e, int action) {
+<span class="nc" id="L549">        final int srcActions = getSourceActions(comp);</span>
+<span class="nc bnc" id="L550" title="All 2 branches missed.">        final int dragAction = (e instanceof MouseEvent)</span>
+<span class="nc" id="L551">            ? (srcActions &amp; action)</span>
+<span class="nc" id="L552">            : NONE;</span>
+<span class="nc bnc" id="L553" title="All 2 branches missed.">        if (dragAction != NONE) { // Use the recognizer</span>
+<span class="nc" id="L554">            recognizer.gestured(comp, (MouseEvent)e, srcActions, dragAction);</span>
+        } else {
+<span class="nc" id="L556">            exportDone(comp, null, NONE);</span>
+        }
+<span class="nc" id="L558">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getSourceActions(JComponent comp) {
+<span class="nc" id="L565">        return COPY_OR_MOVE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean importData(JComponent comp, Transferable t) {
+<span class="nc bnc" id="L573" title="All 2 branches missed.">        if (!t.isDataFlavorSupported(DefaultTransferHandler.flavor)) {</span>
+<span class="nc" id="L574">            return importFail(comp, &quot;data flavor&quot;);</span>
+        }
+
+        boolean ret;
+        // This variable is used to temporarily keep the old
+        // selected unit, while moving cargo from one carrier to another:
+<span class="nc" id="L580">        UnitLabel oldSelectedUnit = null;</span>
+        try {
+            // Get the data to transfer.
+<span class="nc" id="L583">            JLabel data = (JLabel)t.getTransferData(DefaultTransferHandler.flavor);</span>
+            // Do not allow a transferable to be dropped upon itself:
+<span class="nc bnc" id="L585" title="All 2 branches missed.">            if (comp == data) return false;</span>
+
+            // Special cases when dropping onto other labels.
+<span class="nc bnc" id="L588" title="All 4 branches missed.">            if (comp instanceof AbstractGoodsLabel</span>
+                || comp instanceof GoodsTypeLabel) {
+                // We probably intended to drop on the enclosing parent panel
+<span class="nc" id="L591">                comp = getDropTarget(comp);</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">            } else if (comp instanceof UnitLabel) {</span>
+<span class="nc" id="L593">                UnitLabel unitLabel = (UnitLabel)comp;</span>
+                /**
+                 * 1. If a unit or goods are dropped onto a carrier in port
+                 *    then the unit/goods is added and the carrier selected.
+                 * 2. If goods are dropped onto a non-carrier unit
+                 *    and it can be equipped
+                 *    and the goods can be converted to equipment
+                 *    then equip the unit.
+                 * 3. Otherwise assume the parent panel is the target
+                 */
+<span class="nc bnc" id="L603" title="All 2 branches missed.">                if (unitLabel.getUnit().isCarrier()</span>
+<span class="nc bnc" id="L604" title="All 4 branches missed.">                    &amp;&amp; unitLabel.getParent() instanceof InPortPanel</span>
+                    &amp;&amp; parentPanel instanceof PortPanel) {
+<span class="nc" id="L606">                    PortPanel portPanel = (PortPanel) parentPanel;</span>
+<span class="nc bnc" id="L607" title="All 2 branches missed.">                    if (data instanceof Draggable</span>
+<span class="nc bnc" id="L608" title="All 2 branches missed.">                        &amp;&amp; ((Draggable)data).isOnCarrier()) {</span>
+<span class="nc" id="L609">                        oldSelectedUnit = portPanel.getSelectedUnitLabel();</span>
+                    }
+<span class="nc" id="L611">                    portPanel.setSelectedUnitLabel(unitLabel);</span>
+<span class="nc" id="L612">                    comp = portPanel.getCargoPanel();</span>
+<span class="nc bnc" id="L613" title="All 2 branches missed.">                } else if (data instanceof AbstractGoodsLabel</span>
+<span class="nc bnc" id="L614" title="All 2 branches missed.">                    &amp;&amp; unitLabel.getUnit().hasAbility(Ability.CAN_BE_EQUIPPED)) {</span>
+                    // don't do anything before partial amount has been checked
+                } else {
+<span class="nc" id="L617">                    comp = getDropTarget(comp);</span>
+                }
+            }
+
+<span class="nc bnc" id="L621" title="All 2 branches missed.">            ret = (data.getParent() == comp)</span>
+<span class="nc" id="L622">                ? importFail(comp, &quot;data-already-present&quot;)</span>
+<span class="nc bnc" id="L623" title="All 2 branches missed.">                : (data instanceof GoodsTypeLabel)</span>
+<span class="nc" id="L624">                ? importGoodsType(comp, (GoodsTypeLabel)data)</span>
+<span class="nc bnc" id="L625" title="All 2 branches missed.">                : (data instanceof GoodsLabel)</span>
+<span class="nc" id="L626">                ? importGoods(comp, (GoodsLabel)data, oldSelectedUnit)</span>
+<span class="nc bnc" id="L627" title="All 2 branches missed.">                : (data instanceof MarketLabel)</span>
+<span class="nc" id="L628">                ? importMarket(comp, (MarketLabel)data)</span>
+<span class="nc bnc" id="L629" title="All 2 branches missed.">                : (data instanceof UnitLabel)</span>
+<span class="nc" id="L630">                ? importUnit(comp, (UnitLabel)data, oldSelectedUnit)</span>
+<span class="nc" id="L631">                : importFail(comp, data.toString());</span>
+<span class="nc" id="L632">        } catch (Exception e) { // FIXME: Suggest a reconnect?</span>
+<span class="nc" id="L633">            ret = importFail(comp, &quot;crash: &quot; + e);</span>
+<span class="nc" id="L634">        }</span>
+<span class="nc" id="L635">        return ret;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

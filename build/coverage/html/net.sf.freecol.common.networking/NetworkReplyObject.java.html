@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NetworkReplyObject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">NetworkReplyObject.java</span></div><h1>NetworkReplyObject.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import java.util.concurrent.TimeoutException;
+
+/**
+ * Class for storing a network response.  If the response has not been
+ * set when {@link #getResponse} has been called, this method will
+ * block until {@link #setResponse} is called.
+ */
+public class NetworkReplyObject {
+
+<span class="fc" id="L31">    private static int ONE_SECOND = 1000; // 1000ms</span>
+
+    /** A unique identifier for the message to wait for. */
+    private final int networkReplyId;
+
+    /** The response from the network. */
+    private Object response;
+
+    /**
+     * A gating flag that shows when the response is valid.  Starts false,
+     * becomes true in {@link #setResponse}.
+     */
+    private volatile boolean responseGiven;
+
+
+    /**
+     * The constructor.
+     *
+     * @param networkReplyId The unique identifier for the network message
+     *                       this object will store.
+     */
+<span class="fc" id="L52">    public NetworkReplyObject(int networkReplyId) {</span>
+<span class="fc" id="L53">        this.networkReplyId = networkReplyId;</span>
+<span class="fc" id="L54">        this.response = null;</span>
+<span class="fc" id="L55">        this.responseGiven = false;</span>
+<span class="fc" id="L56">    }</span>
+
+    /**
+     * Gets the unique identifier for the network message this
+     * object will store.
+     *
+     * @return the unique identifier.
+     */
+    public int getNetworkReplyId() {
+<span class="nc" id="L65">        return this.networkReplyId;</span>
+    }
+
+    /**
+     * Gets the response. If the response has not been set, this method
+     * will block until {@link #setResponse} has been called.
+     *
+     * @param timeout A timeout in milliseconds, after which a
+     *      {@code TimeoutException} gets thrown when waiting for
+     *      a reply.
+     * @return the response.
+     * @throws TimeoutException when the timeout is reached.
+     */
+    public synchronized Object getResponse(long timeout) throws TimeoutException {
+<span class="fc" id="L79">        final long end = System.currentTimeMillis() + timeout;</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        while (!this.responseGiven) {</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if (System.currentTimeMillis() &gt; end) {</span>
+<span class="nc" id="L82">                throw new TimeoutException(&quot;The network request timed out: &quot; + timeout);</span>
+            }
+            try {
+<span class="fc" id="L85">                wait(ONE_SECOND);</span>
+<span class="pc" id="L86">            } catch (InterruptedException ie) {}</span>
+        }
+<span class="fc" id="L88">        return this.response;</span>
+    }
+    
+    /**
+     * Sets the response and continues {@code getResponse()}.
+     *
+     * @param response The response.
+     * @see #getResponse
+     */
+    public synchronized void setResponse(Object response) {
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (!this.responseGiven) {</span>
+<span class="fc" id="L99">            this.response = response;</span>
+<span class="fc" id="L100">            this.responseGiven = true;</span>
+<span class="fc" id="L101">            notifyAll();</span>
+        }
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * Interrupt the wait for response.
+     */
+    public void interrupt() {
+<span class="nc" id="L109">        setResponse(null);</span>
+<span class="nc" id="L110">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

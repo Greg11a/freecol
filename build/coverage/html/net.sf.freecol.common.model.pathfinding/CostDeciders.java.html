@@ -1,0 +1,394 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CostDeciders.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model.pathfinding</a> &gt; <span class="el_source">CostDeciders.java</span></div><h1>CostDeciders.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model.pathfinding;
+
+import java.util.function.Predicate;
+
+import net.sf.freecol.common.model.Ability;
+import static net.sf.freecol.common.model.Constants.*;
+import net.sf.freecol.common.model.Europe;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+
+/**
+ * Cost deciders to be used while finding paths.
+ */
+<span class="nc" id="L38">public final class CostDeciders {</span>
+
+    /**
+     * A {@code CostDecider} that costs unit moves normally.
+     */
+<span class="fc" id="L43">    private static final CostDecider avoidIllegalCostDecider</span>
+        = new BaseCostDecider();
+
+
+    /**
+     * A trivial {@code CostDecider} that only considers the
+     * number of locations visited when determining cost.  Totally ignores
+     * the legality of the move.
+     */
+<span class="fc" id="L52">    private static final CostDecider trivialCostDecider = new CostDecider() {</span>
+            @Override
+            public int getCost(Unit unit, Location oldLocation,
+                               Location newLocation, int movesLeft) {
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">                return (newLocation == null) ? ILLEGAL_MOVE</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">                    : (newLocation instanceof Europe) ? 1</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                    : (newLocation.getTile() == null) ? ILLEGAL_MOVE</span>
+<span class="fc" id="L59">                    : 1;</span>
+            }
+            @Override
+<span class="fc" id="L62">            public int getMovesLeft() { return 0; }</span>
+            @Override
+<span class="fc" id="L64">            public int getNewTurns() { return 0; }</span>
+        };
+
+    /**
+     * A simple {@code CostDecider} that considers only the base tile
+     * cost.  Totally ignores the legality of the move as this is used
+     * when considering paths to temporarily blocked goals.
+     */
+    private static class TileCostDecider extends BaseCostDecider {
+
+        @Override
+        public int getCost(Unit unit, Location oldLocation,
+                           Location newLocation, int movesLeft) {
+<span class="pc bpc" id="L77" title="2 of 4 branches missed.">            if (oldLocation == null || newLocation == null)</span>
+<span class="nc" id="L78">                return ILLEGAL_MOVE;</span>
+<span class="pc bpc" id="L79" title="2 of 4 branches missed.">            if (newLocation instanceof Europe || oldLocation instanceof Europe)</span>
+<span class="nc" id="L80">                return 1;</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if (newLocation.getTile() == null</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">                || oldLocation.getTile() == null) return ILLEGAL_MOVE;</span>
+<span class="fc" id="L83">            return adjust(unit, oldLocation.getTile(), newLocation.getTile(),</span>
+                          movesLeft);
+        }
+    };
+   
+
+    /**
+     * A {@code CostDecider} that only considers the number of legal
+     * tiles visited when determining the cost.
+     */
+<span class="fc" id="L93">    private static final CostDecider legalTileCountDecider = new CostDecider() {</span>
+            @Override
+            public int getCost(Unit unit, Location oldLocation,
+                               Location newLocation, int movesLeft) {
+<span class="nc bnc" id="L97" title="All 2 branches missed.">                return (newLocation == null) ? ILLEGAL_MOVE</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">                    : (newLocation instanceof Europe) ? 1</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">                    : (newLocation.getTile() == null) ? ILLEGAL_MOVE</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">                    : (unit.isTileAccessible(newLocation.getTile())) ? 1</span>
+<span class="nc" id="L101">                    : ILLEGAL_MOVE;</span>
+            }
+            @Override
+<span class="nc" id="L104">            public int getMovesLeft() { return 0; }</span>
+            @Override
+<span class="nc" id="L106">            public int getNewTurns() { return 1; }</span>
+        };
+
+
+    /**
+     * A {@code CostDecider} that uses server-side knowledge of where
+     * a player has explored to limit searches.
+     */
+    private static class ServerBaseCostDecider extends BaseCostDecider {
+        @Override
+        public int getCost(Unit unit, Location oldLocation,
+                           Location newLocation, int movesLeft) {
+<span class="nc" id="L118">            int cost = super.getCost(unit, oldLocation, newLocation, movesLeft);</span>
+<span class="nc bnc" id="L119" title="All 4 branches missed.">            if (cost != ILLEGAL_MOVE &amp;&amp; cost != INFINITY) {</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                if (newLocation instanceof Europe) {</span>
+                    ; // ok
+<span class="nc bnc" id="L122" title="All 2 branches missed.">                } else if (!newLocation.getTile().isExploredBy(unit.getOwner())) {</span>
+<span class="nc" id="L123">                    return ILLEGAL_MOVE;</span>
+                }
+            }
+<span class="nc" id="L126">            return cost;</span>
+        }
+    };
+    /**
+     * A server-side {@code CostDecider} that costs unit moves normally.
+     */
+    private static final CostDecider
+<span class="fc" id="L133">        serverAvoidIllegalCostDecider = new ServerBaseCostDecider();</span>
+
+
+    /**
+     * A {@code CostDecider} that costs unit moves normally while
+     * avoiding other player settlements.
+     */
+    private static class AvoidSettlementsCostDecider extends BaseCostDecider {
+        @Override
+        public int getCost(Unit unit, Location oldLocation,
+                           Location newLocation, int movesLeft) {
+<span class="fc" id="L144">            int cost = super.getCost(unit, oldLocation, newLocation, movesLeft);</span>
+<span class="pc bpc" id="L145" title="1 of 4 branches missed.">            if (cost != ILLEGAL_MOVE &amp;&amp; cost != INFINITY) {</span>
+<span class="fc" id="L146">                Settlement settlement = newLocation.getSettlement();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">                if (settlement != null</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">                    &amp;&amp; settlement.getOwner() != unit.getOwner()) {</span>
+<span class="nc" id="L149">                    return ILLEGAL_MOVE;</span>
+                }
+            }
+<span class="fc" id="L152">            return cost;</span>
+        }
+    };
+    /**
+     * An instance of the cost decider for avoiding settlements.
+     */
+    private static final AvoidSettlementsCostDecider
+<span class="fc" id="L159">        avoidSettlementsCostDecider = new AvoidSettlementsCostDecider();</span>
+
+
+    /**
+     * A {@code CostDecider} that costs unit moves normally while
+     * avoiding other player settlements and units, and does not explore
+     * if it is trading.
+     */
+    private static class AvoidSettlementsAndBlockingUnitsCostDecider
+        extends AvoidSettlementsCostDecider {
+        @Override
+        public int getCost(Unit unit, Location oldLocation,
+                           Location newLocation, int movesLeft) {
+<span class="fc" id="L172">            int cost = super.getCost(unit, oldLocation, newLocation, movesLeft);</span>
+<span class="fc" id="L173">            Tile tile = newLocation.getTile();</span>
+<span class="pc bpc" id="L174" title="2 of 6 branches missed.">            if (cost != ILLEGAL_MOVE &amp;&amp; cost != INFINITY</span>
+                &amp;&amp; tile != null) {
+<span class="fc" id="L176">                final Unit defender = tile.getFirstUnit();</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                if (defender != null</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">                    &amp;&amp; defender.getOwner() != unit.getOwner()) {</span>
+<span class="nc" id="L179">                    return ILLEGAL_MOVE;</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                } else if (unit.getTradeRoute() != null</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                    &amp;&amp; tile.hasLostCityRumour()) {</span>
+<span class="nc" id="L182">                    return ILLEGAL_MOVE;</span>
+                }
+            }
+<span class="fc" id="L185">            return cost;</span>
+        }
+    };
+
+    /**
+     * An instance of the settlement+unit avoiding cost decider.
+     */
+    private static final AvoidSettlementsAndBlockingUnitsCostDecider
+<span class="fc" id="L193">        avoidSettlementsAndBlockingUnitsCostDecider</span>
+        = new AvoidSettlementsAndBlockingUnitsCostDecider();
+
+
+    /**
+     * A {@code CostDecider} to avoid naval danger.
+     */
+    private static class AvoidNavalDangerCostDecider
+        extends AvoidSettlementsAndBlockingUnitsCostDecider {
+
+        // How much to increase cost due to bombardment threat.
+        private static final int DANGER_FACTOR = 2;
+
+        @Override
+        public int getCost(Unit unit, Location oldLocation,
+                           Location newLocation, int movesLeft) {
+<span class="fc" id="L209">            int cost = super.getCost(unit, oldLocation, newLocation, movesLeft);</span>
+<span class="fc" id="L210">            Tile tile = newLocation.getTile();</span>
+<span class="pc bpc" id="L211" title="3 of 6 branches missed.">            if (cost != ILLEGAL_MOVE &amp;&amp; cost != INFINITY &amp;&amp; tile != null) {</span>
+                // Move might end if there is a credible naval
+                // threat in an adjacent tile.
+<span class="fc" id="L214">                final Player owner = unit.getOwner();</span>
+<span class="fc" id="L215">                final Predicate&lt;Unit&gt; threatPred = u -&gt;</span>
+<span class="pc bpc" id="L216" title="1 of 4 branches missed.">                    (!owner.owns(u) &amp;&amp; u.isNaval()</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                        &amp;&amp; (u.hasAbility(Ability.PIRACY)</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">                            || (u.getOwner().atWarWith(owner)</span>
+<span class="pc bnc" id="L219" title="All 2 branches missed.">                                &amp;&amp; u.isOffensiveUnit())));</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                if (any(flatten(tile.getSurroundingTiles(1,1), Tile::getUnits),</span>
+                        threatPred)) {
+<span class="fc" id="L222">                    cost += this.movesLeft;</span>
+<span class="fc" id="L223">                    this.movesLeft = 0;</span>
+<span class="fc" id="L224">                    this.newTurns++;</span>
+                }
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">                if (tile.isDangerousToShip(unit)) cost *= DANGER_FACTOR;</span>
+            }
+<span class="fc" id="L228">            return cost;</span>
+        }
+    };
+
+
+    // Public interface
+
+    /**
+     * Gets a composite cost decider composed of two or more
+     * individual cost deciders.  The result/s are determined by the
+     * cost decider which returns the highest cost, with an
+     * ILLEGAL_MOVE result dominating.
+     *
+     * @param cds A series (two minimum) of {@code CostDecider}s
+     *     to compose.
+     * @return A new {@code CostDecider} composed of the argument
+     *     cost deciders.
+     */
+    public static CostDecider getComposedCostDecider(final CostDecider... cds) {
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        if (cds.length &lt; 2) {</span>
+<span class="nc" id="L248">            throw new RuntimeException(&quot;Short CostDecider list: &quot; + cds.length);</span>
+        }
+
+<span class="nc" id="L251">        return new CostDecider() {</span>
+
+<span class="nc" id="L253">            private final CostDecider[] costDeciders = cds;</span>
+<span class="nc" id="L254">            private int ret = -1;</span>
+<span class="nc" id="L255">            private int index = -1;</span>
+
+            @Override
+            public int getCost(Unit unit, Location oldLocation,
+                               Location newLocation, int movesLeft) {
+<span class="nc bnc" id="L260" title="All 2 branches missed.">                for (int i = 0; i &lt; costDeciders.length; i++) {</span>
+<span class="nc" id="L261">                    int cost = costDeciders[i].getCost(unit, oldLocation,</span>
+                                                       newLocation, movesLeft);
+<span class="nc bnc" id="L263" title="All 4 branches missed.">                    if (cost == ILLEGAL_MOVE || cost == INFINITY) {</span>
+<span class="nc" id="L264">                        index = i;</span>
+<span class="nc" id="L265">                        return ILLEGAL_MOVE;</span>
+                    }
+<span class="nc bnc" id="L267" title="All 2 branches missed.">                    if (cost &gt; ret) {</span>
+<span class="nc" id="L268">                        index = i;</span>
+<span class="nc" id="L269">                        ret = cost;</span>
+                    }
+                }
+<span class="nc" id="L272">                return ret;</span>
+            }
+
+            @Override
+            public int getMovesLeft() {
+<span class="nc bnc" id="L277" title="All 2 branches missed.">                return (index &lt; 0) ? 0 : costDeciders[index].getMovesLeft();</span>
+            }
+
+            @Override
+            public int getNewTurns() {
+<span class="nc bnc" id="L282" title="All 2 branches missed.">                return (index &lt; 0) ? 0 : costDeciders[index].getNewTurns();</span>
+            }
+        };
+    }
+
+    /**
+     * Selects a default {@code CostDecider} for the given unit
+     * depending on the owner of the unit and if the unit can attack
+     * other units.
+     *
+     * @param unit The {@code Unit} to choose a CostDecider for.
+     * @return A suitable {@code CostDecider}.
+     */
+    public static CostDecider defaultCostDeciderFor(final Unit unit) {
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">        return (unit == null)</span>
+<span class="nc" id="L297">            ? avoidIllegal()</span>
+<span class="pc bpc" id="L298" title="1 of 4 branches missed.">            : (unit.isNaval() &amp;&amp; !unit.isOffensiveUnit())</span>
+<span class="fc" id="L299">            ? avoidNavalDanger()</span>
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">            : (unit.isOffensiveUnit())</span>
+<span class="nc" id="L301">            ? avoidSettlements()</span>
+<span class="fc" id="L302">            : avoidSettlementsAndBlockingUnits();</span>
+    }
+
+    /**
+     * The trivial {@code CostDecider}.
+     *
+     * @return The {@code CostDecider}.
+     */
+    public static CostDecider numberOfTiles() {
+<span class="fc" id="L311">        return trivialCostDecider;</span>
+    }
+
+    /**
+     * Get a {@code CostDecider} that considers only tile cost, but otherwise
+     * ignores legality.
+     *
+     * This is useful for path finding to a tile that is temporarily blocked
+     * by another nations unit.
+     *
+     * @return The {@code CostDecider}.
+     */
+    public static CostDecider tileCost() {
+<span class="fc" id="L324">        return new TileCostDecider();</span>
+    }
+
+    /**
+     * A {@code CostDecider} only considering the number of legal tiles
+     * visited when determining the cost.
+     *
+     * @return The {@code CostDecider}.
+     */
+    public static CostDecider numberOfLegalTiles() {
+<span class="nc" id="L334">        return legalTileCountDecider;</span>
+    }
+
+    /**
+     * A {@code CostDecider} that returns the cost of moving
+     * across the terrain, excluding only illegal moves.
+     *
+     * @return The {@code CostDecider}.
+     */
+    public static CostDecider avoidIllegal() {
+<span class="fc" id="L344">        return avoidIllegalCostDecider;</span>
+    }
+
+    /**
+     * A {@code CostDecider} that returns the cost of moving
+     * across the terrain, excluding only illegal moves, and works correctly
+     * on the server side by refusing to consider locations unexplored by the
+     * player.
+     *
+     * @return The {@code CostDecider}.
+     */
+    public static CostDecider serverAvoidIllegal() {
+<span class="nc" id="L356">        return serverAvoidIllegalCostDecider;</span>
+    }
+
+    /**
+     * A {@code CostDecider} returning only the cost of moving
+     * across the terrain (no additional cost for blocking enemy units
+     * etc) but excluding settlements.
+     *
+     * Public for the test suite.
+     *
+     * @return The {@code CostDecider}.
+     */
+    public static CostDecider avoidSettlements() {
+<span class="fc" id="L369">        return avoidSettlementsCostDecider;</span>
+    }
+
+    /**
+     * A {@code CostDecider} for avoiding using locations which have
+     * blocking enemy units on them. Paths containing an enemy
+     * settlement are considered illegal, and so are paths where the
+     * next move has an enemy unit on it.
+     *
+     * @return The {@code CostDecider}.
+     */
+    public static CostDecider avoidSettlementsAndBlockingUnits() {
+<span class="fc" id="L381">        return avoidSettlementsAndBlockingUnitsCostDecider;</span>
+    }
+
+    /**
+     * A {@code CostDecider} for avoiding using locations which have
+     * blocking enemy units or expose naval units to bombardment.
+     *
+     * @return The {@code CostDecider}.
+     */
+    public static CostDecider avoidNavalDanger() {
+<span class="fc" id="L391">        return new AvoidNavalDangerCostDecider();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

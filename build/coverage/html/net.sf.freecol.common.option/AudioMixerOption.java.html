@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AudioMixerOption.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.option</a> &gt; <span class="el_source">AudioMixerOption.java</span></div><h1>AudioMixerOption.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.option;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.logging.*;
+
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.Mixer;
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Specification;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
+
+/**
+ * Option for selecting an audio mixer.
+ */
+public class AudioMixerOption extends AbstractOption&lt;AudioMixerOption.MixerWrapper&gt; {
+
+<span class="fc" id="L44">    private static Logger logger = Logger.getLogger(AudioMixerOption.class.getName());</span>
+
+    public static final String TAG = &quot;audioMixerOption&quot;;
+
+    /**
+     * A wrapper for the mixer, including the Mixer.Info including a
+     * potentially null value.
+     */
+    public static class MixerWrapper implements Comparable&lt;MixerWrapper&gt; {
+
+        /** The name for this wrapper. */
+        private final String name;
+
+        /** The mixer info for a mixer. */
+        private final Mixer.Info mixerInfo;
+
+
+<span class="fc" id="L61">        public MixerWrapper(String name, Mixer.Info mixerInfo) {</span>
+<span class="fc" id="L62">            this.name = name;</span>
+<span class="fc" id="L63">            this.mixerInfo = mixerInfo;</span>
+<span class="fc" id="L64">        }</span>
+
+        public String getKey() {
+<span class="fc" id="L67">            return name;</span>
+        }
+
+        public Mixer.Info getMixerInfo() {
+<span class="nc" id="L71">            return mixerInfo;</span>
+        }
+
+        // Implement Comparable&lt;MixerWrapper&gt;
+
+        @Override
+        public int compareTo(MixerWrapper mw) {
+<span class="fc" id="L78">            return getKey().compareTo(mw.getKey());</span>
+        }
+
+
+        // Override Object
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean equals(Object o) {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (this == o) return true;</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">            if (o instanceof MixerWrapper) {</span>
+<span class="nc" id="L91">                return ((MixerWrapper)o).getKey().equals(getKey());</span>
+            }
+<span class="fc" id="L93">            return false;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public int hashCode() {
+<span class="nc" id="L101">            return getKey().hashCode();</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public String toString() {
+<span class="nc" id="L109">            StringBuilder sb = new StringBuilder(32);</span>
+<span class="nc" id="L110">            sb.append(this.name).append('/')</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">                .append((this.mixerInfo == null) ? &quot;null&quot; : this.mixerInfo.toString());</span>
+<span class="nc" id="L112">            return sb.toString();</span>
+        }
+    }
+
+    /** Autodetect the mixer? */
+<span class="fc" id="L117">    public static final String AUTO_NAME</span>
+<span class="fc" id="L118">        = Messages.message(&quot;clientOptions.audio.audioMixer.automatic&quot;);</span>
+
+    /** The autodetected mixer. */
+    private static final Mixer AUTODETECTED_MIXER;
+    static {
+<span class="fc" id="L123">        Mixer mixer = null;</span>
+        try {
+<span class="fc" id="L125">            mixer = AudioSystem.getMixer(null);</span>
+<span class="nc" id="L126">        } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L127">            logger.log(Level.FINE, &quot;No Audio Mixer installed on the system.&quot;, e);</span>
+<span class="fc" id="L128">        }</span>
+<span class="fc" id="L129">        AUTODETECTED_MIXER = mixer;</span>
+    }
+
+    /** The default mixer wrapper around the autodetected mixer. */
+<span class="fc" id="L133">    private static final MixerWrapper DEFAULT_MIXER_WRAPPER</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        = new MixerWrapper(AUTO_NAME, (AUTODETECTED_MIXER == null) ? null</span>
+<span class="fc" id="L135">            : AUTODETECTED_MIXER.getMixerInfo());</span>
+
+    /** The available audio mixers. */
+<span class="fc" id="L138">    private static final List&lt;MixerWrapper&gt; audioMixers = new ArrayList&lt;&gt;();</span>
+    static {
+<span class="fc" id="L140">        audioMixers.addAll(transform(AudioSystem.getMixerInfo(),</span>
+<span class="fc" id="L141">                alwaysTrue(), mi -&gt; new MixerWrapper(mi.getName(), mi),</span>
+<span class="fc" id="L142">                Comparator.naturalOrder()));</span>
+<span class="fc" id="L143">        audioMixers.add(0, DEFAULT_MIXER_WRAPPER);</span>
+<span class="fc" id="L144">    }</span>
+
+
+    /** The value of this option. */
+<span class="fc" id="L148">    private MixerWrapper value = null;</span>
+
+
+    /**
+     * Creates a new {@code AudioMixerOption}.
+     *
+     * @param specification The {@code Specification} to refer to.
+     */
+    public AudioMixerOption(Specification specification) {
+<span class="fc" id="L157">        super(specification);</span>
+<span class="fc" id="L158">    }</span>
+
+
+    /**
+     * Gets a mixer wrapper by name.
+     *
+     * @param name The mixer wrapper name.
+     * @return The mixer wrapper with the name given, or null if none.
+     */
+    private MixerWrapper getMixerWrapperByName(String name) {
+<span class="fc" id="L168">        return find(audioMixers, mw -&gt; mw.getKey().equals(name));</span>
+    }
+
+    /**
+     * Gets a list of the available audio mixers.
+     *
+     * @return The available mixers.
+     */
+    public List&lt;MixerWrapper&gt; getChoices() {
+<span class="nc" id="L177">        return new ArrayList&lt;&gt;(audioMixers);</span>
+    }
+
+
+    // Interface Option
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public AudioMixerOption cloneOption() {
+<span class="nc" id="L188">        AudioMixerOption result = new AudioMixerOption(getSpecification());</span>
+<span class="nc" id="L189">        result.setValues(this);</span>
+<span class="nc" id="L190">        return result;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final MixerWrapper getValue() {
+<span class="nc" id="L198">        return value;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final void setValue(MixerWrapper newValue) {
+<span class="fc" id="L206">        final MixerWrapper oldValue = this.value;</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        if (newValue == null) newValue = DEFAULT_MIXER_WRAPPER;</span>
+<span class="fc" id="L208">        this.value = newValue;</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">        if (!newValue.equals(oldValue)) {</span>
+<span class="fc" id="L210">            firePropertyChange(VALUE_TAG, oldValue, value);</span>
+        }
+<span class="fc" id="L212">    }</span>
+
+
+    // Override AbstractOption
+    // generateChoices() is effectively done in the audioMixers initialization.
+    
+    /**
+     * {@inheritDoc}
+     */
+    @SuppressFBWarnings(value=&quot;NP_LOAD_OF_KNOWN_NULL_VALUE&quot;)
+    @Override
+    protected void setValue(String valueString, String defaultValueString) {
+<span class="fc" id="L224">        MixerWrapper mw = null;</span>
+<span class="pc bpc" id="L225" title="2 of 4 branches missed.">        if (mw == null &amp;&amp; valueString != null) {</span>
+<span class="nc" id="L226">            mw = getMixerWrapperByName(valueString);</span>
+        }
+<span class="pc bpc" id="L228" title="2 of 4 branches missed.">        if (mw == null &amp;&amp; defaultValueString != null) {</span>
+<span class="fc" id="L229">            mw = getMixerWrapperByName(defaultValueString);</span>
+        }
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        if (mw == null) mw = DEFAULT_MIXER_WRAPPER;</span>
+<span class="fc" id="L232">        setValue(mw);</span>
+<span class="fc" id="L233">    }</span>
+
+
+    // Serialization
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L244">        super.writeAttributes(xw);</span>
+
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (value != null) {</span>
+<span class="nc" id="L247">            xw.writeAttribute(VALUE_TAG, value.getKey());</span>
+        }
+<span class="nc" id="L249">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L255">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L265">        StringBuilder sb = new StringBuilder(16);</span>
+<span class="nc" id="L266">        sb.append('[').append(getId())</span>
+<span class="nc" id="L267">            .append(' ').append(getValue()).append(']');</span>
+<span class="nc" id="L268">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

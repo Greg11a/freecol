@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndianBringGiftMission.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.mission</a> &gt; <span class="el_source">IndianBringGiftMission.java</span></div><h1>IndianBringGiftMission.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai.mission;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Tension;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.pathfinding.CostDeciders;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.server.ai.AIMain;
+import net.sf.freecol.server.ai.AIMessage;
+import net.sf.freecol.server.ai.AIUnit;
+
+
+/**
+ * Mission for bringing a gift to a specified player.
+ *
+ * The mission has three different tasks to perform:
+ * &lt;ol&gt;
+ * &lt;li&gt;Get the gift (goods) from the {@link IndianSettlement} that owns the
+ * unit.
+ * &lt;li&gt;Transport this gift to the given {@link Colony}.
+ * &lt;li&gt;Complete the mission by delivering the gift.
+ * &lt;/ol&gt;
+ */
+public final class IndianBringGiftMission extends Mission {
+
+    public static final String TAG = &quot;indianBringGiftMission&quot;;
+
+    /** The tag for this mission. */
+    private static final String tag = &quot;AI native gifter&quot;;
+
+    /** The Colony to receive the gift. */
+    private Colony colony;
+
+    /** Has the gift been collected? */
+    private boolean collected;
+
+
+    /**
+     * Creates a mission for the given {@code AIUnit}.
+     *
+     * @param aiMain The main AI-object.
+     * @param aiUnit The {@code AIUnit} this mission is created for.
+     * @param target The {@code Colony} receiving the gift.
+     */
+    public IndianBringGiftMission(AIMain aiMain, AIUnit aiUnit, Colony target) {
+<span class="nc" id="L73">        super(aiMain, aiUnit);</span>
+
+<span class="nc" id="L75">        setTarget(target);</span>
+<span class="nc" id="L76">        this.collected = hasGift();</span>
+<span class="nc" id="L77">    }</span>
+
+    /**
+     * Creates a new {@code IndianBringGiftMission} from a reader.
+     *
+     * @param aiMain The main AI-object.
+     * @param aiUnit The {@code AIUnit} this mission is created for.
+     * @param xr The input stream containing the XML.
+     * @throws XMLStreamException if a problem was encountered during parsing.
+     * @see net.sf.freecol.server.ai.AIObject#readFromXML
+     */
+    public IndianBringGiftMission(AIMain aiMain, AIUnit aiUnit,
+                                  FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L90">        super(aiMain, aiUnit);</span>
+
+<span class="nc" id="L92">        readFromXML(xr);</span>
+<span class="nc" id="L93">    }</span>
+
+
+<span class="nc" id="L96">    public Colony getColony() { return this.colony; }</span>
+
+    /**
+     * Checks if the unit is carrying a gift (goods).
+     *
+     * @return True if the unit is carrying goods.
+     */
+    private boolean hasGift() {
+<span class="nc" id="L104">        return getUnit().hasGoodsCargo();</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given unit?
+     *
+     * @param aiUnit The {@code AIUnit} to test.
+     * @return A reason why the mission would be invalid with the unit,
+     *     or null if none found.
+     */
+    private static String invalidUnitReason(AIUnit aiUnit) {
+<span class="nc" id="L115">        String reason = invalidAIUnitReason(aiUnit);</span>
+        IndianSettlement home;
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        return (reason != null)</span>
+<span class="nc" id="L118">            ? reason</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">            : ((home = aiUnit.getUnit().getHomeIndianSettlement()) == null</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                || home.isDisposed())</span>
+<span class="nc" id="L121">            ? &quot;home-destroyed&quot;</span>
+<span class="nc" id="L122">            : null;</span>
+    }
+
+    /**
+     * Why would an IndianBringGiftMission be invalid with the given
+     * unit and colony.
+     *
+     * @param aiUnit The {@code AIUnit} to test.
+     * @param colony The {@code Colony} to test.
+     * @return A reason why the mission would be invalid with the unit
+     *     and colony or null if none found.
+     */
+    private static String invalidColonyReason(AIUnit aiUnit, Colony colony) {
+<span class="nc" id="L135">        String reason = invalidTargetReason(colony);</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (reason != null) return reason;</span>
+<span class="nc" id="L137">        final Unit unit = aiUnit.getUnit();</span>
+<span class="nc" id="L138">        final Player owner = unit.getOwner();</span>
+<span class="nc" id="L139">        Player targetPlayer = colony.getOwner();</span>
+<span class="nc bnc" id="L140" title="All 3 branches missed.">        switch (owner.getStance(targetPlayer)) {</span>
+        case UNCONTACTED: case WAR: case CEASE_FIRE:
+<span class="nc" id="L142">            return &quot;bad-stance&quot;;</span>
+        case PEACE: case ALLIANCE:
+<span class="nc" id="L144">            Tension tension = unit.getHomeIndianSettlement()</span>
+<span class="nc" id="L145">                .getAlarm(targetPlayer);</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">            if (tension != null &amp;&amp; tension.getLevel()</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">                .compareTo(Tension.Level.HAPPY) &gt; 0) return &quot;unhappy&quot;;</span>
+        }
+<span class="nc" id="L149">        return null;</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given AI unit?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @return A reason for mission invalidity, or null if none found.
+     */
+    public static String invalidMissionReason(AIUnit aiUnit) {
+<span class="nc" id="L159">        return invalidUnitReason(aiUnit);</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given AI unit and location?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @param loc The {@code Location} to check.
+     * @return A reason for invalidity, or null if none found.
+     */
+    public static String invalidMissionReason(AIUnit aiUnit, Location loc) {
+<span class="nc" id="L170">        String reason = invalidMissionReason(aiUnit);</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        return (reason != null) ? reason</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">            : (loc instanceof Colony)</span>
+<span class="nc" id="L173">            ? invalidColonyReason(aiUnit, (Colony)loc)</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">            : (loc instanceof IndianSettlement)</span>
+<span class="nc" id="L175">            ? invalidTargetReason(loc, aiUnit.getUnit().getOwner())</span>
+<span class="nc" id="L176">            : Mission.TARGETINVALID;</span>
+    }
+
+
+    // Mission interface
+    //   Inherit dispose, getBaseTransportPriority, isOneTime
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTransportDestination() {
+<span class="nc" id="L188">        return null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTarget() {
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        return (this.collected) ? this.colony</span>
+<span class="nc" id="L197">            : getUnit().getHomeIndianSettlement();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setTarget(Location target) {
+<span class="nc bnc" id="L205" title="All 2 branches missed.">        if (target instanceof Colony) {</span>
+<span class="nc" id="L206">            this.colony = (Colony)target;</span>
+        }
+<span class="nc" id="L208">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location findTarget() {
+<span class="nc" id="L215">        return getTarget();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String invalidReason() {
+<span class="nc" id="L223">        return invalidMissionReason(getAIUnit(), this.colony);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Mission doMission(LogBuilder lb) {
+<span class="nc" id="L231">        lb.add(tag);</span>
+<span class="nc" id="L232">        String reason = invalidReason();</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        if (reason != null) return lbFail(lb, false, reason);</span>
+
+<span class="nc" id="L235">        final AIUnit aiUnit = getAIUnit();</span>
+<span class="nc" id="L236">        final Unit unit = getUnit();</span>
+<span class="nc" id="L237">        final IndianSettlement is = unit.getHomeIndianSettlement();</span>
+
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        while (!this.collected) {</span>
+<span class="nc" id="L240">            Unit.MoveType mt = travelToTarget(getTarget(), null, lb);</span>
+<span class="nc bnc" id="L241" title="All 6 branches missed.">            switch (mt) {</span>
+            case MOVE: // Arrived
+<span class="nc" id="L243">                break;</span>
+
+            case MOVE_HIGH_SEAS: case MOVE_NO_MOVES: case MOVE_ILLEGAL:
+<span class="nc" id="L246">                return lbWait(lb);</span>
+
+            case MOVE_NO_REPAIR:
+<span class="nc" id="L249">                return lbFail(lb, false, AIUNITDIED);</span>
+
+            case MOVE_NO_TILE:
+<span class="nc" id="L252">                return this;</span>
+            
+            case ATTACK_SETTLEMENT: case ATTACK_UNIT: // A blockage!
+<span class="nc" id="L255">                Location blocker = resolveBlockage(aiUnit, getTarget());</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">                if (blocker != null</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">                    &amp;&amp; AIMessage.askAttack(aiUnit, unit.getTile()</span>
+<span class="nc" id="L258">                        .getDirection(blocker.getTile()))) {</span>
+<span class="nc" id="L259">                    return lbAttack(lb, blocker);</span>
+                }
+<span class="nc" id="L261">                moveRandomly(tag, null);</span>
+<span class="nc" id="L262">                continue;</span>
+
+            default:
+<span class="nc" id="L265">                return lbMove(lb, mt);</span>
+            }
+
+            // Load the goods.
+<span class="nc" id="L269">            lbAt(lb);</span>
+<span class="nc" id="L270">            Goods gift = is.getRandomGift(getAIRandom());</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            if (gift == null) return lbFail(lb, false, &quot;found no gift&quot;);</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">            if (!AIMessage.askLoadGoods(is, gift.getType(), gift.getAmount(),</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">                                        aiUnit) || !hasGift()) {</span>
+<span class="nc" id="L274">                return lbFail(lb, false, &quot;failed to collect gift&quot;);</span>
+            }
+<span class="nc" id="L276">            this.collected = true;</span>
+<span class="nc" id="L277">            lb.add(&quot;, collected gift&quot;);</span>
+<span class="nc" id="L278">            return lbRetarget(lb);</span>
+        }
+
+        // Move to the target's colony and deliver, avoiding trouble
+        // by choice of cost decider.
+        for (;;) {
+<span class="nc" id="L284">            Unit.MoveType mt = travelToTarget(getTarget(),</span>
+<span class="nc" id="L285">                CostDeciders.avoidSettlementsAndBlockingUnits(), lb);</span>
+<span class="nc bnc" id="L286" title="All 6 branches missed.">            switch (mt) {</span>
+            case MOVE_HIGH_SEAS: case MOVE_NO_MOVES: case MOVE_ILLEGAL:
+<span class="nc" id="L288">                return lbWait(lb);</span>
+
+            case MOVE_NO_REPAIR:
+<span class="nc" id="L291">                return lbFail(lb, false, AIUNITDIED);</span>
+
+            case MOVE_NO_TILE:
+<span class="nc" id="L294">                return this;</span>
+            
+            case MOVE: case ATTACK_SETTLEMENT: // Arrived (do not attack!)
+<span class="nc" id="L297">                break;</span>
+
+            case ATTACK_UNIT:
+<span class="nc" id="L300">                Location blocker = resolveBlockage(aiUnit, getTarget());</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">                if (blocker != null</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">                    &amp;&amp; AIMessage.askAttack(aiUnit, unit.getTile()</span>
+<span class="nc" id="L303">                        .getDirection(blocker.getTile()))) {</span>
+<span class="nc" id="L304">                    return lbAttack(lb, blocker);</span>
+                }
+<span class="nc" id="L306">                moveRandomly(tag, null);</span>
+<span class="nc" id="L307">                continue;</span>
+            
+            default:
+<span class="nc" id="L310">                return lbMove(lb, mt);</span>
+            }
+        
+            // Deliver the goods.
+<span class="nc" id="L314">            lbAt(lb);</span>
+<span class="nc" id="L315">            boolean result = AIMessage.askNativeGift(aiUnit, this.colony);</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">            return (result)</span>
+<span class="nc" id="L317">                ? lbDone(lb, false, &quot;delivered&quot;)</span>
+<span class="nc" id="L318">                : lbFail(lb, false, &quot;delivery&quot;);</span>
+        }
+    }
+
+
+    // Serialization
+
+    private static final String COLLECTED_TAG = &quot;collected&quot;;
+    private static final String COLONY_TAG = &quot;colony&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L334">        super.writeAttributes(xw);</span>
+
+<span class="nc" id="L336">        xw.writeAttribute(COLLECTED_TAG, this.collected);</span>
+
+<span class="nc bnc" id="L338" title="All 2 branches missed.">        if (this.colony != null) {</span>
+<span class="nc" id="L339">            xw.writeAttribute(COLONY_TAG, this.colony.getId());</span>
+        }
+<span class="nc" id="L341">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L348">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L350">        this.collected = xr.getAttribute(COLLECTED_TAG, false);</span>
+
+<span class="nc" id="L352">        this.colony = xr.getAttribute(getGame(), COLONY_TAG,</span>
+                                      Colony.class, (Colony)null);
+<span class="nc" id="L354">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L360">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

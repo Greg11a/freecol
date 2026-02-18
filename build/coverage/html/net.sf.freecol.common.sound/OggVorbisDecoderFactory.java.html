@@ -1,0 +1,462 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OggVorbisDecoderFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.sound</a> &gt; <span class="el_source">OggVorbisDecoderFactory.java</span></div><h1>OggVorbisDecoderFactory.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.sound;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+
+import com.jcraft.jogg.Packet;
+import com.jcraft.jogg.Page;
+import com.jcraft.jogg.StreamState;
+import com.jcraft.jogg.SyncState;
+import com.jcraft.jorbis.Block;
+import com.jcraft.jorbis.Comment;
+import com.jcraft.jorbis.DspState;
+import com.jcraft.jorbis.Info;
+
+
+/**
+ * Rewritten from the JCraft JOrbisPlayer example (GPLv2+), fixing a
+ * bunch of bugs that prevent it from playing short files and recasting
+ * into a read()-driven AudioInputStream form.
+ *
+ * FreeCol has a few short files.  We can notice when this fails.
+ */
+public class OggVorbisDecoderFactory {
+
+    /**
+     * Core JOgg/JOrbis magic handled here.
+     */
+    private static class OggStream extends InputStream {
+
+        // End of stream marker.
+        private static final String EOS = &quot;End-of-stream&quot;;
+
+        // Internal buffer size.
+        private static final int BUFSIZ = 4096;
+
+<span class="fc" id="L61">        private final Packet oggPacket = new Packet();</span>
+<span class="fc" id="L62">        private final Page oggPage = new Page();</span>
+<span class="fc" id="L63">        private final StreamState oggStreamState = new StreamState();</span>
+<span class="fc" id="L64">        private final SyncState oggSyncState = new SyncState();</span>
+<span class="fc" id="L65">        private final DspState orbisDspState = new DspState();</span>
+<span class="fc" id="L66">        private final Block orbisBlock = new Block(orbisDspState);</span>
+<span class="fc" id="L67">        private final Comment orbisComment = new Comment();</span>
+<span class="fc" id="L68">        private final Info orbisInfo = new Info();</span>
+
+        private final AudioFormat audioFormat;
+
+        // The buffer to convert into.
+<span class="fc" id="L73">        private final byte[] convBuf = new byte[BUFSIZ];</span>
+        // The amount of data waiting in the buffer.
+<span class="fc" id="L75">        private int bufCount = 0;</span>
+        // The position in the buffer of the data.
+<span class="fc" id="L77">        private int offset = 0;</span>
+        
+        // PCM index and data.
+        private int[] pcmi;
+        private float[][][] pcmData;
+
+        // The stream containing the data.
+<span class="fc" id="L84">        private InputStream inputStream = null;</span>
+
+
+        public OggStream(InputStream inputStream) throws IOException {
+<span class="fc" id="L88">            super();</span>
+<span class="fc" id="L89">            this.inputStream = inputStream;</span>
+<span class="fc" id="L90">            String err = getHeader();</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">            if (err != null) throw new IOException(err);</span>
+<span class="fc" id="L92">            this.audioFormat = new AudioFormat(orbisInfo.rate,</span>
+                16, // bits per sample
+                orbisInfo.channels,
+                true, // signed
+                false); // little endian
+<span class="fc" id="L97">            this.bufCount = 0;</span>
+<span class="fc" id="L98">            this.offset = 0;</span>
+<span class="fc" id="L99">        }</span>
+
+        @Override
+        public void close() {
+<span class="fc" id="L103">            oggSyncState.clear();</span>
+<span class="fc" id="L104">            oggStreamState.clear();</span>
+<span class="fc" id="L105">            orbisBlock.clear();</span>
+<span class="fc" id="L106">            orbisDspState.clear();</span>
+<span class="fc" id="L107">        }</span>
+
+        public AudioFormat getFormat() {
+<span class="fc" id="L110">            return audioFormat;</span>
+        }
+
+        /**
+         * Gets the amount of data available to be read right now.
+         *
+         * @return A number of bytes to read.
+         */
+        @Override
+        public int available() {
+<span class="nc" id="L120">            return bufCount;</span>
+        }
+
+        @Override
+        public int read() throws IOException {
+<span class="nc" id="L125">            byte[] b = new byte[1];</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">            return (read(b) &gt; 0) ? b[0] : -1;</span>
+        }
+
+        @Override
+        public int read(byte[] buf) throws IOException {
+<span class="nc" id="L131">            return read(buf, buf.length);</span>
+        }
+
+        /**
+         * Reads into the supplied buffer.
+         *
+         * @param buf The buffer to read to.
+         * @param n The number of bytes to read.
+         * @return Negative on error, zero on end of stream, otherwise the
+         *     number of bytes added to the buffer.
+         * @throws IOException if JOrbis loses.
+         */
+        public int read(byte[] buf, int n) throws IOException {
+<span class="nc" id="L144">            int wr = 0, wrOffset = 0;</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">            while (n &gt; 0) {</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                if (bufCount &lt;= 0) {</span>
+<span class="nc" id="L147">                    int ret = getBody(inputStream);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">                    if (ret &lt; 0) {</span>
+<span class="nc" id="L149">                        throw new IOException(&quot;Ogg decoding error: &quot; + this);</span>
+                    }
+<span class="nc bnc" id="L151" title="All 2 branches missed.">                    if (ret == 0) break;</span>
+<span class="nc" id="L152">                    bufCount = ret;</span>
+<span class="nc" id="L153">                    offset = 0;</span>
+                }
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                int rd = (bufCount &lt; n) ? bufCount : n;</span>
+<span class="nc" id="L156">                System.arraycopy(convBuf, offset, buf, wrOffset, rd);</span>
+<span class="nc" id="L157">                bufCount -= rd;</span>
+<span class="nc" id="L158">                offset += rd;</span>
+<span class="nc" id="L159">                wr += rd;</span>
+<span class="nc" id="L160">                wrOffset += rd;</span>
+<span class="nc" id="L161">                n -= rd;</span>
+<span class="nc" id="L162">            }</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            return (wr &lt;= 0) ? -1 : wr;</span>
+        }
+
+        /**
+         * Skips a number of bytes.
+         *
+         * @param n The number of bytes to skip.
+         * @return The actual number of bytes skipped.
+         */
+        @Override
+        public long skip(long n) throws IOException {
+<span class="nc" id="L174">            long wr = 0;</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">            while (n &gt; 0) {</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">                if (bufCount &lt;= 0) {</span>
+<span class="nc" id="L177">                    int ret = getBody(inputStream);</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">                    if (ret &lt; 0) {</span>
+<span class="nc" id="L179">                        throw new IOException(&quot;Ogg decoding error: &quot; + this);</span>
+                    }
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                    if (ret == 0) break;</span>
+<span class="nc" id="L182">                    bufCount = ret;</span>
+<span class="nc" id="L183">                    offset = 0;</span>
+                }
+<span class="nc bnc" id="L185" title="All 2 branches missed.">                int rd = (bufCount &lt; n) ? bufCount</span>
+<span class="nc" id="L186">                    : (int)n; // Safe as &lt;= bufCount</span>
+<span class="nc" id="L187">                bufCount -= rd;</span>
+<span class="nc" id="L188">                offset += rd;</span>
+<span class="nc" id="L189">                wr += rd;</span>
+<span class="nc" id="L190">                n -= rd;</span>
+<span class="nc" id="L191">            }</span>
+<span class="nc" id="L192">            return wr;</span>
+        }
+
+        // No need to override InputStream behaviour.
+        //public void mark(int readLimit) {}
+        //public boolean markSupported() { return false; }
+
+        @Override
+<span class="nc" id="L200">        public void reset() {}</span>
+
+        /**
+         * Gets the OGG header (first three packets) which must contain vorbis
+         * audio content.
+         * This routine is public so it can be used as a check if the a file
+         * really does contain vorbis.
+         *
+         * @return An error message if a page not is available, null on success.
+         */
+        private String getHeader() {
+            String input;
+<span class="fc" id="L212">            int packet = 0;</span>
+
+<span class="fc" id="L214">            oggSyncState.init();</span>
+
+            // Special handling for first packet--- we need the oggPage
+            // to be read before the oggStreamState can be initialized.
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            while (packet &lt; 1) {</span>
+<span class="pc bpc" id="L219" title="1 of 3 branches missed.">                switch (oggSyncState.pageout(oggPage)) {</span>
+                case 1:
+<span class="fc" id="L221">                    oggStreamState.init(oggPage.serialno());</span>
+<span class="fc" id="L222">                    oggStreamState.reset();</span>
+                    
+                    // Initializes the Info and Comment objects.
+<span class="fc" id="L225">                    orbisInfo.init();</span>
+<span class="fc" id="L226">                    orbisComment.init();</span>
+                    
+                    // Check the page (serial number and stuff).
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">                    if (oggStreamState.pagein(oggPage) == -1) {</span>
+<span class="nc" id="L230">                        return &quot;Error on header page&quot;;</span>
+                    }
+                    
+                    // Extract first packets.
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">                    if (oggStreamState.packetout(oggPacket) != 1) {</span>
+<span class="nc" id="L235">                        return &quot;Error on first packet&quot;;</span>
+                    }
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">                    if (orbisInfo.synthesis_headerin(orbisComment, oggPacket)</span>
+                        &lt; 0) {
+<span class="nc" id="L239">                        return &quot;Non-vorbis data found&quot;;</span>
+                    }
+<span class="fc" id="L241">                    packet = 1;</span>
+<span class="fc" id="L242">                    break;</span>
+                case 0:
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">                    if ((input = getInput()) != null) return input;</span>
+                    break;
+                default:
+<span class="nc" id="L247">                    return &quot;Error reading first page&quot;;</span>
+                }
+            }
+
+            // Read another two packets to complete the header.
+<span class="fc bfc" id="L252" title="All 2 branches covered.">            while (packet &lt; 3) {</span>
+<span class="pc bpc" id="L253" title="1 of 3 branches missed.">                switch (oggStreamState.packetout(oggPacket)) {</span>
+                case 1:
+<span class="fc" id="L255">                    orbisInfo.synthesis_headerin(orbisComment, oggPacket);</span>
+<span class="fc" id="L256">                    packet++;</span>
+<span class="fc" id="L257">                    break;</span>
+                case 0:
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">                    if ((input = getPage()) != null) return input;</span>
+                    break;
+                default:
+<span class="nc" id="L262">                    return &quot;Error in header packet &quot; + packet;</span>
+                }
+            }
+<span class="fc" id="L265">            orbisDspState.synthesis_init(orbisInfo);</span>
+<span class="fc" id="L266">            orbisBlock.init(orbisDspState);</span>
+<span class="fc" id="L267">            return null;</span>
+        }
+
+        /**
+         * Gets another chunk of input into the oggSyncState.
+         *
+         * @return An error message if input is not available, null on success.
+         */
+        private String getInput() {
+<span class="fc" id="L276">            int count = -1;</span>
+            try {
+<span class="fc" id="L278">                int idx = oggSyncState.buffer(BUFSIZ);</span>
+<span class="fc" id="L279">                count = inputStream.read(oggSyncState.data, idx, BUFSIZ);</span>
+<span class="nc" id="L280">            } catch (IOException e) {</span>
+<span class="nc" id="L281">                return e.getMessage();</span>
+<span class="fc" id="L282">            }</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">            if (count &gt; 0) oggSyncState.wrote(count);</span>
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">            return (count &gt; 0) ? null : EOS;</span>
+        }
+
+        /**
+         * Gets the next page from the oggSyncState into the oggStreamState.
+         *
+         * @return An error message if a page not is available, null on success.
+         */
+        private String getPage() {
+            String input;
+            for (;;) {
+<span class="pc bpc" id="L295" title="1 of 3 branches missed.">                switch (oggSyncState.pageout(oggPage)) { </span>
+                case 0:
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">                    if ((input = getInput()) != null) return input;</span>
+                    break;
+                case 1:
+<span class="fc" id="L300">                    oggStreamState.pagein(oggPage);</span>
+<span class="fc" id="L301">                    return null;</span>
+                default:
+<span class="nc" id="L303">                    return &quot;Bogus page&quot;;</span>
+                }
+            }
+        }
+        
+        /**
+         * Refills the conversion buffer.
+         *
+         * @param is The {@code InputStream} to read from.
+         * @return The number of bytes waiting in the convBuf.
+         */
+        public int getBody(InputStream is) {
+            String err;
+
+<span class="nc" id="L317">            pcmi = new int[orbisInfo.channels];</span>
+<span class="nc" id="L318">            pcmData = new float[1][][];</span>
+            for (;;) {
+<span class="nc bnc" id="L320" title="All 3 branches missed.">                switch (oggStreamState.packetout(oggPacket)) {</span>
+                case 1:
+<span class="nc bnc" id="L322" title="All 2 branches missed.">                    if (orbisBlock.synthesis(oggPacket) == 0) {</span>
+<span class="nc" id="L323">                        orbisDspState.synthesis_blockin(orbisBlock);</span>
+                    }
+                    for (;;) {
+<span class="nc" id="L326">                        int n = orbisDspState.synthesis_pcmout(pcmData, pcmi);</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">                        if (n &lt;= 0) break;</span>
+<span class="nc" id="L328">                        orbisDspState.synthesis_read(n);</span>
+<span class="nc" id="L329">                        return 2 * orbisInfo.channels * decodePacket(n);</span>
+                    }
+                    break;
+                case 0:
+<span class="nc bnc" id="L333" title="All 2 branches missed.">                    if ((err = getPage()) != null) {</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">                        return (EOS.equals(err)) ? 0 : -1;</span>
+                    }
+                    break;
+                default:
+<span class="nc" id="L338">                    return -1;</span>
+                }
+            }
+        }
+
+        /**
+         * Decode the PCM data.
+         *
+         * @param samples The number of samples to decode.
+         * @return The number of bytes waiting in the conversion buffer to
+         *     be written.
+         */
+        private int decodePacket(int samples) {
+<span class="nc bnc" id="L351" title="All 2 branches missed.">            int range = (samples &lt; convBuf.length) ? samples : convBuf.length;</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">            for (int i = 0; i &lt; orbisInfo.channels; i++) {</span>
+<span class="nc" id="L353">                int sampleIndex = i * 2;</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">                for (int j = 0; j &lt; range; j++) {</span>
+                    // Retrieve the PCM
+<span class="nc" id="L356">                    int value = (int)(pcmData[0][i][pcmi[i] + j] * 32767.0f);</span>
+                    // Clip to signed 16 bit
+<span class="nc bnc" id="L358" title="All 2 branches missed.">                    if (value &gt; 32767) value = 32767;</span>
+<span class="nc bnc" id="L359" title="All 2 branches missed.">                    else if (value &lt; -32768) value = -32768;</span>
+                    // Stuff into the conversion buffer, little endian
+<span class="nc" id="L361">                    convBuf[sampleIndex] = (byte)(value);</span>
+<span class="nc" id="L362">                    convBuf[sampleIndex + 1] = (byte)(value &gt;&gt;&gt; 8);</span>
+                    // Jump forward (interleaving channels)
+<span class="nc" id="L364">                    sampleIndex += 2 * (orbisInfo.channels);</span>
+                }
+            }
+<span class="nc" id="L367">            return range;</span>
+        }
+    };
+
+    /**
+     * The AudioInputStream extension to handle decoding Ogg/Vorbis Audio
+     * input.
+     */
+    private static class OggVorbisAudioInputStream extends AudioInputStream {
+
+        // Core JOgg and JOrbis magic.
+<span class="fc" id="L378">        private OggStream os = null;</span>
+
+
+        /**
+         * Create a new player.
+         *
+         * @param os The {@code OggStream} to read from.
+         * @exception IOException if unable to open the stream.
+         */
+        public OggVorbisAudioInputStream(OggStream os) throws IOException {
+<span class="fc" id="L388">            super(os, os.getFormat(), AudioSystem.NOT_SPECIFIED);</span>
+<span class="fc" id="L389">            this.os = os;</span>
+<span class="fc" id="L390">        }</span>
+
+        @Override
+        public AudioFormat getFormat() {
+<span class="nc" id="L394">            return os.getFormat();</span>
+        }
+
+        // No need to override AudioInputStream
+        //public long getFrameLength() {
+        //    return frameLength;
+        //}
+
+        @Override
+        public int available() {
+<span class="nc" id="L404">            return os.available();</span>
+        }
+
+        @Override
+        public int read() throws IOException {
+<span class="nc" id="L409">            return os.read();</span>
+        }
+
+        @Override
+        public int read(byte[] buf) throws IOException {
+<span class="nc" id="L414">            return os.read(buf);</span>
+        }
+
+        @Override
+        public void close() {
+<span class="fc" id="L419">            os.close();</span>
+<span class="fc" id="L420">        }</span>
+
+        @Override
+        public long skip(long n) throws IOException {
+<span class="nc" id="L424">            return os.skip(n);</span>
+        }
+
+        @Override
+        public void mark(int readLimit) {
+<span class="nc" id="L429">            os.mark(readLimit);</span>
+<span class="nc" id="L430">        }</span>
+
+        @Override
+        public boolean markSupported() {
+<span class="nc" id="L434">            return os.markSupported();</span>
+        }
+
+        @Override
+        public void reset() {
+<span class="nc" id="L439">            os.reset();</span>
+<span class="nc" id="L440">        }</span>
+    };
+
+
+    /**
+     * Trivial constructor.
+     */
+<span class="fc" id="L447">    public OggVorbisDecoderFactory() {}</span>
+
+    /**
+     * Gets a new audio input stream to decode Ogg/Vorbis Audio from
+     * an input stream.
+     *
+     * @param file The {@code File} containing the content.
+     * @return A new {@code AudioInputStream} to decode the input.
+     * @exception IOException if unable to open the stream.
+     */
+    public AudioInputStream getOggStream(File file) throws IOException {
+<span class="fc" id="L458">        InputStream fis = Files.newInputStream(file.toPath());</span>
+<span class="fc" id="L459">        return new OggVorbisAudioInputStream(new OggStream(fis));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

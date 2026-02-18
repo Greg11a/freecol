@@ -1,0 +1,2871 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Map.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">Map.java</span></div><h1>Map.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import static net.sf.freecol.common.model.Constants.INFINITY;
+import static net.sf.freecol.common.model.Constants.UNDEFINED;
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.cachingIntComparator;
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.matchKeyEquals;
+import static net.sf.freecol.common.util.CollectionUtils.minimize;
+import static net.sf.freecol.common.util.CollectionUtils.sort;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+import static net.sf.freecol.common.util.RandomUtils.randomInt;
+import static net.sf.freecol.common.util.RandomUtils.randomShuffle;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.PriorityQueue;
+import java.util.Queue;
+import java.util.Random;
+import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.debug.FreeColDebugger;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Constants.IntegrityType;
+import net.sf.freecol.common.model.pathfinding.CostDecider;
+import net.sf.freecol.common.model.pathfinding.CostDeciders;
+import net.sf.freecol.common.model.pathfinding.GoalDecider;
+import net.sf.freecol.common.model.pathfinding.GoalDeciders;
+import net.sf.freecol.common.util.LogBuilder;
+
+
+/**
+ * A rectangular isometric map.  The map is represented as a
+ * two-dimensional array of tiles.  Off-map destinations, such as
+ * {@link Europe}, can be reached via the {@link HighSeas}.
+ *
+ * In theory, a {@link Game} might contain several Map instances
+ * connected by the HighSeas.
+ */
+public class Map extends FreeColGameObject implements Location, Iterable&lt;Tile&gt; {
+
+<span class="fc" id="L79">    private static final Logger logger = Logger.getLogger(Map.class.getName());</span>
+
+    public static final String TAG = &quot;map&quot;;
+
+    /**
+     * Possible actions by the unit travelling along a path in consideration
+     * of the next tile.
+     */
+<span class="fc" id="L87">    private static enum MoveStep { FAIL, BYLAND, BYWATER, EMBARK, DISEMBARK };</span>
+
+    /**
+     * The number of tiles from the upper edge that are considered
+     * polar by default.
+     */
+    public final static int POLAR_HEIGHT = 2;
+
+    /**
+     * The layers included in the map. The RIVERS layer includes all
+     * natural tile improvements that are not resources.
+     */
+<span class="fc" id="L99">    public static enum Layer {</span>
+<span class="fc" id="L100">        NONE, LAND, TERRAIN, REGIONS, RIVERS, RESOURCES, RUMOURS, NATIVES, ALL;</span>
+    };
+
+    /** A position on the Map. */
+    public static final class Position {
+        
+        /** The coordinates of the position. */
+        public final int x, y;
+
+
+        /**
+         * Creates a new {@code Position} object with the given
+         * coordinates.
+         *
+         * @param posX The x-coordinate for this position.
+         * @param posY The y-coordinate for this position.
+         */
+<span class="fc" id="L117">        public Position(int posX, int posY) {</span>
+<span class="fc" id="L118">            x = posX;</span>
+<span class="fc" id="L119">            y = posY;</span>
+<span class="fc" id="L120">        }</span>
+
+        /**
+         * Creates a new {@code Position} object with the coordinates
+         * of a supplied tile.
+         *
+         * @param tile The {@code Tile} to extract coordinates from.
+         */
+        public Position(Tile tile) {
+<span class="fc" id="L129">            this(tile.getX(), tile.getY());</span>
+<span class="fc" id="L130">        }</span>
+
+        /**
+         * Creates a new {@code Position} from an existing one with
+         * an optional step in a given direction.
+         *
+         * @param start The starting {@code Position}.
+         * @param direction An optional {@code Direction} to step.
+         */
+<span class="fc" id="L139">        public Position(Position start, Direction direction) {</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">            Position step = (direction == null) ? start</span>
+<span class="fc" id="L141">                : direction.step(start.x, start.y);</span>
+<span class="fc" id="L142">            this.x = step.x;</span>
+<span class="fc" id="L143">            this.y = step.y;</span>
+<span class="fc" id="L144">        }</span>
+
+
+        /**
+         * Gets the x-coordinate of this Position.
+         *
+         * @return The x-coordinate of this Position.
+         */
+        public int getX() {
+<span class="fc" id="L153">            return x;</span>
+        }
+
+        /**
+         * Gets the y-coordinate of this Position.
+         *
+         * @return The y-coordinate of this Position.
+         */
+        public int getY() {
+<span class="fc" id="L162">            return y;</span>
+        }
+
+        /**
+         * Checks whether a position is valid within a given map size.
+         *
+         * @param width The width of the map.
+         * @param height The height of the map.
+         * @return True if the given position is within the bounds of the map.
+         */
+        public boolean isValid(int width, int height) {
+<span class="fc" id="L173">            return Map.inBox(x, y, width, height);</span>
+        }
+
+        /**
+         * Gets the distance in tiles between two map positions.
+         * With an isometric map this is a non-trivial task.
+         * The formula below has been developed largely through trial and
+         * error.  It should cover all cases, but I wouldn't bet my
+         * life on it.
+         *
+         * @param ax The x-coordinate of the first position.
+         * @param ay The y-coordinate of the first position.
+         * @param bx The x-coordinate of the second position.
+         * @param by The y-coordinate of the second position.
+         * @return The distance in tiles between the positions.
+         */
+        public static int getXYDistance(int ax, int ay, int bx, int by) {
+<span class="fc" id="L190">            int r = (bx - ax) - (ay - by) / 2;</span>
+
+<span class="fc bfc" id="L192" title="All 6 branches covered.">            if (by &gt; ay &amp;&amp; ay % 2 == 0 &amp;&amp; by % 2 != 0) {</span>
+<span class="fc" id="L193">                r++;</span>
+<span class="fc bfc" id="L194" title="All 6 branches covered.">            } else if (by &lt; ay &amp;&amp; ay % 2 != 0 &amp;&amp; by % 2 == 0) {</span>
+<span class="fc" id="L195">                r--;</span>
+            }
+<span class="fc" id="L197">            return Math.max(Math.abs(ay - by + r), Math.abs(r));</span>
+        }
+
+        /**
+         * Gets the distance in tiles between two map positions.
+         * With an isometric map this is a non-trivial task.
+         * The formula below has been developed largely through trial and
+         * error.  It should cover all cases, but I wouldn't bet my
+         * life on it.
+         *
+         * @param position The other {@code Position} to compare.
+         * @return The distance in tiles to the other position.
+         */
+        public int getDistance(Position position) {
+<span class="nc" id="L211">            return getXYDistance(getX(), getY(),</span>
+<span class="nc" id="L212">                               position.getX(), position.getY());</span>
+        }
+
+        /**
+         * Get the direction from this position to an adjacent position.
+         *
+         * @param other The adjacent {@code Position}.
+         * @return The {@code Direction}, or null if not adjacent.
+         */
+        public Direction getDirection(Position other) {
+<span class="fc" id="L222">            return find(Direction.values(),</span>
+<span class="fc" id="L223">                        matchKeyEquals(other, d -&gt; new Position(this, d)));</span>
+        }
+
+        // Override Object
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean equals(Object o) {
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">            if (this == o) return true;</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">            if (o instanceof Position) {</span>
+<span class="fc" id="L235">                Position other = (Position)o;</span>
+<span class="fc bfc" id="L236" title="All 4 branches covered.">                return x == other.x &amp;&amp; y == other.y;</span>
+            }
+<span class="nc" id="L238">            return false;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public int hashCode() {
+<span class="nc" id="L246">            return x | (y &lt;&lt; 16);</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public String toString() {
+<span class="nc" id="L254">            return &quot;(&quot; + x + &quot;, &quot; + y + &quot;)&quot;;</span>
+        }
+    }
+
+
+    /** The width and height of the map. */
+<span class="fc" id="L260">    private int width = -1, height = -1;</span>
+
+    /**
+     * The tiles that this map contains, as a 2D array.  This starts
+     * out unassigned, but is initialized in setTiles().  Then the
+     * individual tiles are filled in with setTile(), however once a
+     * Tile is present further calls to setTile will copyIn to it.
+     */
+    private Tile[][] tileArray;
+
+    /**
+     * The tiles that this map contains, as a list.
+     * This is populated in setTile().
+     */
+<span class="fc" id="L274">    private List&lt;Tile&gt; tileList = new ArrayList&lt;&gt;();</span>
+
+    /** The highest map layer included. */
+    private Layer layer;
+
+    /**
+     * The latitude of the northern edge of the map. A negative value
+     * indicates northern latitude, a positive value southern
+     * latitude. Thus, -30 equals 30 degrees N, and 40 equals 40 degrees S.
+     */
+<span class="fc" id="L284">    private int minimumLatitude = -90;</span>
+
+    /**
+     * The latitude of the southern edge of the map. A negative value
+     * indicates northern latitude, a positive value southern
+     * latitude. Thus, -30 equals 30 degrees N, and 40 equals 40 degrees S.
+     */
+<span class="fc" id="L291">    private int maximumLatitude = 90;</span>
+
+    /** Variable used to convert rows to latitude. */
+    private float latitudePerRow;
+
+    /** The regions on the map. */
+<span class="fc" id="L297">    private final List&lt;Region&gt; regions = new ArrayList&lt;&gt;();</span>
+
+    // Do not serialize below
+
+    /** The search tracing status. */
+<span class="fc" id="L302">    private boolean traceSearch = false;</span>
+
+
+    /**
+     * Create a new {@code Map} from a collection of tiles.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param width The map width.
+     * @param height The map height.
+     */
+    public Map(Game game, int width, int height) {
+<span class="fc" id="L313">        super(game);</span>
+
+<span class="fc" id="L315">        setTiles(width, height);</span>
+<span class="fc" id="L316">        setLayer(Layer.RESOURCES);</span>
+<span class="fc" id="L317">        calculateLatitudePerRow();</span>
+<span class="fc" id="L318">        initializeTraceSearch();</span>
+<span class="fc" id="L319">    }</span>
+
+    /**
+     * Create a new {@code Map} from an input stream.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param xr The input stream containing the XML.
+     * @throws XMLStreamException if a problem was encountered during parsing.
+     */
+    public Map(Game game, FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L329">        this(game, xr.getAttribute(WIDTH_TAG, -1),</span>
+<span class="nc" id="L330">                   xr.getAttribute(HEIGHT_TAG, -1));</span>
+
+<span class="nc" id="L332">        readFromXML(xr);</span>
+<span class="nc" id="L333">    }</span>
+
+    /**
+     * Creates a new {@code Map} with the given object identifier.
+     *
+     * The object should be initialized later.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param id The object identifier.
+     */
+    public Map(Game game, String id) {
+<span class="fc" id="L344">        super(game, id);</span>
+
+<span class="fc" id="L346">        initializeTraceSearch();</span>
+<span class="fc" id="L347">    }</span>
+
+
+    /**
+     * Enable full path logging by default if in PATHS debug mode.
+     */
+    private void initializeTraceSearch() {
+<span class="fc" id="L354">        this.traceSearch = FreeColDebugger.isInDebugMode(FreeColDebugger.DebugMode.PATHS);</span>
+<span class="fc" id="L355">    }</span>
+        
+    /**
+     * Gets the width of this map.
+     *
+     * @return The width of this map.
+     */
+    public int getWidth() {
+<span class="fc" id="L363">        return this.width;</span>
+    }
+
+    /**
+     * Gets the height of this map.
+     *
+     * @return The height of this map.
+     */
+    public int getHeight() {
+<span class="fc" id="L372">        return this.height;</span>
+    }
+
+    /**
+     * Checks if an (x,y) coordinate tuple is within a map of
+     * specified width and height.
+     *
+     * @param x The x-coordinate of the position.
+     * @param y The y-coordinate of the position.
+     * @param width The width of the map.
+     * @param height The height of the map.
+     * @return True if the given position is within the bounds of the map.
+     */
+    public static boolean inBox(int x, int y, int width, int height) {
+<span class="fc bfc" id="L386" title="All 8 branches covered.">        return x &gt;= 0 &amp;&amp; x &lt; width &amp;&amp; y &gt;= 0 &amp;&amp; y &lt; height;</span>
+    }
+
+    /**
+     * Checks whether a position is valid (within the map limits).
+     *
+     * @param x The X coordinate to check.
+     * @param y The Y coordinate to check.
+     * @return True if the coordinates are valid.
+     */
+    public boolean isValid(int x, int y) {
+<span class="fc" id="L397">        return Map.inBox(x, y, getWidth(), getHeight());</span>
+    }
+
+    /**
+     * Checks whether a position is valid (within the map limits).
+     *
+     * @param position The {@code Position} to check.
+     * @return True if the position is valid.
+     */
+    public boolean isValid(Position position) {
+<span class="fc" id="L407">        return isValid(position.getX(), position.getY());</span>
+    }
+
+    /**
+     * Initialize the tile shape.  This must be called *once* per map.
+     *
+     * @param width The new map width.
+     * @param height The new map height.
+     * @return An error message if setting the tile array was invalid, null if valid.
+     */
+    private String setTiles(int width, int height) {
+<span class="pc bpc" id="L418" title="2 of 4 branches missed.">        if (width &lt;= 0 || height &lt;= 0) {</span>
+<span class="nc" id="L419">            return &quot;Bad map tile array size: (&quot; + width + &quot;,&quot; + height + &quot;)&quot;;</span>
+        }
+<span class="fc" id="L421">        this.width = width;</span>
+<span class="fc" id="L422">        this.height = height;</span>
+<span class="fc" id="L423">        this.tileArray = new Tile[width][height];</span>
+<span class="fc" id="L424">        this.tileList.clear();</span>
+<span class="fc" id="L425">        return null;</span>
+    }
+
+    /**
+     * Update the tile shape, however it is an error to change the map
+     * size after the initial setting.
+     *
+     * @param width The new map width.
+     * @param height The new map height.
+     * @return An error message if setting the tile array was invalid, null if valid.
+     */
+    private String updateTiles(int width, int height) {
+        // Initial setting
+<span class="pc bpc" id="L438" title="2 of 4 branches missed.">        if (this.width &lt; 0 &amp;&amp; this.height &lt; 0) return setTiles(width, height);</span>
+        // Next time, the size must *not* change.
+<span class="nc bnc" id="L440" title="All 4 branches missed.">        if (this.width != width || this.height != height) {</span>
+<span class="nc" id="L441">            return &quot;Attempted map resize (&quot; + this.width + &quot;,&quot; + this.height</span>
+                + &quot; -&gt; &quot; + width + &quot;,&quot; + height + &quot;)&quot;;
+        }
+<span class="nc" id="L444">        return null;</span>
+    }
+
+    /**
+     * Gets the Tile at position (x, y).  'x' specifies a column and
+     * 'y' specifies a row.  (0, 0) is the Tile at the top-left corner
+     * of the Map.
+     *
+     * @param x The x-coordinate of the {@code Tile}.
+     * @param y The y-coordinate of the {@code Tile}.
+     * @return The {@code Tile} at (x, y), or null if the
+     *     position is invalid.
+     */
+    public Tile getTile(int x, int y) {
+<span class="fc bfc" id="L458" title="All 2 branches covered.">        if (!isValid(x, y)) return null;</span>
+<span class="fc" id="L459">        return this.tileArray[x][y];</span>
+    }
+
+    /**
+     * Gets the Tile at a requested position.
+     *
+     * @param p The {@code Position} to query.
+     * @return The {@code Tile} at the given position.
+     */
+    public Tile getTile(Position p) {
+<span class="fc" id="L469">        return getTile(p.getX(), p.getY());</span>
+    }
+
+    /**
+     * Set the tile at the given coordinates.
+     *
+     * This can be done *once* per tile.  Currently that is enforced
+     * by calling setTile() only from populateTiles() where the map is
+     * being built or indirectly through updateTile() where the
+     * absence of the tile is checked.
+     *
+     * @param x The x-coordinate of the {@code Tile}.
+     * @param y The y-coordinate of the {@code Tile}.
+     * @param tile The {@code Tile} to set.
+     * @return True if the {@code Tile} was updated.
+     */
+    private boolean setTile(Tile tile, int x, int y) {
+<span class="pc bpc" id="L486" title="1 of 2 branches missed.">        if (tile == null) return false;</span>
+<span class="fc" id="L487">        this.tileArray[x][y] = tile;</span>
+<span class="fc" id="L488">        this.tileList.add(tile);</span>
+<span class="fc" id="L489">        return true;</span>
+    }
+
+    /**
+     * Update a tile in this map from the given tile.
+     *
+     * @param tile The {@code Tile} to update from.
+     * @return True if the tile was updated.
+     */
+    private boolean updateTile(Tile tile) {
+<span class="pc bpc" id="L499" title="1 of 2 branches missed.">        if (tile == null) return false;</span>
+<span class="fc" id="L500">        final int x = tile.getX(), y = tile.getY();</span>
+<span class="pc bpc" id="L501" title="1 of 2 branches missed.">        if (!isValid(x, y)) return false;</span>
+<span class="fc" id="L502">        Tile old = this.tileArray[x][y];</span>
+<span class="pc bpc" id="L503" title="1 of 2 branches missed.">        if (old == null) return setTile(tile, x, y);</span>
+<span class="nc" id="L504">        old.copyIn(tile);</span>
+<span class="nc" id="L505">        return true;</span>
+    }
+        
+    /**
+     * Get the layer.
+     *
+     * @return The maximum implemented layer on this map.
+     */
+    public final Layer getLayer() {
+<span class="nc" id="L514">        return this.layer;</span>
+    }
+
+    /**
+     * Set the layer.
+     *
+     * @param newLayer The new maximum implemented layer for this map.
+     */
+    public final void setLayer(final Layer newLayer) {
+<span class="fc" id="L523">        this.layer = newLayer;</span>
+<span class="fc" id="L524">    }</span>
+
+    /**
+     * Get the minimum latitude.
+     *
+     * @return The minimum latitude of this map.
+     */
+    public final int getMinimumLatitude() {
+<span class="nc" id="L532">        return this.minimumLatitude;</span>
+    }
+
+    /**
+     * Set the minimum latitude.
+     *
+     * @param newMinimumLatitude The new minimum latitude for this map.
+     */
+    public final void setMinimumLatitude(final int newMinimumLatitude) {
+<span class="fc" id="L541">        this.minimumLatitude = newMinimumLatitude;</span>
+<span class="fc" id="L542">        calculateLatitudePerRow();</span>
+<span class="fc" id="L543">    }</span>
+
+    /**
+     * Get the maximum latitude.
+     *
+     * @return The maximum latitude of this map.
+     */
+    public final int getMaximumLatitude() {
+<span class="nc" id="L551">        return this.maximumLatitude;</span>
+    }
+
+    /**
+     * Set the maxmimum latitude.
+     *
+     * @param newMaximumLatitude The new maximum latitude for this map.
+     */
+    public final void setMaximumLatitude(final int newMaximumLatitude) {
+<span class="fc" id="L560">        this.maximumLatitude = newMaximumLatitude;</span>
+<span class="fc" id="L561">        calculateLatitudePerRow();</span>
+<span class="fc" id="L562">    }</span>
+
+    /**
+     * Get the latitude/row.
+     *
+     * @return The latitude change between rows.
+     */
+    public final float getLatitudePerRow() {
+<span class="fc" id="L570">        return this.latitudePerRow;</span>
+    }
+
+    /**
+     * Recalculate the latitude/row from the current maximum and minimum.
+     */
+    private final void calculateLatitudePerRow() {
+<span class="fc" id="L577">        this.latitudePerRow = 1f * (this.maximumLatitude - this.minimumLatitude) /</span>
+<span class="fc" id="L578">            (getHeight() - 1);</span>
+<span class="fc" id="L579">    }</span>
+
+    /**
+     * Gets the latitude of the given map row.
+     *
+     * @param row The row to check.
+     * @return The row latitude.
+     */
+    public int getLatitude(int row) {
+<span class="fc" id="L588">        return this.minimumLatitude + (int) (row * this.latitudePerRow);</span>
+    }
+
+    /**
+     * Gets the map row with the given latitude.
+     *
+     * @param latitude The latitude to find.
+     * @return The row closest to the supplied latitude.
+     */
+    public int getRow(int latitude) {
+<span class="fc" id="L598">        return (int) ((latitude - this.minimumLatitude) / this.latitudePerRow);</span>
+    }
+
+    /**
+     * Gets the regions in this map.
+     *
+     * @return All the regions in this map.
+     */
+    public Collection&lt;Region&gt; getRegions() {
+<span class="fc" id="L607">        synchronized (this.regions) {</span>
+<span class="fc" id="L608">            return new ArrayList&lt;&gt;(this.regions);</span>
+        }
+    }
+
+    /**
+     * Adds a region to this map.
+     *
+     * @param region The {@code Region} to add.
+     */
+    public void addRegion(final Region region) {
+<span class="fc" id="L618">        synchronized (this.regions) {</span>
+<span class="fc" id="L619">            this.regions.add(region);</span>
+<span class="fc" id="L620">        }</span>
+<span class="fc" id="L621">    }</span>
+    
+    /**
+     * Remove a region from this map.
+     *
+     * @param region The {@code Region} to be removed.
+     */
+    public void removeRegion(final Region region) {
+<span class="fc" id="L629">        synchronized (this.regions) {</span>
+<span class="fc" id="L630">            this.regions.remove(region);</span>
+<span class="fc" id="L631">        }</span>
+<span class="fc" id="L632">    }</span>
+
+    /**
+     * Clear the regions list.
+     */
+    public void clearRegions() {
+<span class="nc" id="L638">        synchronized (this.regions) {</span>
+<span class="nc" id="L639">            this.regions.clear();</span>
+<span class="nc" id="L640">        }</span>
+<span class="nc" id="L641">    }</span>
+
+    /**
+     * Get the fixed regions indexed by key.
+     *
+     * @return A map of the fixed regions.
+     */
+    public java.util.Map&lt;String, Region&gt; getFixedRegions() {
+<span class="fc" id="L649">        HashMap&lt;String, Region&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L650" title="All 2 branches covered.">        for (Region r : getRegions()) {</span>
+<span class="fc" id="L651">            String n = r.getKey();</span>
+<span class="fc bfc" id="L652" title="All 2 branches covered.">            if (n != null) result.put(n, r);</span>
+<span class="fc" id="L653">        }</span>
+<span class="fc" id="L654">        return result;</span>
+    }
+
+    /**
+     * Gets a {@code Region} by name key.
+     *
+     * @param key The name key to lookup the region with.
+     * @return The {@code Region} with the given name key, or
+     *     null if none found.
+     */
+    public Region getRegionByKey(final String key) {
+<span class="pc bpc" id="L665" title="1 of 2 branches missed.">        return (key == null) ? null</span>
+<span class="fc" id="L666">            : find(getRegions(), matchKeyEquals(key, Region::getKey));</span>
+    }
+    
+    public void removeRegionsByKey(final String key) {
+<span class="fc" id="L670">        synchronized (this.regions) {</span>
+<span class="fc bfc" id="L671" title="All 2 branches covered.">            for (Region region : new ArrayList&lt;&gt;(regions)) {</span>
+<span class="fc bfc" id="L672" title="All 2 branches covered.">                if (key.equals(region.getKey())) {</span>
+<span class="fc" id="L673">                    removeRegion(region);</span>
+                }
+<span class="fc" id="L675">            }</span>
+<span class="fc" id="L676">        }</span>
+<span class="fc" id="L677">    }</span>
+
+    /**
+     * Gets a {@code Region} by name.
+     *
+     * @param name The region name.
+     * @return The {@code Region} with the given name, or null if
+     *     not found.
+     */
+    public Region getRegionByName(final String name) {
+<span class="nc bnc" id="L687" title="All 2 branches missed.">        return (name == null) ? null</span>
+<span class="nc" id="L688">            : find(getRegions(), matchKeyEquals(name, Region::getName));</span>
+    }
+
+
+    // Useful location and direction utilities
+    
+    /**
+     * Are two locations non-null and either the same or at the same tile.
+     * This routine is here because Location is an interface.
+     *
+     * @param l1 The first {@code Location}.
+     * @param l2 The second {@code Location}.
+     * @return True if the locations are the same or at the same tile.
+     */
+    public static final boolean isSameLocation(Location l1, Location l2) {
+<span class="pc bpc" id="L703" title="1 of 4 branches missed.">        return (l1 == null || l2 == null) ? false</span>
+<span class="fc bfc" id="L704" title="All 2 branches covered.">            : (l1 == l2) ? true</span>
+<span class="fc bfc" id="L705" title="All 2 branches covered.">            : (l1.getTile() == null) ? false</span>
+<span class="fc bfc" id="L706" title="All 2 branches covered.">            : l1.getTile() == l2.getTile();</span>
+    }
+
+    /**
+     * Are two locations at least in the same contiguous land/sea-mass?
+     * This routine is here because Location is an interface.
+     *
+     * @param l1 The first {@code Location}.
+     * @param l2 The second {@code Location}.
+     * @return True if the locations are the same or in the same land/sea-mass.
+     */
+    public static final boolean isSameContiguity(Location l1, Location l2) {
+<span class="pc bpc" id="L718" title="2 of 4 branches missed.">        return (l1 == null || l2 == null) ? false</span>
+<span class="pc bpc" id="L719" title="1 of 2 branches missed.">            : (l1 == l2) ? true</span>
+<span class="pc bpc" id="L720" title="1 of 4 branches missed.">            : (l1.getTile() == null || l2.getTile() == null) ? false</span>
+<span class="fc" id="L721">            : l1.getTile().isConnectedTo(l2.getTile());</span>
+    }            
+
+    /**
+     * Is a tile in the map in a polar region?
+     *
+     * @param tile The {@code Tile} to examine.
+     * @return True if the tile is in a polar region.
+     */
+    public boolean isPolar(Tile tile) {
+<span class="fc bfc" id="L731" title="All 2 branches covered.">        return tile.getY() &lt;= POLAR_HEIGHT</span>
+<span class="fc bfc" id="L732" title="All 2 branches covered.">            || tile.getY() &gt;= getHeight() - POLAR_HEIGHT - 1;</span>
+    }
+
+    /**
+     * Gets the direction a unit needs to move in
+     * order to get from {@code t1} to {@code t2}
+     *
+     * @param t1 The tile to move from.
+     * @param t2 The target tile if moving from {@code t1}
+     *      in the direction returned by this method.
+     * @return The direction you need to move from {@code t1}
+     *      in order to reach {@code t2}, or null if the two
+     *      specified tiles are not neighbours.
+     */
+    public Direction getDirection(Tile t1, Tile t2) {
+<span class="pc bpc" id="L747" title="2 of 4 branches missed.">        return (t1 == null || t2 == null) ? null</span>
+<span class="fc" id="L748">            : new Position(t1).getDirection(new Position(t2));</span>
+    }
+
+    /**
+     * Get the approximate direction from one tile to another.
+     *
+     * @param src The source {@code Tile}.
+     * @param dst The destination {@code Tile}.
+     * @return The approximate direction from source to direction, or null
+     *     if source and destination are the same.
+     */
+    public static Direction getRoughDirection(Tile src, Tile dst) {
+<span class="fc" id="L760">        int x = dst.getX() - src.getX();</span>
+<span class="fc" id="L761">        int y = dst.getY() - src.getY();</span>
+<span class="pc bpc" id="L762" title="1 of 4 branches missed.">        if (x == 0 &amp;&amp; y == 0) return null;</span>
+<span class="fc" id="L763">        double theta = Math.atan2(y, x) + Math.PI/2 + Math.PI/8;</span>
+<span class="pc bpc" id="L764" title="1 of 2 branches missed.">        if (theta &lt; 0) theta += 2 * Math.PI;</span>
+<span class="fc" id="L765">        return Direction.angleToDirection(theta);</span>
+    }
+
+    /**
+     * Gets the adjacent tile in a given direction from the given coordinates.
+     *
+     * @param x The x coordinate to work from.
+     * @param y The y coordinate to work from.
+     * @param direction The {@code Direction} to check.
+     * @return The adjacent {@code Tile} in the specified
+     *     direction, or null if invalid.
+     */
+    public Tile getAdjacentTile(int x, int y, Direction direction) {
+<span class="fc" id="L778">        return getTile(direction.step(x, y));</span>
+    }
+
+    /**
+     * Gets the adjacent tile in a given direction from a given tile.
+     *
+     * @param tile The starting {@code Tile}.
+     * @param direction The {@code Direction} to check.
+     * @return The adjacent {@code Tile} in the specified
+     *     direction, or null if invalid.
+     */
+    public Tile getAdjacentTile(Tile tile, Direction direction) {
+<span class="fc" id="L790">        return getAdjacentTile(tile.getX(), tile.getY(), direction);</span>
+    }
+
+    /**
+     * Gets the distance between two tiles.
+     *
+     * @param t1 The first {@code Tile}.
+     * @param t2 The second {@code Tile}.
+     * @return The distance between the tiles.
+     */
+    public int getDistance(Tile t1, Tile t2) {
+<span class="fc" id="L801">        return Position.getXYDistance(t1.getX(), t1.getY(),</span>
+<span class="fc" id="L802">                                      t2.getX(), t2.getY());</span>
+    }
+
+    /**
+     * Get the closest tile to a given one from a list of other tiles.
+     *
+     * @param tile The {@code Tile} to start from.
+     * @param tiles The list of {@code Tile}s to check.
+     * @return The closest tile found (may be null if the list is empty).
+     */
+    public Tile getClosestTile(Tile tile, Collection&lt;Tile&gt; tiles) {
+<span class="nc" id="L813">        return minimize(tiles, cachingIntComparator(t -&gt; getDistance(t, tile)));</span>
+    }
+
+    /**
+     * Select a random land tile on the map.
+     *
+     * @param random A {@code Random} number source.
+     * @return A random land tile, or null if none found.
+     */
+    public Tile getRandomLandTile(Random random) {
+<span class="fc" id="L823">        final int SLOSH = 10;</span>
+<span class="fc" id="L824">        int x = 0, y = 0, width = getWidth(), height = getHeight();</span>
+<span class="pc bpc" id="L825" title="1 of 2 branches missed.">        if (width &gt;= SLOSH) {</span>
+<span class="fc" id="L826">            width -= SLOSH;</span>
+<span class="fc" id="L827">            x += SLOSH/2;</span>
+        }
+<span class="pc bpc" id="L829" title="1 of 2 branches missed.">        if (height &gt;= SLOSH) {</span>
+<span class="fc" id="L830">            height -= SLOSH;</span>
+<span class="fc" id="L831">            y += SLOSH/2;</span>
+        }
+<span class="fc" id="L833">        x += randomInt(logger, &quot;W&quot;, random, width);</span>
+<span class="fc" id="L834">        y += randomInt(logger, &quot;H&quot;, random, height);</span>
+<span class="pc bpc" id="L835" title="1 of 2 branches missed.">        for (Tile t : getCircleTiles(getTile(x, y), true, INFINITY)) {</span>
+<span class="fc bfc" id="L836" title="All 2 branches covered.">            if (t.isLand()) return t;</span>
+<span class="fc" id="L837">        }</span>
+<span class="nc" id="L838">        return null;</span>
+    }
+
+
+    // Support for various kinds of map iteration.
+
+    /**
+     * Get a list of all the tiles that match a predicate.
+     *
+     * @param predicate The &lt;code&gt;Predicate&lt;/code&gt; to check.
+     * @return A {@code List} of all matching {@code Tile}s.
+     */
+    public Set&lt;Tile&gt; getTileSet(Predicate&lt;Tile&gt; predicate) {
+<span class="fc" id="L851">        Set&lt;Tile&gt; ret = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L852" title="All 2 branches covered.">        for (Tile t : this.tileList) {</span>
+<span class="fc bfc" id="L853" title="All 2 branches covered.">            if (predicate.test(t)) ret.add(t);</span>
+<span class="fc" id="L854">        }</span>
+<span class="fc" id="L855">        return ret;</span>
+    }
+
+    @Override
+    public Iterator&lt;Tile&gt; iterator() {
+<span class="fc" id="L860">        return Collections.unmodifiableList(tileList).iterator();</span>
+    }
+
+    /**
+     * Get a list of all the tiles that match a predicate.
+     *
+     * @param predicate The &lt;code&gt;Predicate&lt;/code&gt; to check.
+     * @return A {@code List} of all matching {@code Tile}s.
+     */
+    public List&lt;Tile&gt; getTileList(Predicate&lt;Tile&gt; predicate) {
+<span class="fc" id="L870">        List&lt;Tile&gt; ret = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L871" title="All 2 branches covered.">        for (Tile t : this.tileList) {</span>
+<span class="fc bfc" id="L872" title="All 2 branches covered.">            if (predicate.test(t)) ret.add(t);</span>
+<span class="fc" id="L873">        }</span>
+<span class="fc" id="L874">        return ret;</span>
+    }
+
+    /**
+     * Perform an action on each tile.
+     *
+     * @param consumer The {@code Consumer} action to perform.
+     */
+    public void forEachTile(Consumer&lt;Tile&gt; consumer) {
+<span class="fc bfc" id="L883" title="All 2 branches covered.">        for (Tile t : this.tileList) consumer.accept(t);</span>
+<span class="fc" id="L884">    }</span>
+
+    /**
+     * Perform an action on each tile that matches a predicate.
+     *
+     * @param predicate The {@code Predicate} to match.
+     * @param consumer The {@code Consumer} action to perform.
+     */
+    public void forEachTile(Predicate&lt;Tile&gt; predicate,
+                            Consumer&lt;Tile&gt; consumer) {
+<span class="fc bfc" id="L894" title="All 2 branches covered.">        for (Tile t : this.tileList) {</span>
+<span class="fc bfc" id="L895" title="All 2 branches covered.">            if (predicate.test(t)) consumer.accept(t);</span>
+<span class="fc" id="L896">        }</span>
+<span class="fc" id="L897">    }</span>
+
+    /**
+     * Populate the map.
+     *
+     * To be called to build a new map.
+     *
+     * @param func A &lt;code&gt;Function&lt;/code&gt; that makes a new
+     *    &lt;code&gt;Tile&lt;/code&gt; for the supplied x,y coordinates.
+     * @return True if the map was populated.
+     */
+    public boolean populateTiles(BiFunction&lt;Integer, Integer, Tile&gt; func) {
+<span class="fc bfc" id="L909" title="All 2 branches covered.">        for (int y = 0; y &lt; this.height; y++) {</span>
+<span class="fc bfc" id="L910" title="All 2 branches covered.">            for (int x = 0; x &lt; this.width; x++) {</span>
+<span class="pc bpc" id="L911" title="1 of 2 branches missed.">                if (!this.setTile(func.apply(x, y), x, y)) return false;</span>
+            }
+        }
+<span class="fc" id="L914">        return true;</span>
+    }
+
+    /**
+     * Iterates through a rectangular subpart of the Map.
+     * Intentionally avoids calling methods doing redundant checks,
+     * which would slow down map display.
+     * 
+     * @param x X-component of the position of first tile.
+     * @param y Y-component of the position of first tile.
+     * @param w Width of the rectangle.
+     * @param h Height of the rectangle.
+     * @param consumer Provides a function to call for each tile.
+     */
+    public void forSubMap(int x, int y, int w, int h,
+                          Consumer&lt;Tile&gt; consumer) {
+<span class="nc bnc" id="L930" title="All 2 branches missed.">        for (Tile t : subMap(x, y, w, h)) consumer.accept(t);</span>
+<span class="nc" id="L931">    }</span>
+
+    /**
+     * Collect the tiles in a rectangular portion of the map.
+     * 
+     * @param x X-component of the position of first tile.
+     * @param y Y-component of the position of first tile.
+     * @param w Width of the rectangle.
+     * @param h Height of the rectangle.
+     * @return A list of {@code Tile}s found (empty on error).
+     */
+    public List&lt;Tile&gt; subMap(int x, int y, int w, int h) {
+<span class="pc bpc" id="L943" title="1 of 2 branches missed.">        if (x &lt; 0) {</span>
+<span class="nc" id="L944">            w += x;</span>
+<span class="nc" id="L945">            x = 0;</span>
+        }
+<span class="pc bpc" id="L947" title="1 of 2 branches missed.">        if (y &lt; 0) {</span>
+<span class="nc" id="L948">            h += y;</span>
+<span class="nc" id="L949">            y = 0;</span>
+        }
+<span class="fc" id="L951">        final int width = getWidth();</span>
+<span class="fc" id="L952">        final int height = getHeight();</span>
+<span class="pc bpc" id="L953" title="4 of 8 branches missed.">        if (w &lt;= 0 || h &lt;= 0 || x &gt; width || y &gt; height)</span>
+<span class="nc" id="L954">            return Collections.&lt;Tile&gt;emptyList();</span>
+<span class="pc bpc" id="L955" title="1 of 2 branches missed.">        if (x+w &gt; width) w = width - x;</span>
+<span class="pc bpc" id="L956" title="1 of 2 branches missed.">        if (y+h &gt; height) h = height - y;</span>
+<span class="fc" id="L957">        List&lt;Tile&gt; ret = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L958" title="All 2 branches covered.">        for (int yi = y; yi &lt; y+h; yi++) {</span>
+<span class="fc bfc" id="L959" title="All 2 branches covered.">            for (int xi = x; xi &lt; x+w; xi++) {</span>
+<span class="fc" id="L960">                ret.add(getTile(xi, yi));</span>
+            }
+        }
+<span class="fc" id="L963">        return ret;</span>
+    }
+
+    /**
+     * Get a shuffled list of all the tiles.
+     *
+     * @param random A pseudo-random number source.
+     * @return A shuffled list of all the {@code Tile}s in this map.
+     */
+    public List&lt;Tile&gt; getShuffledTiles(Random random) {
+<span class="fc" id="L973">        List&lt;Tile&gt; ret = new ArrayList&lt;&gt;(this.tileList);</span>
+<span class="fc" id="L974">        randomShuffle(logger, &quot;All tile shuffle&quot;, ret, random);</span>
+<span class="fc" id="L975">        return ret;</span>
+    }
+        
+    /**
+     * An iterator returning positions in a spiral starting at a given
+     * center tile.  The center tile is never included in the returned
+     * tiles, and all returned tiles are valid.
+     */
+    private final class CircleIterator implements Iterator&lt;Tile&gt; {
+
+        /** The maximum radius. */
+        private final int radius;
+        /** The current radius of the iteration. */
+        private int currentRadius;
+        /** The current index in the circle with the current radius: */
+        private int n;
+        /** The current position in the circle. */
+        private int x, y;
+
+
+        /**
+         * Create a new Circle Iterator.
+         *
+         * @param center The center {@code Tile} of the circle.
+         * @param isFilled True to get all of the positions within the circle.
+         * @param radius The radius of the circle.
+         */
+<span class="fc" id="L1002">        public CircleIterator(Tile center, boolean isFilled, int radius) {</span>
+<span class="pc bpc" id="L1003" title="1 of 2 branches missed.">            if (center == null) {</span>
+<span class="nc" id="L1004">                throw new RuntimeException(&quot;center must not be null: &quot; + this);</span>
+            }
+<span class="fc" id="L1006">            this.radius = radius;</span>
+<span class="fc" id="L1007">            n = 0;</span>
+            
+            Position step;
+<span class="fc bfc" id="L1010" title="All 2 branches covered.">            if (radius &lt;= 0) {</span>
+<span class="fc" id="L1011">                x = y = UNDEFINED;</span>
+<span class="fc bfc" id="L1012" title="All 4 branches covered.">            } else if (isFilled || radius == 1) {</span>
+<span class="fc" id="L1013">                step = Direction.NE.step(center.getX(), center.getY());</span>
+<span class="fc" id="L1014">                x = step.x;</span>
+<span class="fc" id="L1015">                y = step.y;</span>
+<span class="fc" id="L1016">                currentRadius = 1;</span>
+            } else {
+<span class="fc" id="L1018">                this.currentRadius = radius;</span>
+<span class="fc" id="L1019">                x = center.getX();</span>
+<span class="fc" id="L1020">                y = center.getY();</span>
+<span class="fc bfc" id="L1021" title="All 2 branches covered.">                for (int i = 1; i &lt; radius; i++) {</span>
+<span class="fc" id="L1022">                    step = Direction.N.step(x, y);</span>
+<span class="fc" id="L1023">                    x = step.x;</span>
+<span class="fc" id="L1024">                    y = step.y;</span>
+                }
+<span class="fc" id="L1026">                step = Direction.NE.step(x, y);</span>
+<span class="fc" id="L1027">                x = step.x;</span>
+<span class="fc" id="L1028">                y = step.y;</span>
+            }
+<span class="fc bfc" id="L1030" title="All 2 branches covered.">            if (!isValid(x, y)) nextTile();</span>
+<span class="fc" id="L1031">        }</span>
+
+        /**
+         * Finds the next position.
+         */
+        private void nextTile() {
+<span class="fc bfc" id="L1037" title="All 2 branches covered.">            boolean started = n != 0;</span>
+            do {
+<span class="fc" id="L1039">                n++;</span>
+<span class="fc" id="L1040">                final int width = currentRadius * 2;</span>
+<span class="fc bfc" id="L1041" title="All 2 branches covered.">                if (n &gt;= width * 4) {</span>
+<span class="fc" id="L1042">                    currentRadius++;</span>
+<span class="fc bfc" id="L1043" title="All 2 branches covered.">                    if (currentRadius &gt; radius) {</span>
+<span class="fc" id="L1044">                        x = y = UNDEFINED;</span>
+<span class="fc" id="L1045">                        break;</span>
+<span class="fc bfc" id="L1046" title="All 2 branches covered.">                    } else if (!started) {</span>
+<span class="fc" id="L1047">                        x = y = UNDEFINED;</span>
+<span class="fc" id="L1048">                        break;</span>
+                    } else {
+<span class="fc" id="L1050">                        n = 0;</span>
+<span class="fc" id="L1051">                        started = false;</span>
+<span class="fc" id="L1052">                        Position step = Direction.NE.step(x, y);</span>
+<span class="fc" id="L1053">                        x = step.x;</span>
+<span class="fc" id="L1054">                        y = step.y;</span>
+<span class="fc" id="L1055">                    }</span>
+                } else {
+<span class="fc" id="L1057">                    int i = n / width;</span>
+                    Direction direction;
+<span class="pc bpc" id="L1059" title="1 of 5 branches missed.">                    switch (i) {</span>
+                    case 0:
+<span class="fc" id="L1061">                        direction = Direction.SE;</span>
+<span class="fc" id="L1062">                        break;</span>
+                    case 1:
+<span class="fc" id="L1064">                        direction = Direction.SW;</span>
+<span class="fc" id="L1065">                        break;</span>
+                    case 2:
+<span class="fc" id="L1067">                        direction = Direction.NW;</span>
+<span class="fc" id="L1068">                        break;</span>
+                    case 3:
+<span class="fc" id="L1070">                        direction = Direction.NE;</span>
+<span class="fc" id="L1071">                        break;</span>
+                    default:
+<span class="nc" id="L1073">                        throw new IllegalStateException(&quot;i=&quot; + i + &quot;, n=&quot; + n</span>
+                            + &quot;, width=&quot; + width);
+                    }
+<span class="fc" id="L1076">                    Position step = direction.step(x, y);</span>
+<span class="fc" id="L1077">                    x = step.x;</span>
+<span class="fc" id="L1078">                    y = step.y;</span>
+                }
+<span class="fc bfc" id="L1080" title="All 2 branches covered.">            } while (!isValid(x, y));</span>
+<span class="fc" id="L1081">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean hasNext() {
+<span class="pc bpc" id="L1088" title="1 of 4 branches missed.">            return x != UNDEFINED &amp;&amp; y != UNDEFINED;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Tile next() {
+<span class="pc bpc" id="L1096" title="1 of 2 branches missed.">            if (!hasNext()) {</span>
+<span class="nc" id="L1097">                throw new NoSuchElementException(&quot;CircleIterator exhausted: &quot; + n);</span>
+            }
+<span class="fc" id="L1099">            Tile result = getTile(x, y);</span>
+<span class="fc" id="L1100">            nextTile();</span>
+<span class="fc" id="L1101">            return result;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void remove() {
+<span class="nc" id="L1109">            throw new UnsupportedOperationException();</span>
+        }
+    }
+
+    /**
+     * Gets a circle iterator.
+     *
+     * @param center The center {@code Tile} to iterate around.
+     * @param isFilled True to get all of the positions in the circle.
+     * @param radius The radius of circle. No tiles are returned if
+     *      {@code radius &lt;= 0}.
+     * @return The circle iterator. The center tile is never returned.
+     *      The innermost tiles are returned first.
+     */
+    public Iterator&lt;Tile&gt; getCircleIterator(Tile center, boolean isFilled, int radius) {
+<span class="fc" id="L1124">        return new CircleIterator(center, isFilled, radius);</span>
+    }
+
+    /**
+     * Gets an iterable for all the tiles in a circle using an
+     * underlying CircleIterator.
+     *
+     * @param center The center {@code Tile} to iterate around.
+     * @param isFilled True to get all of the positions in the circle.
+     * @param radius The radius of circle. No tiles are returned if
+     *      {@code radius &lt;= 0}.
+     * @return An {@code Iterable} The center tile is never returned.
+     *      The innermost tiles are returned first.
+     */
+    public Iterable&lt;Tile&gt; getCircleTiles(final Tile center, final boolean isFilled, final int radius) {
+<span class="fc" id="L1139">        return new Iterable&lt;Tile&gt;() {</span>
+            @Override
+            public Iterator&lt;Tile&gt; iterator() {
+<span class="fc" id="L1142">                return getCircleIterator(center, isFilled, radius);</span>
+            }
+        };
+    }
+        
+
+    // Path-finding/searching infrastructure and routines
+
+    /**
+     * Simple interface to supply a heuristic to the A* routine.
+     */
+    private interface SearchHeuristic {
+        int getValue(Tile tile);
+    }
+
+    /** A trivial search heuristic that always returns zero. */
+<span class="fc" id="L1158">    private SearchHeuristic trivialSearchHeuristic = (Tile t) -&gt; 0;</span>
+
+    /**
+     * Gets a search heuristic using the Manhatten distance to an end tile.
+     *
+     * @param endTile The {@code Tile} to aim for.
+     * @return A new {@code SearchHeuristic} aiming for the end tile.
+     */
+    private SearchHeuristic getManhattenHeuristic(final Tile endTile) {
+<span class="fc" id="L1167">        return (Tile tile) -&gt; tile.getDistanceTo(endTile);</span>
+    }
+
+    /**
+     * Destination argument test for path searches.  Find the actual
+     * destination of a path.
+     *
+     * @param unit An optional {@code Unit} to search for.
+     * @param end  The candidate end {@code Location}.
+     * @return The actual end location.
+     */
+    private Location findRealEnd(Unit unit, Location end) {
+        while (true) {
+<span class="pc bpc" id="L1180" title="1 of 2 branches missed.">            if (end == null) {</span>
+<span class="nc" id="L1181">                throw new RuntimeException(&quot;Null end for: &quot; + unit);</span>
+<span class="fc bfc" id="L1182" title="All 2 branches covered.">            } else if (end instanceof Europe) {</span>
+<span class="fc" id="L1183">                return end;</span>
+<span class="pc bpc" id="L1184" title="1 of 2 branches missed.">            } else if (end instanceof Map) {</span>
+<span class="nc" id="L1185">                end = unit.getFullEntryLocation();</span>
+<span class="pc bpc" id="L1186" title="1 of 2 branches missed.">            } else if (end.getTile() != null) {</span>
+<span class="fc" id="L1187">                return end.getTile();</span>
+<span class="nc bnc" id="L1188" title="All 2 branches missed.">            } else if (unit != null) {</span>
+<span class="nc" id="L1189">                return unit.resolveDestination();</span>
+            } else {
+<span class="nc" id="L1191">                throw new RuntimeException(&quot;Invalid end: &quot; + end);</span>
+            }
+        }
+    }
+
+    /**
+     * Gets the best (closest) path location for this unit to reach a
+     * given tile from off the map.
+     *
+     * @param unit The {@code Unit} to check.
+     * @param tile The target {@code Tile}.
+     * @param carrier An optional carrier {@code Unit}to use.
+     * @param costDecider An optional {@code CostDecider} to use.
+     * @return A path to the best entry location tile to arrive on the
+     *     map at, or null if none found.
+     */
+    private PathNode getBestEntryPath(Unit unit, Tile tile, Unit carrier,
+                                      CostDecider costDecider) {
+<span class="pc bpc" id="L1209" title="1 of 2 branches missed.">        if (costDecider == null)</span>
+<span class="fc" id="L1210">            costDecider = CostDeciders.avoidSettlementsAndBlockingUnits();</span>
+<span class="fc" id="L1211">        return searchMap(unit, tile, GoalDeciders.getHighSeasGoalDecider(),</span>
+                         costDecider, INFINITY, carrier, null, null);
+    }
+
+    /**
+     * Gets the best (closest) entry location for this unit to reach a
+     * given tile from off the map.
+     *
+     * @param unit The {@code Unit} to check.
+     * @param tile The target {@code Tile}.
+     * @param carrier An optional carrier {@code Unit}to use.
+     * @param costDecider An optional {@code CostDecider} to use.
+     * @return The best entry location tile to arrive on the map at, or null
+     *     if none found.
+     */
+    public Tile getBestEntryTile(Unit unit, Tile tile, Unit carrier,
+                                 CostDecider costDecider) {
+<span class="nc" id="L1228">        PathNode path = getBestEntryPath(unit, tile, carrier, costDecider);</span>
+<span class="nc bnc" id="L1229" title="All 2 branches missed.">        return (path == null) ? null : path.getLastNode().getTile();</span>
+    }
+
+    /**
+     * Find the quickest path for a unit (with optional carrier) from
+     * a start tile to an end tile.
+     *
+     * @param unit The {@code Unit} to find the path for.
+     * @param start The {@code Tile} in which the path starts from.
+     * @param end The {@code Tile} at the end of the path.
+     * @param carrier An optional naval carrier {@code Unit} to use.
+     * @param costDecider An optional {@code CostDecider} for
+     *     determining the movement costs (uses default cost deciders
+     *     for the unit/s if not provided).
+     * @param lb An optional {@code LogBuilder} to log to.
+     * @return A path starting at the start tile and ending at the end
+     *     tile, or null if none found.
+     */
+    private PathNode findMapPath(Unit unit, Tile start, Tile end, Unit carrier,
+                                 CostDecider costDecider, LogBuilder lb) {
+<span class="fc bfc" id="L1249" title="All 2 branches covered.">        final Unit offMapUnit = (carrier != null) ? carrier</span>
+<span class="pc bpc" id="L1250" title="1 of 4 branches missed.">            : (unit != null &amp;&amp; unit.isNaval()) ? unit</span>
+<span class="fc" id="L1251">            : null;</span>
+<span class="fc" id="L1252">        final GoalDecider gd = GoalDeciders.getLocationGoalDecider(end);</span>
+<span class="fc" id="L1253">        final SearchHeuristic sh = getManhattenHeuristic(end);</span>
+        Unit embarkTo, endUnit;
+
+        PathNode path;
+<span class="pc bpc" id="L1257" title="1 of 2 branches missed.">        if (start.getContiguity() == end.getContiguity()) {</span>
+            // If the unit potentially could get to the destination
+            // without a carrier, compare both with-carrier and
+            // without-carrier paths.  The latter will usually be
+            // faster, but not always, e.g. mounted units on a good
+            // road system.
+<span class="fc" id="L1263">            path = searchMap(unit, start, gd, costDecider,</span>
+                             INFINITY, null, sh, lb);
+<span class="fc bfc" id="L1265" title="All 2 branches covered.">            PathNode carrierPath = (carrier == null) ? null</span>
+<span class="fc" id="L1266">                : searchMap(unit, start, gd, costDecider,</span>
+                            INFINITY, carrier, sh, lb);
+<span class="fc bfc" id="L1268" title="All 4 branches covered.">            if (carrierPath != null</span>
+                &amp;&amp; (path == null
+<span class="fc" id="L1270">                    || (path.getLastNode().getCost()</span>
+<span class="fc bfc" id="L1271" title="All 2 branches covered.">                        &gt; carrierPath.getLastNode().getCost()))) {</span>
+<span class="fc" id="L1272">                path = carrierPath;</span>
+            }
+
+<span class="pc bnc" id="L1275" title="All 2 branches missed.">        } else if (offMapUnit != null) {</span>
+            // If there is an off-map unit then complex paths which
+            // use settlements and inland lakes are possible, but hard
+            // to capture with the contiguity test, so just allow the
+            // search to proceed.
+<span class="nc" id="L1280">            path = searchMap(unit, start, gd, costDecider,</span>
+                             INFINITY, carrier, sh, lb);
+
+<span class="nc bnc" id="L1283" title="All 4 branches missed.">        } else if (unit != null &amp;&amp; unit.isOnCarrier()</span>
+<span class="nc bnc" id="L1284" title="All 4 branches missed.">            &amp;&amp; !start.isLand() &amp;&amp; end.isLand()</span>
+<span class="nc bnc" id="L1285" title="All 2 branches missed.">            &amp;&amp; !start.getContiguityAdjacent(end.getContiguity()).isEmpty()) {</span>
+            // Special case where a land unit is trying to move off a
+            // ship to adjacent land.
+<span class="nc" id="L1288">            path = searchMap(unit, start, gd, costDecider, INFINITY,</span>
+                             carrier, sh, lb);
+
+<span class="nc bnc" id="L1291" title="All 2 branches missed.">        } else if (start.isLand()</span>
+<span class="nc bnc" id="L1292" title="All 6 branches missed.">            &amp;&amp; !end.isLand() &amp;&amp; (endUnit = end.getFirstUnit()) != null</span>
+<span class="nc bnc" id="L1293" title="All 2 branches missed.">            &amp;&amp; unit != null &amp;&amp; unit.getOwner().owns(endUnit)</span>
+<span class="nc bnc" id="L1294" title="All 2 branches missed.">            &amp;&amp; !end.getContiguityAdjacent(start.getContiguity()).isEmpty()</span>
+<span class="nc bnc" id="L1295" title="All 2 branches missed.">            &amp;&amp; (embarkTo = end.getCarrierForUnit(unit)) != null) {</span>
+            // Special case where a land unit is trying to move from
+            // land to an adjacent ship.
+<span class="nc" id="L1298">            path = searchMap(unit, start,</span>
+<span class="nc" id="L1299">                             GoalDeciders.getAdjacentLocationGoalDecider(end),</span>
+                             costDecider, INFINITY, null, null, lb);
+<span class="nc bnc" id="L1301" title="All 2 branches missed.">            if (path != null) {</span>
+<span class="nc" id="L1302">                PathNode last = path.getLastNode();</span>
+<span class="nc" id="L1303">                last.next = new PathNode(embarkTo, 0, last.getTurns()+1, true,</span>
+                    last, null);
+<span class="nc" id="L1305">            }</span>
+        } else { // Otherwise, there is a connectivity failure.
+<span class="nc" id="L1307">            path = null;</span>
+        }
+<span class="fc" id="L1309">        return path;</span>
+    }
+
+    /**
+     * Finish processing a path.
+     *
+     * @param path The {@code PathNode} to finish.
+     * @param unit The {@code Unit} that is travelling along the path.
+     * @param lb An optional {@code LogBuilder} to log to.
+     */
+    private void finishPath(PathNode path, Unit unit, LogBuilder lb) {
+<span class="fc bfc" id="L1320" title="All 2 branches covered.">        if (path != null) {</span>
+            // Add the turns remaining on the high seas.
+<span class="pc bpc" id="L1322" title="1 of 2 branches missed.">            final int initialTurns = (!unit.isAtSea()) ? 0</span>
+<span class="nc bnc" id="L1323" title="All 2 branches missed.">                : ((unit.isOnCarrier()) ? unit.getCarrier() : unit)</span>
+<span class="pc" id="L1324">                .getWorkLeft();</span>
+<span class="pc bpc" id="L1325" title="1 of 2 branches missed.">            if (initialTurns != 0) path.addTurns(initialTurns);</span>
+
+<span class="pc bpc" id="L1327" title="1 of 2 branches missed.">            if (lb != null) {</span>
+<span class="nc" id="L1328">                lb.add(&quot;\nSuccess\n&quot;, path.fullPathToString());</span>
+            }
+        }
+<span class="pc bpc" id="L1331" title="1 of 2 branches missed.">        if (lb != null) lb.log(logger, Level.INFO);</span>
+<span class="fc" id="L1332">    }</span>
+        
+    /**
+     * Find the quickest path for a unit (with optional carrier) from
+     * a start location to an end location.
+     *
+     * @param unit The {@code Unit} to find the path for.
+     * @param start The {@code Location} in which the path starts from.
+     * @param end The {@code Location} at the end of the path.
+     * @param carrier An optional naval carrier {@code Unit} to use.
+     * @param costDecider An optional {@code CostDecider} for
+     *     determining the movement costs (uses default cost deciders
+     *     for the unit/s if not provided).
+     * @param lb An optional {@code LogBuilder} to log to.
+     * @return A path starting at the start location and ending at the
+     *     end location, or null if none found.
+     */
+    public PathNode findPath(final Unit unit,
+                             final Location start, final Location end,
+                             final Unit carrier, CostDecider costDecider,
+                             LogBuilder lb) {
+<span class="pc bpc" id="L1353" title="1 of 2 branches missed.">        if (traceSearch) lb = new LogBuilder(1024);</span>
+
+        // Validate the arguments, reducing to either Europe or a Tile.
+        final Location realEnd;
+        try {
+<span class="fc" id="L1358">            realEnd = findRealEnd(unit, end);</span>
+<span class="nc" id="L1359">        } catch (IllegalArgumentException iae) {</span>
+<span class="nc" id="L1360">            throw new IllegalArgumentException(&quot;Path fail: &quot; + unit</span>
+                + &quot; from &quot; + start + &quot; to &quot; + end + &quot; with &quot; + carrier, iae);
+<span class="fc" id="L1362">        }</span>
+        // Get the unit that will be used for off-map travel.
+<span class="fc bfc" id="L1364" title="All 2 branches covered.">        final Unit offMapUnit = (carrier != null) ? carrier : unit;</span>
+
+        PathNode p, path;
+        Tile tile;
+<span class="pc bpc" id="L1368" title="1 of 4 branches missed.">        if (realEnd instanceof Tile &amp;&amp; !((Tile)realEnd).isExplored()) {</span>
+            // Do not allow finding a path into unexplored territory,
+            // as we do not have the terrain type and thus can not
+            // calculate costs, but relent if the unexplored tile borders
+            // an explored one on the same contiguity.
+<span class="nc bnc" id="L1373" title="All 2 branches missed.">            Tile closest = (start instanceof Tile)</span>
+<span class="nc" id="L1374">                ? getClosestTile((Tile)start,</span>
+<span class="nc" id="L1375">                    transform(((Tile)realEnd).getSurroundingTiles(1, 1),</span>
+<span class="nc bnc" id="L1376" title="All 2 branches missed.">                        t -&gt; t.isExplored()</span>
+<span class="nc bnc" id="L1377" title="All 2 branches missed.">                            &amp;&amp; isSameContiguity(t, start)))</span>
+<span class="nc" id="L1378">                : null;</span>
+<span class="nc bnc" id="L1379" title="All 2 branches missed.">            path = (closest == null) ? null</span>
+<span class="nc" id="L1380">                : this.findPath(unit, start, closest, carrier,</span>
+                                costDecider, lb);
+<span class="nc bnc" id="L1382" title="All 2 branches missed.">            if (path != null) {</span>
+<span class="nc" id="L1383">                PathNode last = path.getLastNode();</span>
+<span class="nc" id="L1384">                last.next = new PathNode((Tile)realEnd, 0,</span>
+<span class="nc" id="L1385">                    last.getTurns()+1, last.isOnCarrier(), last, null);</span>
+            }
+
+<span class="pc bfc" id="L1388" title="All 4 branches covered.">        } else if (start instanceof Europe &amp;&amp; realEnd instanceof Europe) {</span>
+            // 0: Europe-&gt;Europe: Create a trivial path.
+<span class="fc" id="L1390">            path = new PathNode(start, unit.getMovesLeft(), 0,</span>
+                false, null, null);
+
+<span class="pc bpc" id="L1393" title="1 of 4 branches missed.">        } else if (start instanceof Europe &amp;&amp; realEnd instanceof Tile) {</span>
+            // 1: Europe-&gt;Tile
+            // Fail fast without an off map unit.
+<span class="pc bpc" id="L1396" title="1 of 2 branches missed.">            if (offMapUnit == null</span>
+<span class="fc bfc" id="L1397" title="All 2 branches covered.">                || !offMapUnit.getType().canMoveToHighSeas()) {</span>
+<span class="fc" id="L1398">                path = null;</span>
+
+                // Find the best place to enter the map from Europe
+<span class="pc bpc" id="L1401" title="1 of 2 branches missed.">            } else if ((p = getBestEntryPath(unit, (Tile)realEnd, carrier,</span>
+                        costDecider)) == null) {
+<span class="nc" id="L1403">                path = null;</span>
+
+                // Now search forward from there to get a path in the
+                // right order (path costs are not symmetric).  There are
+                // &quot;expected&quot; failures when rivers block due to foreign
+                // ship movement.  There are also other failures which we
+                // would like to log.  Try to filter out the first case.
+<span class="pc bpc" id="L1410" title="1 of 2 branches missed.">            } else if ((path = findMapPath(unit,</span>
+<span class="fc" id="L1411">                        (tile = p.getLastNode().getTile()), (Tile)realEnd,</span>
+                        carrier, costDecider, lb)) == null) {
+<span class="nc bnc" id="L1413" title="All 2 branches missed.">                if (!((Tile)realEnd).isOnRiver()) {</span>
+<span class="nc" id="L1414">                    LogBuilder l2 = new LogBuilder(512);</span>
+<span class="nc" id="L1415">                    l2.add(&quot;Fail in findPath(&quot;, unit, &quot;, &quot;, tile,</span>
+                        &quot;, &quot;, realEnd, &quot;, &quot;, carrier, &quot;)\n&quot;);
+<span class="nc" id="L1417">                    l2.addStackTrace();</span>
+<span class="nc" id="L1418">                    l2.add(p.fullPathToString());</span>
+<span class="nc" id="L1419">                    findMapPath(unit, tile, (Tile)realEnd,</span>
+                        carrier, costDecider, l2);
+<span class="nc" id="L1421">                    l2.log(logger, Level.WARNING);</span>
+                }
+<span class="nc" id="L1423">                path = null;</span>
+
+                // At the front of the path insert a node for the starting
+                // location in Europe, correcting for the turns to sail to
+                // the entry location.
+            } else {
+<span class="fc" id="L1429">                path.addTurns(offMapUnit.getSailTurns());</span>
+<span class="pc bpc" id="L1430" title="1 of 2 branches missed.">                path.previous = new PathNode(start, unit.getMovesLeft(),</span>
+                    0, carrier != null, null, path);
+<span class="fc" id="L1432">                path = path.previous;</span>
+<span class="pc bpc" id="L1433" title="2 of 4 branches missed.">                if (carrier != null &amp;&amp; unit.getLocation() != carrier) {</span>
+<span class="fc" id="L1434">                    path.previous = new PathNode(start, unit.getMovesLeft(),</span>
+                        0, false, null, path);
+<span class="fc" id="L1436">                    path = path.previous;</span>
+                }
+            }
+
+<span class="pc bpc" id="L1440" title="1 of 4 branches missed.">        } else if (start instanceof Tile &amp;&amp; realEnd instanceof Europe) {</span>
+            // 2: Tile-&gt;Europe
+            // Fail fast if Europe is unattainable.
+<span class="pc bpc" id="L1443" title="1 of 2 branches missed.">            if (offMapUnit == null</span>
+<span class="pc bpc" id="L1444" title="1 of 2 branches missed.">                || !offMapUnit.getType().canMoveToHighSeas()) {</span>
+<span class="nc" id="L1445">                path = null;</span>
+                
+                // Search forwards to the high seas.
+<span class="fc bfc" id="L1448" title="All 2 branches covered.">            } else if ((p = searchMap(unit, (Tile)start,</span>
+<span class="fc" id="L1449">                        GoalDeciders.getHighSeasGoalDecider(),</span>
+                        costDecider, INFINITY, carrier, null, lb)) == null) {
+<span class="fc" id="L1451">                path = null;</span>
+
+            } else {
+<span class="fc" id="L1454">                PathNode last = p.getLastNode();</span>
+<span class="fc" id="L1455">                last.next = new PathNode(realEnd, unit.getInitialMovesLeft(),</span>
+<span class="fc" id="L1456">                    last.getTurns() + offMapUnit.getSailTurns(),</span>
+<span class="fc" id="L1457">                    last.isOnCarrier(), last, null);</span>
+<span class="fc" id="L1458">                path = p;</span>
+<span class="fc" id="L1459">            }</span>
+
+<span class="pc bpc" id="L1461" title="2 of 4 branches missed.">        } else if (start instanceof Tile &amp;&amp; realEnd instanceof Tile) {</span>
+            // 3: Tile-&gt;Tile
+            Direction d;
+            Unit.MoveType mt;
+            // Short circuit if adjacent and blocked
+<span class="pc bpc" id="L1466" title="1 of 2 branches missed.">            if (unit != null</span>
+<span class="fc bfc" id="L1467" title="All 2 branches covered.">                &amp;&amp; (d = ((Tile)start).getDirection((Tile)realEnd)) != null</span>
+<span class="pc bpc" id="L1468" title="1 of 2 branches missed.">                &amp;&amp; (mt = unit.getMoveType(d)).isLegal()</span>
+<span class="fc bfc" id="L1469" title="All 2 branches covered.">                &amp;&amp; !mt.isProgress()) {</span>
+<span class="fc bfc" id="L1470" title="All 2 branches covered.">                path = new PathNode(start, unit.getMovesLeft(), 0,</span>
+                                    carrier != null, null, null);
+<span class="fc" id="L1472">                int cost = unit.getMoveCost((Tile)start, (Tile)realEnd,</span>
+<span class="fc" id="L1473">                                            unit.getMovesLeft());</span>
+<span class="fc" id="L1474">                path.next = new PathNode(realEnd, unit.getMovesLeft() - cost,</span>
+                                         0, false, path, null);
+<span class="fc" id="L1476">            } else {</span>
+<span class="fc" id="L1477">                path = findMapPath(unit, (Tile)start, (Tile)realEnd,</span>
+                                   carrier, costDecider, lb);
+            }
+        } else {
+<span class="nc" id="L1481">            throw new IllegalStateException(&quot;Can not happen: &quot; + start</span>
+                + &quot;, &quot; + realEnd);
+        }
+
+<span class="fc" id="L1485">        finishPath(path, unit, lb);</span>
+<span class="fc" id="L1486">        return path;</span>
+    }
+
+    /**
+     * Searches for a goal.
+     * Assumes units in Europe return to their current entry location,
+     * which is not optimal most of the time.
+     * Returns the full path including the start and end locations.
+     *
+     * @param unit The {@code Unit} to find a path for.
+     * @param start The {@code Location} to start the search from.
+     * @param goalDecider The object responsible for determining whether a
+     *     given {@code PathNode} is a goal or not.
+     * @param costDecider An optional {@code CostDecider}
+     *     responsible for determining the path cost.
+     * @param maxTurns The maximum number of turns the given
+     *     {@code Unit} is allowed to move.  This is the
+     *     maximum search range for a goal.
+     * @param carrier An optional naval carrier {@code Unit} to use.
+     * @param lb An optional {@code LogBuilder} to log to.
+     * @return The path to a goal, or null if none can be found.
+     * @throws IllegalArgumentException If the unit is null, or the
+     *     start location does not make sense, or the carrier/unit
+     *     combination is bogus.
+     */
+    public PathNode search(final Unit unit, Location start,
+                           final GoalDecider goalDecider,
+                           final CostDecider costDecider,
+                           final int maxTurns, final Unit carrier,
+                           LogBuilder lb) {
+<span class="pc bpc" id="L1516" title="1 of 2 branches missed.">        if (traceSearch) lb = new LogBuilder(1024);</span>
+
+<span class="fc bfc" id="L1518" title="All 2 branches covered.">        final Unit offMapUnit = (carrier != null) ? carrier : unit;</span>
+        
+        PathNode p, path;
+<span class="pc bpc" id="L1521" title="1 of 2 branches missed.">        if (start instanceof Europe) {</span>
+            // Fail fast if Europe is unattainable.
+<span class="nc bnc" id="L1523" title="All 2 branches missed.">            if (offMapUnit == null</span>
+<span class="nc bnc" id="L1524" title="All 2 branches missed.">                || !offMapUnit.getType().canMoveToHighSeas()) {</span>
+<span class="nc" id="L1525">                path = null;</span>
+
+                // This is suboptimal.  We do not know where to enter from
+                // Europe, so start with the standard entry location...
+<span class="nc bnc" id="L1529" title="All 2 branches missed.">            } else if ((p = searchMap(unit,</span>
+<span class="nc" id="L1530">                        offMapUnit.getFullEntryLocation(),</span>
+                        goalDecider, costDecider, maxTurns, carrier,
+                        null, lb)) == null) {
+<span class="nc" id="L1533">                path = null;</span>
+
+                // ...then if we find a path, try to optimize it.  This
+                // will lose if the initial search fails due to a turn limit.
+                // FIXME: do something better.
+            } else {
+<span class="nc" id="L1539">                path = this.findPath(unit, start, p.getLastNode().getTile(),</span>
+                                     carrier, costDecider, lb);
+            }
+
+        } else {
+<span class="fc" id="L1544">            path = searchMap(unit, start.getTile(), goalDecider,</span>
+                             costDecider, maxTurns, carrier, null, lb);
+        }
+
+<span class="fc" id="L1548">        finishPath(path, unit, lb);</span>
+<span class="fc" id="L1549">        return path;</span>
+    }
+
+    /**
+     * Gets the search tracing status.
+     *
+     * @return The search tracing status.
+     */
+    public boolean getSearchTrace() {
+<span class="nc" id="L1558">        return traceSearch;</span>
+    }
+
+    /**
+     * Sets the search tracing status.
+     *
+     * @param trace The new search tracing status.
+     * @return The original search tracing status.
+     */
+    public boolean setSearchTrace(boolean trace) {
+<span class="nc" id="L1568">        boolean ret = traceSearch;</span>
+<span class="nc" id="L1569">        traceSearch = trace;</span>
+<span class="nc" id="L1570">        return ret;</span>
+    }
+
+    /**
+     * Was a carrier used previously on a path?
+     *
+     * Beware!  This is special case code for partially constructed
+     * paths that do not yet have valid .next links, so we can not use the
+     * generic PathNode routines.
+     *
+     * @param path The path the search.
+     * @return True if the path includes a previous on-carrier node.
+     */
+    private boolean usedCarrier(PathNode path) {
+<span class="fc bfc" id="L1584" title="All 2 branches covered.">        while (path != null) {</span>
+<span class="pc bpc" id="L1585" title="1 of 2 branches missed.">            if (path.isOnCarrier()) return true;</span>
+<span class="fc" id="L1586">            path = path.previous;</span>
+        }
+<span class="fc" id="L1588">        return false;</span>
+    }
+
+    /**
+     * Internal class for evaluating a candidate move.
+     */
+    private static class MoveCandidate {
+
+        private Unit unit;
+        private final PathNode current;
+        private final Location dst;
+        private int movesLeft;
+        private int turns;
+        private final boolean onCarrier;
+        private int cost;
+
+
+        /**
+         * Creates a new move candidate where a cost decider will be used
+         * to work out the new moves and turns left.
+         *
+         * @param unit The {@code Unit} to move.
+         * @param current The current position on the path.
+         * @param dst The {@code Location} to move to.
+         * @param movesLeft The initial number of moves left.
+         * @param turns The initial number of turns.
+         * @param onCarrier Will the new move be on a carrier.
+         * @param decider The {@code CostDecider} to use.
+         */
+        public MoveCandidate(Unit unit, PathNode current, Location dst,
+                             int movesLeft, int turns, boolean onCarrier,
+<span class="fc" id="L1619">                             CostDecider decider) {</span>
+<span class="fc" id="L1620">            this.unit = unit;</span>
+<span class="fc" id="L1621">            this.current = current;</span>
+<span class="fc" id="L1622">            this.dst = dst;</span>
+<span class="fc" id="L1623">            this.movesLeft = movesLeft;</span>
+<span class="fc" id="L1624">            this.turns = turns;</span>
+<span class="fc" id="L1625">            this.onCarrier = onCarrier;</span>
+<span class="fc bfc" id="L1626" title="All 2 branches covered.">            CostDecider cd = (decider != null) ? decider</span>
+<span class="fc" id="L1627">                : CostDeciders.defaultCostDeciderFor(unit);</span>
+<span class="fc" id="L1628">            this.cost = cd.getCost(unit, current.getLocation(), dst,</span>
+                                   movesLeft);
+<span class="pc bpc" id="L1630" title="1 of 2 branches missed.">            if (this.cost == CostDecider.ILLEGAL_MOVE) {</span>
+                // This can happen &quot;validly&quot; if we try to route
+                // through unexplored tiles.  We do *not* want to
+                // disallow this completely --- there was a bug report
+                // to the effect that surely you should be able to
+                // route through short stretches of unknown to
+                // explored areas on the other side.  However BR#3153
+                // shows that we need to cost the unexplored tiles
+                // conservatively, so for now, consume all moves left
+                // add two extra turns.
+<span class="nc bnc" id="L1640" title="All 4 branches missed.">                if (dst.getTile() != null &amp;&amp; !dst.getTile().isExplored()) {</span>
+<span class="nc" id="L1641">                    this.turns += 2;</span>
+<span class="nc" id="L1642">                    this.movesLeft = 0;</span>
+<span class="nc" id="L1643">                    this.cost = PathNode.getNodeCost(this.turns, this.movesLeft);</span>
+                } else {
+<span class="nc" id="L1645">                    this.turns = INFINITY;</span>
+<span class="nc" id="L1646">                    this.movesLeft = 0;</span>
+<span class="nc" id="L1647">                    this.cost = INFINITY;</span>
+                }
+            } else {
+<span class="fc" id="L1650">                this.turns += cd.getNewTurns();</span>
+<span class="fc" id="L1651">                this.movesLeft = cd.getMovesLeft();</span>
+<span class="fc" id="L1652">                this.cost = PathNode.getNodeCost(this.turns, this.movesLeft);</span>
+            }
+<span class="fc" id="L1654">        }</span>
+
+        /**
+         * Get the cost.
+         *
+         * @return The current move cost.
+         */
+        public int getCost() {
+<span class="fc" id="L1662">            return this.cost;</span>
+        }
+
+        /**
+         * Handles the change of unit as a result of an embark.
+         *
+         * @param unit The {@code Unit} to embark.
+         */
+        public void embarkUnit(Unit unit) {
+<span class="fc" id="L1671">            this.unit = unit;</span>
+<span class="fc" id="L1672">            this.movesLeft = unit.getInitialMovesLeft();</span>
+<span class="fc" id="L1673">            this.turns++;</span>
+<span class="fc" id="L1674">            this.cost = PathNode.getNodeCost(this.turns, this.movesLeft);</span>
+<span class="fc" id="L1675">        }</span>
+
+        /**
+         * Does this move candidate improve on a specified move.
+         *
+         * @param best The {@code PathNode} to compare against.
+         * @return True if this candidate is an improvement.
+         */
+        public boolean canImprove(PathNode best) {
+<span class="fc bfc" id="L1684" title="All 4 branches covered.">            return best == null || this.cost &lt; best.getCost();</span>
+        }
+
+        /**
+         * Replace a given path with that of this candidate move.
+         *
+         * @param openMap The list of available nodes.
+         * @param openMapQueue The queue of available nodes.
+         * @param f The heuristic values for A*.
+         * @param sh A {@code SearchHeuristic} to apply.
+         */
+        public void improve(HashMap&lt;String, PathNode&gt; openMap,
+                            PriorityQueue&lt;PathNode&gt; openMapQueue,
+                            HashMap&lt;String, Integer&gt; f,
+                            SearchHeuristic sh) {
+<span class="fc" id="L1699">            PathNode best = openMap.get(dst.getId());</span>
+<span class="fc bfc" id="L1700" title="All 2 branches covered.">            if (best != null) {</span>
+<span class="fc" id="L1701">                openMap.remove(dst.getId());</span>
+<span class="fc" id="L1702">                openMapQueue.remove(best);</span>
+            }
+<span class="fc" id="L1704">            add(openMap, openMapQueue, f, sh);</span>
+<span class="fc" id="L1705">        }</span>
+
+        /**
+         * Add this candidate to the open map+queue.
+         *
+         * @param openMap The list of available nodes.
+         * @param openMapQueue The queue of available nodes.
+         * @param f The map of f-values.
+         * @param sh A {@code SearchHeuristic} to apply.
+         */
+        public void add(HashMap&lt;String, PathNode&gt; openMap,
+                        PriorityQueue&lt;PathNode&gt; openMapQueue,
+                        HashMap&lt;String, Integer&gt; f,
+                        SearchHeuristic sh) {
+<span class="fc" id="L1719">            int fcost = this.cost;</span>
+<span class="pc bpc" id="L1720" title="1 of 2 branches missed.">            if (this.dst.getTile() != null) {</span>
+<span class="fc" id="L1721">                fcost += sh.getValue(this.dst.getTile());</span>
+            }
+<span class="fc" id="L1723">            f.put(this.dst.getId(), fcost);</span>
+<span class="fc" id="L1724">            PathNode path = new PathNode(this.dst, this.movesLeft, this.turns,</span>
+                this.onCarrier, this.current, null);
+<span class="fc" id="L1726">            openMap.put(this.dst.getId(), path);</span>
+<span class="fc" id="L1727">            openMapQueue.offer(path);</span>
+<span class="fc" id="L1728">        }</span>
+
+
+        // Override Object
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public String toString() {
+<span class="nc" id="L1738">            StringBuilder sb = new StringBuilder(128);</span>
+<span class="nc" id="L1739">            sb.append(&quot;[candidate unit=&quot;).append(unit)</span>
+<span class="nc" id="L1740">                .append(&quot; dst=&quot;).append(dst)</span>
+<span class="nc" id="L1741">                .append(&quot; movesLeft=&quot;).append(movesLeft)</span>
+<span class="nc" id="L1742">                .append(&quot; turns=&quot;).append(turns)</span>
+<span class="nc" id="L1743">                .append(&quot; onCarrier=&quot;).append(onCarrier)</span>
+<span class="nc" id="L1744">                .append(&quot; cost=&quot;).append(cost)</span>
+<span class="nc" id="L1745">                .append(']');</span>
+<span class="nc" id="L1746">            return sb.toString();</span>
+        }
+    };
+
+    /**
+     * Searches for a path to a goal determined by the given
+     * {@code GoalDecider}.
+     *
+     * Using A* with a List (closedMap) for marking the visited nodes
+     * and using a PriorityQueue (openMapQueue) for getting the next
+     * edge with the least cost.  This implementation could be
+     * improved by having the visited attribute stored on each Tile in
+     * order to avoid both of the HashMaps currently being used to
+     * serve this purpose.
+     *
+     * If the SearchHeuristic is not supplied, then the algorithm
+     * degrades gracefully to Dijkstra's algorithm.
+     *
+     * The data structure for the open list is a combined structure: using a
+     * HashMap for membership tests and a PriorityQueue for getting the node
+     * with the minimal f (cost+heuristics). This gives O(1) on membership
+     * test and O(log N) for remove-best and insertions.
+     *
+     * @param unit The {@code Unit} to find a path for.
+     * @param start The {@code Tile} to start the search from.
+     * @param goalDecider The object responsible for determining whether a
+     *     given {@code PathNode} is a goal or not.
+     * @param costDecider An optional {@code CostDecider}
+     *     responsible for determining the path cost.
+     * @param maxTurns The maximum number of turns the given
+     *     {@code Unit} is allowed to move. This is the
+     *     maximum search range for a goal.
+     * @param carrier An optional naval carrier {@code Unit} to use.
+     * @param searchHeuristic An optional {@code SearchHeuristic}.
+     * @param lb An optional {@code LogBuilder} to log to.
+     * @return A path to a goal determined by the given
+     *     {@code GoalDecider}.
+     */
+    private PathNode searchMap(final Unit unit, final Tile start,
+                               final GoalDecider goalDecider,
+                               final CostDecider costDecider,
+                               final int maxTurns, final Unit carrier,
+                               final SearchHeuristic searchHeuristic,
+                               final LogBuilder lb) {
+<span class="fc" id="L1790">        final HashMap&lt;String, PathNode&gt; openMap = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L1791">        final HashMap&lt;String, PathNode&gt; closedMap = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L1792">        final HashMap&lt;String, Integer&gt; f = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L1793">        final PriorityQueue&lt;PathNode&gt; openMapQueue = new PriorityQueue&lt;&gt;(1024,</span>
+<span class="fc" id="L1794">            Comparator.comparingInt(p -&gt; f.get(p.getLocation().getId())));</span>
+<span class="fc bfc" id="L1795" title="All 2 branches covered.">        final SearchHeuristic sh = (searchHeuristic == null)</span>
+<span class="fc" id="L1796">            ? trivialSearchHeuristic : searchHeuristic;</span>
+<span class="fc bfc" id="L1797" title="All 2 branches covered.">        final Unit offMapUnit = (carrier != null) ? carrier : unit;</span>
+<span class="fc bfc" id="L1798" title="All 2 branches covered.">        Unit currentUnit = (start.isLand())</span>
+<span class="pc bpc" id="L1799" title="2 of 4 branches missed.">            ? ((unit != null &amp;&amp; unit.getLocation() == carrier</span>
+<span class="nc bnc" id="L1800" title="All 2 branches missed.">                    &amp;&amp; start.hasSettlement()</span>
+<span class="nc bnc" id="L1801" title="All 2 branches missed.">                    &amp;&amp; start.getSettlement().isConnectedPort())</span>
+<span class="pc" id="L1802">                ? carrier : unit)</span>
+<span class="fc" id="L1803">            : offMapUnit;</span>
+<span class="pc bpc" id="L1804" title="1 of 2 branches missed.">        if (lb != null) lb.add(&quot;Search trace(unit=&quot;, unit,</span>
+            &quot;, from=&quot;, start,
+<span class="nc bnc" id="L1806" title="All 2 branches missed.">            &quot;, max=&quot;, ((maxTurns == INFINITY)?&quot;-&quot;:Integer.toString(maxTurns)),</span>
+            &quot;, carrier=&quot;, carrier, &quot;)&quot;,
+<span class="nc" id="L1808">            &quot;\n&quot;, net.sf.freecol.common.debug.FreeColDebugger.stackTraceToString());</span>
+
+        // Create the start node and put it on the open list.
+<span class="fc" id="L1811">        final PathNode firstNode = new PathNode(start,</span>
+<span class="pc bpc" id="L1812" title="1 of 6 branches missed.">            ((currentUnit != null) ? currentUnit.getMovesLeft() : -1),</span>
+            0, carrier != null &amp;&amp; currentUnit == carrier, null, null);
+<span class="fc" id="L1814">        f.put(start.getId(), sh.getValue(start));</span>
+<span class="fc" id="L1815">        openMap.put(start.getId(), firstNode);</span>
+<span class="fc" id="L1816">        openMapQueue.offer(firstNode);</span>
+
+<span class="fc" id="L1818">        PathNode best = null;</span>
+<span class="fc" id="L1819">        int bestScore = INFINITY;</span>
+<span class="fc bfc" id="L1820" title="All 2 branches covered.">ok:     while (!openMap.isEmpty()) {</span>
+            // Choose the node with the lowest f.
+<span class="fc" id="L1822">            final PathNode currentNode = openMapQueue.poll();</span>
+<span class="fc" id="L1823">            final Location currentLocation = currentNode.getLocation();</span>
+<span class="fc" id="L1824">            openMap.remove(currentLocation.getId());</span>
+<span class="pc bpc" id="L1825" title="1 of 2 branches missed.">            if (lb != null) lb.add(&quot;\n  &quot;, currentNode);</span>
+
+            // Reset current unit to that of this node.
+<span class="fc bfc" id="L1828" title="All 2 branches covered.">            currentUnit = (currentNode.isOnCarrier()) ? carrier : unit;</span>
+
+            // Check for success.
+<span class="fc bfc" id="L1831" title="All 2 branches covered.">            if (goalDecider.check(currentUnit, currentNode)) {</span>
+<span class="pc bpc" id="L1832" title="1 of 2 branches missed.">                if (lb != null) lb.add(&quot; ***goal(&quot;,</span>
+<span class="nc" id="L1833">                    currentNode.getCost(), &quot;)***&quot;);</span>
+<span class="fc" id="L1834">                best = goalDecider.getGoal();</span>
+<span class="pc bpc" id="L1835" title="1 of 4 branches missed.">                if (best == null || !goalDecider.hasSubGoals()) break ok;</span>
+<span class="fc" id="L1836">                bestScore = best.getCost();</span>
+<span class="fc" id="L1837">                continue;</span>
+            }
+
+            // Valid candidate for the closed list.
+<span class="fc" id="L1841">            closedMap.put(currentLocation.getId(), currentNode);</span>
+<span class="pc bpc" id="L1842" title="1 of 2 branches missed.">            if (lb != null) lb.add(&quot; closing&quot;);</span>
+
+            // Skip nodes that can not beat the current best path.
+<span class="fc bfc" id="L1845" title="All 2 branches covered.">            if (bestScore &lt; currentNode.getCost()) {</span>
+<span class="pc bpc" id="L1846" title="1 of 2 branches missed.">                if (lb != null) lb.add(&quot;...goal cost wins(&quot;,</span>
+<span class="nc" id="L1847">                    bestScore, &quot; &lt; &quot;, currentNode.getCost(), &quot;)...&quot;);</span>
+                continue;
+            }
+
+            // Ignore nodes over the turn limit.
+<span class="fc bfc" id="L1852" title="All 2 branches covered.">            if (currentNode.getTurns() &gt; maxTurns) {</span>
+<span class="pc bpc" id="L1853" title="1 of 2 branches missed.">                if (lb != null) lb.add(&quot;...out-of-range&quot;);</span>
+                continue;
+            }
+
+            // Collect the parameters for the current node.
+<span class="fc" id="L1858">            final int currentMovesLeft = currentNode.getMovesLeft();</span>
+<span class="fc" id="L1859">            final int currentTurns = currentNode.getTurns();</span>
+<span class="fc" id="L1860">            final boolean currentOnCarrier = currentNode.isOnCarrier();</span>
+
+<span class="fc" id="L1862">            final Tile currentTile = currentNode.getTile();</span>
+<span class="pc bpc" id="L1863" title="1 of 2 branches missed.">            if (currentTile == null) { // Must be in Europe.</span>
+                // FIXME: Do not consider tiles &quot;adjacent&quot; to Europe, yet.
+                // There may indeed be cases where going to Europe and
+                // coming back on the other side of the map is faster.
+<span class="nc bnc" id="L1867" title="All 2 branches missed.">                if (lb != null) lb.add(&quot;...skip Europe&quot;);</span>
+                continue;
+            }
+
+            // Try the tiles in each direction
+            PathNode closed;
+<span class="fc bfc" id="L1873" title="All 2 branches covered.">            for (Tile moveTile : currentTile.getSurroundingTiles(1)) {</span>
+                // If the new tile is the tile we just visited, skip it.
+<span class="pc bpc" id="L1875" title="1 of 2 branches missed.">                if (lb != null) lb.add(&quot;\n    &quot;, moveTile);</span>
+<span class="fc bfc" id="L1876" title="All 2 branches covered.">                if (currentNode.previous != null</span>
+<span class="fc bfc" id="L1877" title="All 2 branches covered.">                    &amp;&amp; currentNode.previous.getTile() == moveTile) {</span>
+<span class="pc bpc" id="L1878" title="1 of 2 branches missed.">                    if (lb != null) lb.add(&quot; !prev&quot;);</span>
+                    continue;
+                }
+
+                // Skip neighbouring tiles already too expensive.
+<span class="fc" id="L1883">                closed = closedMap.get(moveTile.getId());</span>
+<span class="fc bfc" id="L1884" title="All 2 branches covered.">                if (closed != null) {</span>
+<span class="fc" id="L1885">                    int cc = closed.getCost();</span>
+<span class="pc bpc" id="L1886" title="1 of 2 branches missed.">                    if (cc &lt;= currentNode.getCost()) {</span>
+<span class="pc bpc" id="L1887" title="1 of 2 branches missed.">                        if (lb != null) lb.add(&quot; !worse &quot;, cc);</span>
+                        continue;
+                    }
+                }
+
+                // Prepare to consider move validity
+<span class="fc" id="L1893">                Unit.MoveType umt = unit.getSimpleMoveType(currentTile,</span>
+                                                           moveTile);
+<span class="fc" id="L1895">                boolean unitMove = umt.isProgress();</span>
+<span class="fc bfc" id="L1896" title="All 2 branches covered.">                boolean carrierMove = carrier != null</span>
+<span class="fc bfc" id="L1897" title="All 2 branches covered.">                    &amp;&amp; carrier.getSimpleMoveType(carrier.getTile(), moveTile).isProgress();</span>
+<span class="pc bpc" id="L1898" title="3 of 4 branches missed.">                if (lb != null) lb.add(&quot; &quot;, ((unitMove) ? &quot;U&quot;</span>
+<span class="nc bnc" id="L1899" title="All 2 branches missed.">                        : ((carrierMove) ? &quot;C&quot; : &quot;&quot;)));</span>
+                MoveCandidate move;
+                String stepLog;
+                
+                // Is this move to the goal?  Use fake high cost so
+                // this does not become cached inside the goal decider
+                // as the preferred path.
+<span class="fc" id="L1906">                boolean isGoal = goalDecider.check(unit,</span>
+                    new PathNode(moveTile, 0, INFINITY/2, false,
+                                 currentNode, null));
+<span class="fc bfc" id="L1909" title="All 2 branches covered.">                if (isGoal) {</span>
+<span class="pc bpc" id="L1910" title="1 of 2 branches missed.">                    if (lb != null) lb.add(&quot; *goal*&quot;, umt);</span>
+<span class="fc bfc" id="L1911" title="All 2 branches covered.">                    if (unitMove) {</span>
+<span class="pc bpc" id="L1912" title="1 of 6 branches missed.">                        if (moveTile.hasSettlement() &amp;&amp; currentOnCarrier &amp;&amp; carrierMove) {</span>
+                            // If the goal has a settlement and the
+                            // unit is travelling by carrier, dock the
+                            // carrier.
+<span class="fc" id="L1916">                            move = new MoveCandidate(carrier, currentNode,</span>
+                                moveTile, currentMovesLeft, currentTurns,
+<span class="fc" id="L1918">                                true, CostDeciders.tileCost());</span>
+                        } else {
+                            // Otherwise let the unit complete the path.
+<span class="fc bfc" id="L1921" title="All 2 branches covered.">                            int left = (currentOnCarrier)</span>
+<span class="pc bpc" id="L1922" title="1 of 2 branches missed.">                                ? ((currentNode.embarkedThisTurn(currentTurns))</span>
+<span class="nc" id="L1923">                                    ? 0</span>
+<span class="fc" id="L1924">                                    : unit.getInitialMovesLeft())</span>
+<span class="fc" id="L1925">                                : currentMovesLeft;</span>
+<span class="fc" id="L1926">                            move = new MoveCandidate(unit, currentNode,</span>
+                                moveTile, left, currentTurns, false,
+<span class="fc" id="L1928">                                CostDeciders.tileCost());</span>
+<span class="fc" id="L1929">                        }</span>
+                    } else {
+                        // Handle some special cases where the move may not
+                        // necessarily progress, but still can do useful work.
+<span class="pc bpc" id="L1933" title="1 of 4 branches missed.">                        switch (umt) {</span>
+                        case ATTACK_UNIT:
+                        case ATTACK_SETTLEMENT:
+                        case ENTER_FOREIGN_COLONY_WITH_SCOUT:
+                        case ENTER_INDIAN_SETTLEMENT_WITH_SCOUT:
+                        case ENTER_INDIAN_SETTLEMENT_WITH_FREE_COLONIST:
+                        case ENTER_INDIAN_SETTLEMENT_WITH_MISSIONARY:
+                        case ENTER_SETTLEMENT_WITH_CARRIER_AND_GOODS:
+                            // Can not move to the tile, but there is
+                            // a valid interaction with the unit or
+                            // settlement that is there.
+<span class="fc" id="L1944">                            move = new MoveCandidate(unit, currentNode,</span>
+                                moveTile, currentMovesLeft, currentTurns,
+<span class="fc" id="L1946">                                false, CostDeciders.tileCost());</span>
+<span class="fc" id="L1947">                            unitMove = true;</span>
+<span class="fc" id="L1948">                            break;</span>
+                        case EMBARK:
+<span class="fc" id="L1950">                            move = new MoveCandidate(unit, currentNode,</span>
+                                moveTile, currentMovesLeft, currentTurns,
+<span class="fc" id="L1952">                                true, CostDeciders.tileCost());</span>
+<span class="fc" id="L1953">                            unitMove = true;</span>
+<span class="fc" id="L1954">                            break;</span>
+                        case MOVE_NO_ATTACK_CIVILIAN:
+                            // There is a settlement in the way, this
+                            // path can never succeed.
+<span class="nc bnc" id="L1958" title="All 2 branches missed.">                            if (moveTile.hasSettlement()) {</span>
+<span class="nc bnc" id="L1959" title="All 2 branches missed.">                                if (lb != null) lb.add(&quot; !FAIL-SETTLEMENT&quot;);</span>
+<span class="nc bnc" id="L1960" title="All 2 branches missed.">                                if (!goalDecider.hasSubGoals()) break ok;</span>
+                                continue;
+                            }
+                            // There is a unit in the way.  Unless this
+                            // unit can arrive there this turn, assume the
+                            // condition is transient as long as the tile
+                            // is not in a constrained position such as a
+                            // small island or river.
+<span class="nc bnc" id="L1968" title="All 2 branches missed.">                            if (currentNode.getTurns() &lt;= 0</span>
+<span class="nc bnc" id="L1969" title="All 2 branches missed.">                                || moveTile.getAvailableAdjacentCount() &lt; 3) {</span>
+<span class="nc bnc" id="L1970" title="All 2 branches missed.">                                if (lb != null) lb.add(&quot; !FAIL-ATTACK&quot;);</span>
+<span class="nc bnc" id="L1971" title="All 2 branches missed.">                                if (!goalDecider.hasSubGoals()) break ok;</span>
+                                continue;
+                            }
+<span class="nc bnc" id="L1974" title="All 2 branches missed.">                            if (lb != null) lb.add(&quot; blocked&quot;);</span>
+<span class="nc" id="L1975">                            unitMove = true;</span>
+<span class="nc" id="L1976">                            move = new MoveCandidate(unit, currentNode,</span>
+                                moveTile, currentMovesLeft, currentTurns,
+<span class="nc" id="L1978">                                false, CostDeciders.tileCost());</span>
+<span class="nc" id="L1979">                            break;</span>
+                        default:
+                            // Several cases here, these are understood:
+                            // MOVE_NO_ATTACK_EMBARK:
+                            //   Land unit trying to use water, which
+                            //   can not work without a ship there
+                            // MOVE_NO_ACCESS_WATER:
+                            //   The unit can not disembark directly to
+                            //   the goal along this path
+                            // MOVE_NO_ATTACK_MARINE:
+                            //   Ampibious attack disallowed, disembark to
+                            //   reach the goal
+                            // There will be more.
+                            // We used to do---
+                            //   if (!goalDecider.hasSubGoals()) break ok;
+                            // --- here, like in the transient failure case
+                            // above but we should not truncate other
+                            // surrounding tiles.
+<span class="pc bpc" id="L1997" title="1 of 2 branches missed.">                            if (lb != null) lb.add(&quot; !FAIL-&quot;, umt);</span>
+                            continue;
+                        }
+                    }
+<span class="pc bnc" id="L2001" title="All 2 branches missed.">                    assert move != null;</span>
+<span class="fc" id="L2002">                    stepLog = &quot;@&quot;;</span>
+                } else {
+                    // Ordinary non-goal moves.
+                    //
+                    // Check for a carrier change at the new tile,
+                    // creating a MoveCandidate for each case.
+                    //
+                    // Do *not* allow units to re-embark on the carrier.
+                    // Note that embarking can actually increase the moves
+                    // left because the carrier might be not have spent
+                    // any moves yet that turn.
+                    //
+                    // Note that we always favour using the carrier if
+                    // both carrier and non-carrier moves are possible,
+                    // which can only be true moving into a settlement.
+                    // Usually when moving into a settlement it will be
+                    // useful to dock the carrier so it can collect new
+                    // cargo.  OTOH if the carrier is just passing through
+                    // the right thing is to keep the passenger on board.
+                    // However, see the goal settlement exception above.
+<span class="fc bfc" id="L2022" title="All 2 branches covered.">                    MoveStep step = (currentOnCarrier)</span>
+<span class="fc bfc" id="L2023" title="All 2 branches covered.">                        ? ((carrierMove) ? MoveStep.BYWATER</span>
+<span class="fc bfc" id="L2024" title="All 2 branches covered.">                            : (unitMove) ? MoveStep.DISEMBARK</span>
+<span class="fc" id="L2025">                            : MoveStep.FAIL)</span>
+<span class="pc bpc" id="L2026" title="1 of 4 branches missed.">                        : (carrierMove &amp;&amp; !usedCarrier(currentNode))</span>
+<span class="fc" id="L2027">                        ? MoveStep.EMBARK</span>
+<span class="fc bfc" id="L2028" title="All 4 branches covered.">                        : (unitMove) ? ((unit.isNaval())</span>
+<span class="fc" id="L2029">                            ? MoveStep.BYWATER</span>
+<span class="fc" id="L2030">                            : MoveStep.BYLAND)</span>
+<span class="fc" id="L2031">                        : MoveStep.FAIL;</span>
+<span class="fc bfc" id="L2032" title="All 5 branches covered.">                    switch (step) {</span>
+                    case BYLAND:
+<span class="fc" id="L2034">                        move = new MoveCandidate(unit, currentNode, moveTile, </span>
+                            currentMovesLeft, currentTurns, false, costDecider);
+<span class="fc" id="L2036">                        break;</span>
+                    case BYWATER:
+<span class="fc" id="L2038">                        move = new MoveCandidate(offMapUnit, currentNode, moveTile,</span>
+                            currentMovesLeft, currentTurns, currentOnCarrier,
+                            costDecider);
+<span class="fc" id="L2041">                        break;</span>
+                    case EMBARK:
+<span class="fc" id="L2043">                        move = new MoveCandidate(offMapUnit, currentNode, moveTile,</span>
+                            currentMovesLeft, currentTurns, true,
+                            costDecider);
+<span class="fc" id="L2046">                        move.embarkUnit(carrier);</span>
+<span class="fc" id="L2047">                        break;</span>
+                    case DISEMBARK:
+<span class="fc" id="L2049">                        move = new MoveCandidate(unit, currentNode, moveTile,</span>
+                            0, currentTurns, false, costDecider);
+<span class="fc" id="L2051">                        break;</span>
+                    case FAIL: default: // Loop on failure.
+<span class="pc bpc" id="L2053" title="1 of 2 branches missed.">                        if (lb != null) lb.add(&quot;!&quot;);</span>
+                        continue;
+                    }
+<span class="fc" id="L2056">                    stepLog = &quot; &quot; + step + &quot;_&quot;;</span>
+                }
+<span class="pc bpc" id="L2058" title="1 of 2 branches missed.">                if (move.cost &gt;= INFINITY) {</span>
+<span class="nc" id="L2059">                    continue;</span>
+                }
+<span class="pc bnc" id="L2061" title="All 2 branches missed.">                assert move.getCost() &gt;= 0;</span>
+                // Tighten the bounds on a previously seen case if possible
+<span class="pc bpc" id="L2063" title="1 of 2 branches missed.">                if (closed != null) {</span>
+<span class="nc bnc" id="L2064" title="All 2 branches missed.">                    if (move.canImprove(closed)) {</span>
+<span class="nc" id="L2065">                        closedMap.remove(moveTile.getId());</span>
+<span class="nc" id="L2066">                        move.improve(openMap, openMapQueue, f, sh);</span>
+<span class="nc" id="L2067">                        stepLog += &quot;^&quot; + Integer.toString(move.getCost());</span>
+                    } else {
+<span class="nc" id="L2069">                        stepLog += &quot;v&quot;;</span>
+                    }
+                } else {
+<span class="fc bfc" id="L2072" title="All 2 branches covered.">                    if (move.canImprove(openMap.get(moveTile.getId()))){</span>
+<span class="fc" id="L2073">                        move.improve(openMap, openMapQueue, f, sh);</span>
+<span class="fc" id="L2074">                        stepLog += &quot;+&quot; + Integer.toString(move.getCost());</span>
+                    } else {
+<span class="fc" id="L2076">                        stepLog += &quot;-&quot;;</span>
+                    }
+                }
+<span class="pc bpc" id="L2079" title="1 of 2 branches missed.">                if (lb != null) lb.add(stepLog);</span>
+<span class="fc" id="L2080">            }</span>
+<span class="fc" id="L2081">        }</span>
+
+        // Relink the path.  We omitted the .next link while constructing it.
+<span class="fc" id="L2084">        best = goalDecider.getGoal();</span>
+<span class="fc bfc" id="L2085" title="All 2 branches covered.">        if (best != null) {</span>
+<span class="fc bfc" id="L2086" title="All 2 branches covered.">            while (best.previous != null) {</span>
+<span class="fc" id="L2087">                best.previous.next = best;</span>
+<span class="fc" id="L2088">                best = best.previous;</span>
+            }
+        }
+<span class="fc" id="L2091">        return best;</span>
+    }
+
+    /**
+     * Searches for a tile within a radius of a starting tile.
+     *
+     * Does not use a unit, and thus does not consider movement validity.
+     *
+     * @param start The starting {@code Tile}.
+     * @param goalDecider A {@code GoalDecider} that chooses the goal,
+     *     which must be capable of tolerating a null unit.
+     * @param radius The maximum radius of tiles to search from the start.
+     * @return The goal tile as determined by the, or null if none found.
+     */
+    public Tile searchCircle(final Tile start, final GoalDecider goalDecider,
+        final int radius) {
+<span class="pc bpc" id="L2107" title="3 of 6 branches missed.">        if (start == null || goalDecider == null || radius &lt;= 0) return null;</span>
+
+<span class="fc bfc" id="L2109" title="All 2 branches covered.">        for (Tile t : getCircleTiles(start, true, radius)) {</span>
+<span class="fc" id="L2110">            PathNode path = new PathNode(t, 0, start.getDistanceTo(t), false,</span>
+                null, null);
+<span class="pc bpc" id="L2112" title="1 of 2 branches missed.">            if (goalDecider.check(null, path)</span>
+<span class="nc bnc" id="L2113" title="All 2 branches missed.">                &amp;&amp; !goalDecider.hasSubGoals())</span>
+<span class="nc" id="L2114">                break;</span>
+<span class="fc" id="L2115">        }</span>
+        
+<span class="fc" id="L2117">        PathNode best = goalDecider.getGoal();</span>
+<span class="pc bpc" id="L2118" title="1 of 2 branches missed.">        return (best == null) ? null : best.getTile();</span>
+    }
+
+    
+    // Useful customers for tile iteration.
+
+    /**
+     * Searches for land within the given radius.
+     *
+     * @param x X-component of the position to search from.
+     * @param y Y-component of the position to search from.
+     * @param distance The radius in tiles that should be searched for land.
+     * @return The first land tile found within the radius, or null if none
+     *     found.
+     */
+    public Tile getLandWithinDistance(int x, int y, int distance) {
+<span class="fc bfc" id="L2134" title="All 2 branches covered.">        for (Tile t : getCircleTiles(getTile(x, y), true, distance)) {</span>
+<span class="fc bfc" id="L2135" title="All 2 branches covered.">            if (t.isLand()) return t;</span>
+<span class="fc" id="L2136">        }</span>
+<span class="fc" id="L2137">        return null;</span>
+    }
+
+    /**
+     * Flood fills from a given {@code Position} p, based on
+     * connectivity information encoded in boolmap
+     *
+     * @param boolmap The connectivity information for this floodfill.
+     * @param x The starting x coordinate.
+     * @param y The starting y coordinate.
+     * @return A boolean[][] of the same size as boolmap, where &quot;true&quot;
+     *      means the fill succeeded at that location.
+     */
+    public static boolean[][] floodFillBool(boolean[][] boolmap, int x, int y) {
+<span class="fc" id="L2151">        return floodFillBool(boolmap, x, y, Integer.MAX_VALUE);</span>
+    }
+
+    /**
+     * Flood fills from a given {@code Position} p, based on
+     * connectivity information encoded in boolmap
+     *
+     * @param boolmap The connectivity information for this floodfill.
+     * @param x The starting x coordinate.
+     * @param y The starting y coordinate.
+     * @param limit Limit to stop flood fill at.
+     * @return A boolean[][] of the same size as boolmap, where &quot;true&quot;
+     *      means the fill succeeded at that location.
+     */
+    public static boolean[][] floodFillBool(boolean[][] boolmap, int x, int y,
+                                            int limit) {
+<span class="fc" id="L2167">        final int xmax = boolmap.length, ymax = boolmap[0].length;</span>
+<span class="fc" id="L2168">        boolean[][] visited = new boolean[xmax][ymax];</span>
+<span class="fc" id="L2169">        Queue&lt;Position&gt; q = new LinkedList&lt;&gt;();</span>
+
+<span class="fc" id="L2171">        visited[x][y] = true;</span>
+<span class="fc" id="L2172">        Position p = new Position(x, y);</span>
+<span class="fc bfc" id="L2173" title="All 4 branches covered.">        for (; p != null &amp;&amp; --limit &gt; 0; p = q.poll()) {</span>
+<span class="fc bfc" id="L2174" title="All 2 branches covered.">            for (Direction d : Direction.values()) {</span>
+<span class="fc" id="L2175">                final Position np = new Position(p, d);</span>
+<span class="fc bfc" id="L2176" title="All 2 branches covered.">                if (!np.isValid(xmax, ymax)) continue;</span>
+<span class="fc" id="L2177">                int nx = np.getX(), ny = np.getY();</span>
+<span class="fc bfc" id="L2178" title="All 4 branches covered.">                if (boolmap[nx][ny] &amp;&amp; !visited[nx][ny]) {</span>
+<span class="fc" id="L2179">                    visited[nx][ny] = true;</span>
+<span class="fc" id="L2180">                    q.add(np);</span>
+                }
+            }
+
+        }
+<span class="fc" id="L2185">        return visited;</span>
+    }
+
+    /**
+     * Sets the contiguity identifier for all tiles.
+     */
+    public void resetContiguity() {
+        // Create the water map.  It is an error for any tile not to
+        // have a region at this point.
+<span class="fc" id="L2194">        final int xmax = getWidth(), ymax = getHeight();</span>
+<span class="fc" id="L2195">        boolean[][] waterMap = new boolean[xmax][ymax];</span>
+<span class="fc bfc" id="L2196" title="All 2 branches covered.">        for (int y = 0; y &lt; ymax; y++) {</span>
+<span class="fc bfc" id="L2197" title="All 2 branches covered.">            for (int x = 0; x &lt; xmax; x++) {</span>
+<span class="pc bpc" id="L2198" title="1 of 2 branches missed.">                if (isValid(x, y)) {</span>
+<span class="fc bfc" id="L2199" title="All 2 branches covered.">                    waterMap[x][y] = !getTile(x,y).isLand();</span>
+<span class="fc" id="L2200">                    Tile tile = getTile(x, y);</span>
+<span class="fc" id="L2201">                    tile.setContiguity(-1);</span>
+                }
+            }
+        }
+
+        // Flood fill each contiguous water region, setting the
+        // contiguity number.
+<span class="fc" id="L2208">        int contig = 0;</span>
+<span class="fc" id="L2209">        floodFill(contig, ymax, xmax, waterMap);</span>
+
+        // Complement the waterMap, it is now the land map.
+<span class="fc bfc" id="L2212" title="All 2 branches covered.">        for (int y = 0; y &lt; ymax; y++) {</span>
+<span class="fc bfc" id="L2213" title="All 2 branches covered.">            for (int x = 0; x &lt; xmax; x++) {</span>
+<span class="pc bpc" id="L2214" title="1 of 4 branches missed.">                if (isValid(x, y)) waterMap[x][y] = !waterMap[x][y];</span>
+            }
+        }
+
+        // Flood fill again for each contiguous land region.
+<span class="fc" id="L2219">        floodFill(contig, ymax, xmax, waterMap);</span>
+<span class="fc" id="L2220">    }</span>
+
+    /**
+     * Performs fill flood action and calculations
+     *
+     * @param contig The contiguity number.
+     * @param ymax The Y-value
+     * @param xmax The X-value
+     * @param waterMap The boolean array containing the x and y coordinates
+     */
+    private void floodFill(int contig, int ymax, int xmax, boolean[][] waterMap) {
+<span class="fc bfc" id="L2231" title="All 2 branches covered.">        for (int y = 0; y &lt; ymax; y++) {</span>
+<span class="fc bfc" id="L2232" title="All 2 branches covered.">            for (int x = 0; x &lt; xmax; x++) {</span>
+<span class="fc bfc" id="L2233" title="All 2 branches covered.">                if (waterMap[x][y]) {</span>
+<span class="fc" id="L2234">                    Tile tile = getTile(x, y);</span>
+<span class="fc bfc" id="L2235" title="All 2 branches covered.">                    if (tile.getContiguity() &gt;= 0) continue;</span>
+
+<span class="fc" id="L2237">                    boolean[][] found = floodFillBool(waterMap, x, y);</span>
+<span class="fc bfc" id="L2238" title="All 2 branches covered.">                    for (int yy = 0; yy &lt; ymax; yy++) {</span>
+<span class="fc bfc" id="L2239" title="All 2 branches covered.">                        for (int xx = 0; xx &lt; xmax; xx++) {</span>
+<span class="fc bfc" id="L2240" title="All 2 branches covered.">                            if (found[xx][yy]) {</span>
+<span class="fc" id="L2241">                                Tile t = getTile(xx, yy);</span>
+<span class="pc bpc" id="L2242" title="1 of 2 branches missed.">                                if (t.getContiguity() &lt; 0) {</span>
+<span class="fc" id="L2243">                                    t.setContiguity(contig);</span>
+                                }
+                            }
+                        }
+                    }
+<span class="fc" id="L2248">                    contig++;</span>
+                }
+            }
+        }
+<span class="fc" id="L2252">    }</span>
+
+    /**
+     * Collect lists of valid starting tiles on this map.
+     * Called from the map generator to help choose starting tiles
+     * for European units.
+     *
+     * @param eastTiles A list of {@code Tile}s on the east of the map
+     *     to fill in.
+     * @param westTiles A list of {@code Tile}s on the west of the map
+     *     to fill in.
+     */
+    public void collectStartingTiles(List&lt;Tile&gt; eastTiles,
+                                     List&lt;Tile&gt; westTiles) {
+        // Find the innermost high seas connected tile on each row (if
+        // any) on the east and west sides of the map
+<span class="fc" id="L2268">        final int west = 0;</span>
+<span class="fc" id="L2269">        final int east = getWidth() - 1;</span>
+<span class="fc" id="L2270">        eastTiles.clear();</span>
+<span class="fc" id="L2271">        westTiles.clear();</span>
+<span class="fc bfc" id="L2272" title="All 2 branches covered.">        for (int y = 0; y &lt; getHeight(); y++) {</span>
+            int x;
+<span class="fc" id="L2274">            Tile ok = getTile(east, y);</span>
+<span class="fc bfc" id="L2275" title="All 2 branches covered.">            if (ok.isDirectlyHighSeasConnected()) {</span>
+<span class="fc bfc" id="L2276" title="All 2 branches covered.">                for (x = east; x &gt; west; x--) {</span>
+<span class="fc" id="L2277">                    Tile t = getTile(x, y);</span>
+<span class="fc bfc" id="L2278" title="All 2 branches covered.">                    if (!t.isDirectlyHighSeasConnected()) break;</span>
+<span class="fc" id="L2279">                    ok = t;</span>
+                }
+<span class="pc bpc" id="L2281" title="1 of 2 branches missed.">                if (ok != null) eastTiles.add(ok);</span>
+            }
+<span class="fc" id="L2283">            ok = getTile(west, y);</span>
+<span class="fc bfc" id="L2284" title="All 2 branches covered.">            if (ok.isDirectlyHighSeasConnected()) {</span>
+<span class="fc bfc" id="L2285" title="All 2 branches covered.">                for (x = west; x &lt; east; x++) {</span>
+<span class="fc" id="L2286">                    Tile t = getTile(x, y);</span>
+<span class="fc bfc" id="L2287" title="All 2 branches covered.">                    if (!t.isDirectlyHighSeasConnected()) break;</span>
+<span class="fc" id="L2288">                    ok = t;</span>
+                }
+<span class="pc bpc" id="L2290" title="1 of 2 branches missed.">                if (ok != null) westTiles.add(ok);</span>
+            }
+        }
+<span class="fc" id="L2293">    }</span>
+    
+    /**
+     * Places the &quot;high seas&quot;-tiles on the border of this map.
+     *
+     * All other tiles previously of type High Seas will be set to Ocean.
+     *
+     * @param distToLandFromHighSeas The distance between the land
+     *     and the high seas (given in tiles).
+     * @param maxDistanceToEdge The maximum distance a high sea tile
+     *     can have from the edge of the map.
+     */
+    public void resetHighSeas(int distToLandFromHighSeas,
+        int maxDistanceToEdge) {
+<span class="fc" id="L2307">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L2308">        final TileType ocean = spec.getTileType(&quot;model.tile.ocean&quot;);</span>
+<span class="fc" id="L2309">        final TileType highSeas = spec.getTileType(&quot;model.tile.highSeas&quot;);</span>
+<span class="pc bpc" id="L2310" title="1 of 2 branches missed.">        if (highSeas == null) {</span>
+<span class="nc" id="L2311">            throw new RuntimeException(&quot;HighSeas TileType must exist: &quot;+spec);</span>
+        }
+<span class="pc bpc" id="L2313" title="1 of 2 branches missed.">        if (ocean == null) {</span>
+<span class="nc" id="L2314">            throw new RuntimeException(&quot;Ocean TileType must exist: &quot; + spec);</span>
+        }
+<span class="pc bpc" id="L2316" title="1 of 2 branches missed.">        if (distToLandFromHighSeas &lt; 0) {</span>
+<span class="nc" id="L2317">            throw new RuntimeException(&quot;Land&lt;-&gt;HighSeas distance can not be negative: &quot; + distToLandFromHighSeas);</span>
+        }
+<span class="pc bpc" id="L2319" title="1 of 2 branches missed.">        if (maxDistanceToEdge &lt; 0) {</span>
+<span class="nc" id="L2320">            throw new RuntimeException(&quot;Distance to edge can not be negative: &quot; + maxDistanceToEdge);</span>
+        }
+
+        // Reset all highSeas tiles to the default ocean type.
+<span class="pc bpc" id="L2324" title="1 of 2 branches missed.">        forEachTile(t -&gt; t.getType() == highSeas, t -&gt; t.setType(ocean));</span>
+
+<span class="fc" id="L2326">        final int width = getWidth(), height = getHeight();</span>
+<span class="fc" id="L2327">        Tile t, seaL = null, seaR = null;</span>
+<span class="fc" id="L2328">        int totalL = 0, totalR = 0, distanceL = -1, distanceR = -1;</span>
+<span class="fc bfc" id="L2329" title="All 2 branches covered.">        for (int y = 0; y &lt; height; y++) {</span>
+<span class="fc" id="L2330">            for (int x = 0; x &lt; maxDistanceToEdge &amp;&amp; x &lt; width</span>
+<span class="pc bpc" id="L2331" title="1 of 2 branches missed.">                     &amp;&amp; isValid(x, y)</span>
+<span class="pc bpc" id="L2332" title="1 of 6 branches missed.">                     &amp;&amp; (t = getTile(x, y)).getType() == ocean; x++) {</span>
+<span class="fc" id="L2333">                Tile other = getLandWithinDistance(x, y,</span>
+                    distToLandFromHighSeas);
+<span class="fc bfc" id="L2335" title="All 2 branches covered.">                if (other == null) {</span>
+<span class="fc" id="L2336">                    t.setType(highSeas);</span>
+<span class="fc" id="L2337">                    totalL++;</span>
+                } else {
+<span class="fc" id="L2339">                    int distance = t.getDistanceTo(other);</span>
+<span class="fc bfc" id="L2340" title="All 2 branches covered.">                    if (distanceL &lt; distance) {</span>
+<span class="fc" id="L2341">                        distanceL = distance;</span>
+<span class="fc" id="L2342">                        seaL = t;</span>
+                    }
+                }
+            }
+<span class="fc" id="L2346">            for (int x = 0; x &lt; maxDistanceToEdge &amp;&amp; x &lt; width</span>
+<span class="pc bpc" id="L2347" title="1 of 2 branches missed.">                     &amp;&amp; isValid(width-1-x, y)</span>
+<span class="pc bpc" id="L2348" title="1 of 6 branches missed.">                     &amp;&amp; (t = getTile(width-1-x, y)).getType() == ocean; x++) {</span>
+<span class="fc" id="L2349">                Tile other = getLandWithinDistance(width-1-x, y,</span>
+                    distToLandFromHighSeas);
+<span class="fc bfc" id="L2351" title="All 2 branches covered.">                if (other == null) {</span>
+<span class="fc" id="L2352">                    t.setType(highSeas);</span>
+<span class="fc" id="L2353">                    totalR++;</span>
+                } else {
+<span class="fc" id="L2355">                    int distance = t.getDistanceTo(other);</span>
+<span class="fc bfc" id="L2356" title="All 2 branches covered.">                    if (distanceR &lt; distance) {</span>
+<span class="fc" id="L2357">                        distanceR = distance;</span>
+<span class="fc" id="L2358">                        seaR = t;</span>
+                    }
+                }
+            }
+        }
+<span class="pc bpc" id="L2363" title="3 of 4 branches missed.">        if (totalL &lt;= 0 &amp;&amp; seaL != null) {</span>
+<span class="nc" id="L2364">            seaL.setType(highSeas);</span>
+<span class="nc" id="L2365">            totalL++;</span>
+        }
+<span class="pc bpc" id="L2367" title="3 of 4 branches missed.">        if (totalR &lt;= 0 &amp;&amp; seaR != null) {</span>
+<span class="nc" id="L2368">            seaR.setType(highSeas);</span>
+<span class="nc" id="L2369">            totalR++;</span>
+        }
+<span class="pc bpc" id="L2371" title="2 of 4 branches missed.">        if (totalL &lt;= 0 || totalR &lt;= 0) {</span>
+<span class="nc" id="L2372">            logger.warning(&quot;No high seas on &quot;</span>
+<span class="nc bnc" id="L2373" title="All 4 branches missed.">                + ((totalL &lt;= 0 &amp;&amp; totalR &lt;= 0) ? &quot;either&quot;</span>
+<span class="nc bnc" id="L2374" title="All 2 branches missed.">                    : (totalL &lt;= 0) ? &quot;left&quot;</span>
+<span class="nc bnc" id="L2375" title="All 2 branches missed.">                    : (totalR &lt;= 0) ? &quot;right&quot;</span>
+<span class="nc" id="L2376">                    : &quot;BOGUS&quot;) + &quot; side of the map.&quot;</span>
+                + &quot;  This can cause failures on small test maps.&quot;);
+        }
+<span class="fc" id="L2379">    }</span>
+
+    /**
+     * Sets the high seas count for all tiles connected to the high seas.
+     * Any ocean tiles on the map vertical edges that do not have an
+     * explicit false moveToEurope attribute are given a true one.
+     *
+     * Set all high seas counts negative, then start with a count of
+     * zero for tiles with the moveToEurope attribute or of a type
+     * with that ability.  Iterate outward by neighbouring tile,
+     * incrementing the count on each pass, stopping at land.  Thus,
+     * only the coastal land tiles will have a non-negative high seas
+     * count.  This significantly speeds up the colony site evaluator,
+     * as it does not have to try to find a path to Europe for each
+     * tile.
+     */
+    public void resetHighSeasCount() {
+<span class="fc" id="L2396">        List&lt;Tile&gt; curr = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L2397">        List&lt;Tile&gt; next = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L2398">        int hsc = 0;</span>
+<span class="fc bfc" id="L2399" title="All 2 branches covered.">        for (Tile t : this.tileList) {</span>
+<span class="fc" id="L2400">            t.setHighSeasCount(-1);</span>
+<span class="fc bfc" id="L2401" title="All 2 branches covered.">            if (!t.isLand()) {</span>
+<span class="fc bfc" id="L2402" title="All 4 branches covered.">                if ((t.getX() == 0 || t.getX() == getWidth()-1)</span>
+<span class="pc bpc" id="L2403" title="1 of 2 branches missed.">                    &amp;&amp; t.getType() != null</span>
+<span class="fc bfc" id="L2404" title="All 2 branches covered.">                    &amp;&amp; t.getType().isHighSeasConnected()</span>
+<span class="fc bfc" id="L2405" title="All 2 branches covered.">                    &amp;&amp; !t.getType().isDirectlyHighSeasConnected()</span>
+<span class="fc bfc" id="L2406" title="All 2 branches covered.">                    &amp;&amp; t.getMoveToEurope() == null) {</span>
+<span class="fc" id="L2407">                    t.setMoveToEurope(Boolean.TRUE);</span>
+                }
+<span class="fc bfc" id="L2409" title="All 2 branches covered.">                if (t.isDirectlyHighSeasConnected()) {</span>
+<span class="fc" id="L2410">                    t.setHighSeasCount(0);</span>
+<span class="fc" id="L2411">                    next.add(t);</span>
+                }
+            }
+<span class="fc" id="L2414">        }</span>
+<span class="fc bfc" id="L2415" title="All 2 branches covered.">        while (!next.isEmpty()) {</span>
+<span class="fc" id="L2416">            hsc++;</span>
+<span class="fc" id="L2417">            curr.addAll(next);</span>
+<span class="fc" id="L2418">            next.clear();</span>
+<span class="fc bfc" id="L2419" title="All 2 branches covered.">            while (!curr.isEmpty()) {</span>
+<span class="fc" id="L2420">                Tile tile = curr.remove(0);</span>
+                // Deliberately using low level access to neighbours
+                // rather than Tile.getSurroundingTiles() because that
+                // relies on the map being attached to the game, which
+                // is not necessarily true in the test suite.
+<span class="fc" id="L2425">                Position position = new Position(tile.getX(), tile.getY());</span>
+<span class="fc bfc" id="L2426" title="All 2 branches covered.">                for (Position p : transform(Direction.values(), alwaysTrue(),</span>
+<span class="fc" id="L2427">                        d -&gt; new Position(position, d))) {</span>
+<span class="fc bfc" id="L2428" title="All 2 branches covered.">                    if (isValid(p)) {</span>
+<span class="fc" id="L2429">                        Tile t = getTile(p);</span>
+<span class="fc bfc" id="L2430" title="All 2 branches covered.">                        if (t.getHighSeasCount() &lt; 0) {</span>
+<span class="fc" id="L2431">                            t.setHighSeasCount(hsc);</span>
+<span class="fc bfc" id="L2432" title="All 2 branches covered.">                            if (!t.isLand()) next.add(t);</span>
+                        }
+                    }
+<span class="fc" id="L2435">                }</span>
+<span class="fc" id="L2436">            }</span>
+        }
+<span class="fc" id="L2438">    }</span>
+
+    /**
+     * Reset layer to reflect what is actually there.
+     */
+    public void resetLayers() {
+<span class="nc" id="L2444">        boolean regions = false,</span>
+<span class="nc" id="L2445">            rivers = false,</span>
+<span class="nc" id="L2446">            lostCityRumours = false,</span>
+<span class="nc" id="L2447">            resources = false,</span>
+<span class="nc" id="L2448">            nativeSettlements = false;</span>
+<span class="nc" id="L2449">        final int hgt = getHeight(), wid = getWidth();</span>
+<span class="nc bnc" id="L2450" title="All 2 branches missed.">        for (int y = 0; y &lt; hgt; y++) {</span>
+<span class="nc bnc" id="L2451" title="All 2 branches missed.">            for (int x = 0; x &lt; wid; x++) {</span>
+<span class="nc" id="L2452">                Tile t = getTile(x, y);</span>
+<span class="nc bnc" id="L2453" title="All 2 branches missed.">                regions |= t.getRegion() != null;</span>
+<span class="nc" id="L2454">                rivers |= t.hasRiver();</span>
+<span class="nc" id="L2455">                lostCityRumours |= t.hasLostCityRumour();</span>
+<span class="nc" id="L2456">                resources |= t.hasResource();</span>
+<span class="nc" id="L2457">                nativeSettlements |= t.getSettlement() instanceof IndianSettlement;</span>
+            }
+        }
+<span class="nc bnc" id="L2460" title="All 8 branches missed.">        setLayer((rivers &amp;&amp; lostCityRumours &amp;&amp; resources &amp;&amp; nativeSettlements)</span>
+<span class="nc" id="L2461">            ? Layer.ALL</span>
+<span class="nc bnc" id="L2462" title="All 2 branches missed.">            : (nativeSettlements) ? Layer.NATIVES</span>
+<span class="nc bnc" id="L2463" title="All 2 branches missed.">            : (lostCityRumours) ? Layer.RUMOURS</span>
+<span class="nc bnc" id="L2464" title="All 2 branches missed.">            : (resources) ? Layer.RESOURCES</span>
+<span class="nc bnc" id="L2465" title="All 2 branches missed.">            : (rivers) ? Layer.RIVERS</span>
+<span class="nc bnc" id="L2466" title="All 2 branches missed.">            : (regions) ? Layer.REGIONS</span>
+<span class="nc" id="L2467">            : Layer.TERRAIN);</span>
+<span class="nc" id="L2468">    }</span>
+
+    /**
+     * Fix the region parent/child relationships.
+     */
+    public void fixupRegions() {
+<span class="fc bfc" id="L2474" title="All 4 branches covered.">        for (Region r : transform(getRegions(), r -&gt; !r.isPacific())) {</span>
+<span class="fc" id="L2475">            Region p = r.getParent();</span>
+            // Mountains and Rivers were setting their parent to the
+            // discoverable land region they are created within.  Move them
+            // up to being children of the geographic region.
+<span class="pc bpc" id="L2479" title="3 of 6 branches missed.">            if (p != null &amp;&amp; p.getDiscoverable() &amp;&amp; r.getDiscoverable()) {</span>
+<span class="nc" id="L2480">                p = p.getParent();</span>
+<span class="nc" id="L2481">                r.setParent(p);</span>
+            }
+<span class="pc bpc" id="L2483" title="1 of 4 branches missed.">            if (p != null &amp;&amp; !p.getChildren().contains(r)) p.addChild(r);</span>
+<span class="fc" id="L2484">        }</span>
+<span class="fc" id="L2485">    }</span>
+
+    /**
+     * Import a tile, possibly from another game.
+     *
+     * @param other The &lt;code&gt;Tile&lt;/code&gt; to import.
+     * @param x The x-coordinate of the new tile.
+     * @param y The y-coordinate of the new tile.
+     * @param layer The maximum layer to import.
+     * @return The new imported &lt;code&gt;Tile&lt;/code&gt;.
+     */
+    public Tile importTile(Tile other, int x, int y, Layer layer) {
+<span class="fc" id="L2497">        final Game game = getGame();</span>
+<span class="fc" id="L2498">        Tile t = new Tile(game, other.getType(), x, y);</span>
+<span class="fc bfc" id="L2499" title="All 2 branches covered.">        if (other.getMoveToEurope() != null) {</span>
+<span class="fc" id="L2500">            t.setMoveToEurope(other.getMoveToEurope());</span>
+        }
+<span class="fc bfc" id="L2502" title="All 2 branches covered.">        if (other.getTileItemContainer() != null) {</span>
+<span class="fc" id="L2503">            TileItemContainer container = new TileItemContainer(game, t);</span>
+<span class="fc" id="L2504">            container.copyFrom(other.getTileItemContainer(), layer);</span>
+<span class="fc" id="L2505">            t.setTileItemContainer(container);</span>
+        }
+        // FIXME: handle regions
+<span class="fc" id="L2508">        return t;</span>
+    }
+
+    /**
+     * Scale the map into the specified size.
+     *
+     * This implementation uses a simple linear scaling, and
+     * the isometric shape is not taken into account.
+     *
+     * FIXME: Find a better method for choosing a group of
+     * adjacent tiles.  This group can then be merged into a
+     * common tile by using the average value (for example: are
+     * there a majority of ocean tiles?).
+     *
+     * @param width The width of the resulting map.
+     * @param height The height of the resulting map.
+     * @return A scaled version of this map.
+     */
+    public Map scale(final int width, final int height) {
+        // FIXME: the scaling above can omit or double tiles, which will
+        // break the river and road connections.
+        // FIXME: tile ownership is borked again
+        // FIXME: settlements?!? what settlements?
+        // Note: can not use Tile.copyIn as that sets x,y
+<span class="nc" id="L2532">        final Game game = getGame();</span>
+<span class="nc" id="L2533">        Map ret = new Map(game, width, height);</span>
+<span class="nc" id="L2534">        final int oldWidth = getWidth();</span>
+<span class="nc" id="L2535">        final int oldHeight = getHeight();</span>
+<span class="nc" id="L2536">        ret.populateTiles((x, y) -&gt; {</span>
+<span class="nc" id="L2537">                final int oldX = (x * oldWidth) / width;</span>
+<span class="nc" id="L2538">                final int oldY = (y * oldHeight) / height;</span>
+                // FIXME: This tile should be based on the average as
+                // mentioned at the top of this method.
+<span class="nc" id="L2541">                return this.importTile(getTile(oldX, oldY), x, y, Layer.ALL);</span>
+            });
+<span class="nc" id="L2543">        ret.resetContiguity();</span>
+<span class="nc" id="L2544">        ret.resetHighSeasCount();</span>
+<span class="nc" id="L2545">        return ret;</span>
+    }
+        
+    
+    // Interface Location
+    // getId() inherited.
+
+    /**
+     * Gets the location tile.  Obviously not applicable to a Map.
+     *
+     * @return Null.
+     */
+    @Override
+    public Tile getTile() {
+<span class="nc" id="L2559">        return null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getLocationLabel() {
+<span class="nc" id="L2567">        return StringTemplate.key(&quot;newWorld&quot;);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getLocationLabelFor(Player player) {
+<span class="nc" id="L2575">        String name = player.getNewLandName();</span>
+<span class="nc bnc" id="L2576" title="All 2 branches missed.">        return (name == null) ? getLocationLabel() : StringTemplate.name(name);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean add(Locatable locatable) {
+        // Used to add units to their entry location.  Dropped as this
+        // is handled explicitly in the server.
+<span class="nc bnc" id="L2586" title="All 2 branches missed.">        if (locatable instanceof Unit) {</span>
+<span class="nc" id="L2587">            throw new RuntimeException(&quot;Disabled Map.add(Unit): &quot; + locatable);</span>
+        }
+<span class="nc" id="L2589">        return false;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean remove(Locatable locatable) {
+<span class="nc bnc" id="L2597" title="All 2 branches missed.">        if (locatable instanceof Unit) {</span>
+<span class="nc" id="L2598">            Tile tile = locatable.getTile();</span>
+<span class="nc bnc" id="L2599" title="All 2 branches missed.">            if (tile != null) return tile.remove(locatable);</span>
+        }
+<span class="nc" id="L2601">        return false;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean contains(Locatable locatable) {
+<span class="nc bnc" id="L2609" title="All 2 branches missed.">        return locatable instanceof Unit</span>
+<span class="nc bnc" id="L2610" title="All 2 branches missed.">            &amp;&amp; locatable.getLocation() != null</span>
+<span class="nc bnc" id="L2611" title="All 2 branches missed.">            &amp;&amp; locatable.getLocation().getTile() != null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canAdd(Locatable locatable) {
+<span class="nc" id="L2619">        return locatable instanceof Unit;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getUnitCount() {
+<span class="nc" id="L2627">        return -1;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Stream&lt;Unit&gt; getUnits() {
+<span class="nc" id="L2635">        return Stream.&lt;Unit&gt;empty();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;Unit&gt; getUnitList() {
+<span class="nc" id="L2643">        return Collections.&lt;Unit&gt;emptyList();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public GoodsContainer getGoodsContainer() {
+<span class="nc" id="L2651">        return null; // Obviously irrelevant for a Map.</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Settlement getSettlement() {
+<span class="nc" id="L2659">        return null; // Obviously irrelevant for a Map.</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Colony getColony() {
+<span class="nc" id="L2667">        return null; // Obviously irrelevant for a Map.</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IndianSettlement getIndianSettlement() {
+<span class="nc" id="L2675">        return null; // Obviously irrelevant for a Map.</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location up() {
+<span class="nc" id="L2683">        return this;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getRank() {
+<span class="nc" id="L2691">        return Location.LOCATION_RANK_NOWHERE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toShortString() {
+<span class="nc" id="L2699">        return &quot;Map&quot;;</span>
+    }
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String getLocationImageKey() {
+<span class="nc" id="L2708">        return ImageLibrary.LOST_CITY_RUMOUR;</span>
+    }
+
+
+    // Override FreeColGameObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IntegrityType checkIntegrity(boolean fix, LogBuilder lb) {
+<span class="fc" id="L2719">        IntegrityType result = super.checkIntegrity(fix, lb);</span>
+<span class="fc" id="L2720">        final int hgt = getHeight(), wid = getWidth();</span>
+<span class="fc bfc" id="L2721" title="All 2 branches covered.">        for (int y = 0; y &lt; hgt; y++) {</span>
+<span class="fc bfc" id="L2722" title="All 2 branches covered.">            for (int x = 0; x &lt; wid; x++) {</span>
+<span class="fc" id="L2723">                Tile t = getTile(x, y);</span>
+<span class="fc" id="L2724">                result = result.combine(t.checkIntegrity(fix, lb));</span>
+            }
+        }
+<span class="fc" id="L2727">        return result;</span>
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L2738">        Map o = copyInCast(other, Map.class);</span>
+<span class="nc bnc" id="L2739" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L2740">        final Game game = getGame();</span>
+<span class="nc" id="L2741">        String err = updateTiles(o.getWidth(), o.getHeight());</span>
+<span class="nc bnc" id="L2742" title="All 2 branches missed.">        if (err != null) throw new RuntimeException(&quot;copyIn failure, &quot; + err);</span>
+        // Allow creating new regions in first map update
+<span class="nc" id="L2744">        clearRegions();</span>
+<span class="nc bnc" id="L2745" title="All 2 branches missed.">        for (Region r : o.getRegions()) addRegion(game.update(r, true));</span>
+        // Use updateTile rather than copyIn to allow new tiles to be
+        // populated in the first map update
+<span class="nc" id="L2748">        o.forEachTile(t -&gt; this.updateTile(game.update(t, true)));</span>
+        
+<span class="nc" id="L2750">        this.layer = o.getLayer();</span>
+<span class="nc" id="L2751">        this.minimumLatitude = o.getMinimumLatitude();</span>
+<span class="nc" id="L2752">        this.maximumLatitude = o.getMaximumLatitude();</span>
+<span class="nc" id="L2753">        this.latitudePerRow = o.getLatitudePerRow();</span>
+<span class="nc" id="L2754">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String HEIGHT_TAG = &quot;height&quot;;
+    private static final String LAYER_TAG = &quot;layer&quot;;
+    private static final String MAXIMUM_LATITUDE_TAG = &quot;maximumLatitude&quot;;
+    private static final String MINIMUM_LATITUDE_TAG = &quot;minimumLatitude&quot;;
+    private static final String WIDTH_TAG = &quot;width&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L2772">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L2774">        xw.writeAttribute(WIDTH_TAG, getWidth());</span>
+
+<span class="fc" id="L2776">        xw.writeAttribute(HEIGHT_TAG, getHeight());</span>
+
+<span class="fc" id="L2778">        xw.writeAttribute(LAYER_TAG, layer);</span>
+
+<span class="fc" id="L2780">        xw.writeAttribute(MINIMUM_LATITUDE_TAG, minimumLatitude);</span>
+
+<span class="fc" id="L2782">        xw.writeAttribute(MAXIMUM_LATITUDE_TAG, maximumLatitude);</span>
+<span class="fc" id="L2783">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L2790">        super.writeChildren(xw);</span>
+
+<span class="fc bfc" id="L2792" title="All 2 branches covered.">        for (Region region : sort(getRegions())) region.toXML(xw);</span>
+
+<span class="fc" id="L2794">        final int hgt = getHeight(), wid = getWidth();</span>
+<span class="fc bfc" id="L2795" title="All 2 branches covered.">        for (int y = 0; y &lt; hgt; y++) {</span>
+<span class="fc bfc" id="L2796" title="All 2 branches covered.">            for (int x = 0; x &lt; wid; x++) {</span>
+<span class="fc" id="L2797">                getTile(x, y).toXML(xw);</span>
+            }
+        }
+<span class="fc" id="L2800">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L2807">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L2809">        String err = updateTiles(xr.getAttribute(WIDTH_TAG, -1), xr.getAttribute(HEIGHT_TAG, -1));</span>
+<span class="pc bpc" id="L2810" title="1 of 2 branches missed.">        if (err != null) throw new XMLStreamException(&quot;Map.readAttributes failure, &quot; + err);</span>
+
+<span class="fc" id="L2812">        setLayer(xr.getAttribute(LAYER_TAG, Layer.class, Layer.ALL));</span>
+
+<span class="fc" id="L2814">        minimumLatitude = xr.getAttribute(MINIMUM_LATITUDE_TAG, -90);</span>
+
+<span class="fc" id="L2816">        maximumLatitude = xr.getAttribute(MAXIMUM_LATITUDE_TAG, 90);</span>
+
+<span class="fc" id="L2818">        calculateLatitudePerRow();</span>
+<span class="fc" id="L2819">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+        // The tiles structure is large, and individually
+        // overwriteable, so we do not clear it unlike most other containers.
+
+<span class="fc" id="L2829">        super.readChildren(xr);</span>
+
+        // Fix up settlement tile ownership in one hit here, avoiding
+        // complications with Tile-internal cached tiles.
+<span class="fc" id="L2833">        forEachTile(t -&gt; {</span>
+<span class="fc" id="L2834">                Settlement s = t.getOwningSettlement();</span>
+<span class="fc bfc" id="L2835" title="All 2 branches covered.">                if (s != null) s.addTile(t);</span>
+<span class="fc" id="L2836">            });</span>
+
+        // @compat 0.11.3
+        // Maps with incorrect parent/child chains were occurring.
+<span class="fc" id="L2840">        fixupRegions();</span>
+        // end @compat 0.11.3
+<span class="fc" id="L2842">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L2849">        final Game game = getGame();</span>
+<span class="fc" id="L2850">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L2852" title="All 2 branches covered.">        if (Region.TAG.equals(tag)) {</span>
+<span class="fc" id="L2853">            addRegion(xr.readFreeColObject(game, Region.class));</span>
+
+<span class="pc bpc" id="L2855" title="1 of 2 branches missed.">        } else if (Tile.TAG.equals(tag)) {</span>
+<span class="fc" id="L2856">            Tile t = xr.readFreeColObject(game, Tile.class);</span>
+<span class="pc bpc" id="L2857" title="1 of 2 branches missed.">            if (!updateTile(t)) {</span>
+<span class="nc" id="L2858">                logger.warning(&quot;Tile update failure for: &quot; + t);</span>
+            }                    
+
+<span class="fc" id="L2861">        } else {</span>
+<span class="nc" id="L2862">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L2864">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L2869">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

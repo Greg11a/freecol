@@ -1,0 +1,696 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TileItemContainer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">TileItemContainer.java</span></div><h1>TileItemContainer.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Predicate;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import static net.sf.freecol.common.model.Constants.*;
+import net.sf.freecol.common.model.Map.Layer;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import net.sf.freecol.common.util.LogBuilder;
+
+
+/**
+ * Contains {@code TileItem}s and can be used by a {@link Tile}
+ * to make certain tasks easier.
+ */
+public class TileItemContainer extends FreeColGameObject {
+
+<span class="fc" id="L44">    private static final Logger logger = Logger.getLogger(TileItemContainer.class.getName());</span>
+
+    public static final String TAG = &quot;tileItemContainer&quot;;
+
+    /** The tile owner for which this is the container. */
+    private Tile tile;
+
+    /** All tile items, sorted by zIndex. */
+<span class="fc" id="L52">    private final List&lt;TileItem&gt; tileItems = new ArrayList&lt;&gt;();</span>
+
+
+    /**
+     * Create an empty {@code TileItemContainer}.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param tile The {@code Tile} this {@code TileItemContainer}
+     *     contains {@code TileItems} for.
+     */
+    public TileItemContainer(Game game, Tile tile) {
+<span class="fc" id="L63">        super(game);</span>
+
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (tile == null) {</span>
+<span class="nc" id="L66">            throw new RuntimeException(&quot;Tile must not be null: &quot; + this);</span>
+        }
+<span class="fc" id="L68">        this.tile = tile;</span>
+<span class="fc" id="L69">    }</span>
+
+    /**
+     * Create a new {@code TileItemContainer}.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param id The object identifier.
+     */
+    public TileItemContainer(Game game, String id) {
+<span class="fc" id="L78">        super(game, id);</span>
+<span class="fc" id="L79">    }</span>
+
+
+    /**
+     * Get the tile this container belongs to.
+     *
+     * @return The owning {@code Tile}.
+     */
+    public final Tile getTile() {
+<span class="nc" id="L88">        return tile;</span>
+    }
+
+    /**
+     * Invalidate the production cache of the owning colony if any
+     * but only if the tile is actually being used.
+     */
+    private void invalidateCache() {
+<span class="fc" id="L96">        final Colony colony = tile.getColony();</span>
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">        if (colony != null &amp;&amp; colony.isTileInUse(tile)) {</span>
+<span class="nc" id="L98">            colony.invalidateCache();</span>
+        }
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * Get a copy of the tile items list.
+     *
+     * @return A copy of the {@code TileItem}s.
+     */
+    private List&lt;TileItem&gt; getTileItems() {
+<span class="fc" id="L108">        synchronized (tileItems) {</span>
+<span class="fc" id="L109">            return new ArrayList&lt;TileItem&gt;(tileItems);</span>
+        }
+    }
+
+    /**
+     * Clear the tile items list.
+     */
+    private void clearTileItems() {
+<span class="fc" id="L117">        synchronized (tileItems) {</span>
+<span class="fc" id="L118">            tileItems.clear();</span>
+<span class="fc" id="L119">        }</span>
+<span class="fc" id="L120">    }</span>
+
+    /**
+     * Set the tile items.
+     *
+     * @param newTileItems The new tile items list.
+     */
+    public final void setTileItems(final List&lt;TileItem&gt; newTileItems) {
+<span class="fc" id="L128">        clearTileItems();</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (newTileItems != null) {</span>
+<span class="fc" id="L130">            synchronized (tileItems) {</span>
+<span class="fc" id="L131">                tileItems.addAll(newTileItems);</span>
+<span class="fc" id="L132">            }</span>
+        }
+<span class="fc" id="L134">        invalidateCache();</span>
+<span class="fc" id="L135">    }</span>
+
+    /**
+     * Add a tile item to this container.
+     *
+     * @param item The {@code TileItem} to add.
+     */
+    private final void addTileItem(TileItem item) {
+<span class="fc" id="L143">        final int zIndex = item.getZIndex();</span>
+<span class="fc" id="L144">        int i = 0;</span>
+<span class="fc" id="L145">        synchronized (tileItems) {</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            for (TileItem ti : tileItems) {</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">                if (ti.getZIndex() &lt; zIndex) break;</span>
+<span class="fc" id="L148">                i++;</span>
+<span class="fc" id="L149">            }</span>
+<span class="fc" id="L150">            tileItems.add(i, item);</span>
+<span class="fc" id="L151">        }</span>
+<span class="fc" id="L152">    }</span>
+
+    /**
+     * Try to add a {@code TileItem} to this container.
+     *
+     * @param item The {@code TileItem} to add to this container.
+     * @return The added {@code TileItem} or the existing
+     *     {@code TileItem} if of higher magnitude, or null on error.
+     */
+    public final TileItem tryAddTileItem(TileItem item) {
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        if (item == null) return null;</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (item instanceof TileImprovement) {</span>
+            // Disallow improvements of the same type
+<span class="fc" id="L165">            TileImprovement newTip = (TileImprovement)item;</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            for (TileItem oldItem : getTileItems()) {</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                if (!(oldItem instanceof TileImprovement)) continue;</span>
+<span class="fc" id="L168">                TileImprovement oldTip = (TileImprovement)oldItem;</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                if (oldTip.getType().getId().equals(newTip.getType().getId())) {</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                    if (oldTip.getMagnitude() &lt; newTip.getMagnitude()) {</span>
+<span class="fc" id="L171">                        oldTip.setMagnitude(newTip.getMagnitude());</span>
+<span class="fc" id="L172">                        oldTip.setStyle(newTip.getStyle());</span>
+<span class="fc" id="L173">                        oldTip.setVirtual(newTip.getVirtual());</span>
+<span class="fc" id="L174">                        invalidateCache();</span>
+                    }
+<span class="fc" id="L176">                    return oldItem;</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                } else if (oldItem.getZIndex() &gt; item.getZIndex()) {</span>
+<span class="fc" id="L178">                    break; // New item is under old one, can not merge</span>
+                }
+<span class="fc" id="L180">            }</span>
+        }
+<span class="fc" id="L182">        addTileItem(item);</span>
+<span class="fc" id="L183">        invalidateCache();</span>
+<span class="fc" id="L184">        return item;</span>
+    }
+
+    /**
+     * Removes a {@code TileItem} from this container.
+     *
+     * @param &lt;T&gt; The actual {@code TileItem} type.
+     * @param item The {@code TileItem} to remove from this container.
+     * @return The {@code TileItem} that has been removed from
+     *     this container (if any).
+     */
+    public final &lt;T extends TileItem&gt; T removeTileItem(T item) {
+        boolean removed;
+<span class="fc" id="L197">        synchronized (tileItems) {</span>
+<span class="fc" id="L198">            removed = tileItems.remove(item);</span>
+<span class="fc" id="L199">        }</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (removed) {</span>
+<span class="fc" id="L201">            item.setLocation(null);</span>
+<span class="fc" id="L202">            invalidateCache();</span>
+<span class="fc" id="L203">            return item;</span>
+        }
+<span class="nc" id="L205">        return null;</span>
+    }
+
+    /**
+     * Removes all tile items of a given class.
+     *
+     * @param &lt;T&gt; The actual {@code TileItem} type.
+     * @param c The {@code Class} to remove.
+     */
+    public final &lt;T extends TileItem&gt; void removeAll(Class&lt;T&gt; c) {
+<span class="nc" id="L215">        synchronized (tileItems) {</span>
+<span class="nc" id="L216">            removeInPlace(tileItems, ti -&gt; c.isInstance(ti));</span>
+<span class="nc" id="L217">        }</span>
+<span class="nc" id="L218">    }</span>
+
+    /**
+     * Get the completed tile items.
+     *
+     * @return A list of complete {@code TileItem}s.
+     */
+    public List&lt;TileItem&gt; getCompleteItems() {
+<span class="nc" id="L226">        return transform(getTileItems(), TileItem::isComplete);</span>
+    }
+
+    /**
+     * Gets the tile improvement of the given type if any.
+     *
+     * @param type The {@code TileImprovementType} to look for.
+     * @return The {@code TileImprovement} of the given type if
+     *     present, otherwise null.
+     */
+    public TileImprovement getImprovement(TileImprovementType type) {
+<span class="fc" id="L237">        synchronized (tileItems) {</span>
+<span class="fc" id="L238">            return (TileImprovement)find(tileItems,</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                ti -&gt; (ti instanceof TileImprovement</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">                    &amp;&amp; ((TileImprovement)ti).getType() == type));</span>
+        }
+    }
+
+    /**
+     * Gets a list of the {@code TileImprovement}s in this
+     * {@code TileItemContainer}.
+     *
+     * @param completedOnly If true select only the completed improvements.
+     * @return A list of {@code TileImprovement}s.
+     */
+    private List&lt;TileImprovement&gt; getImprovements(boolean completedOnly) {
+<span class="fc" id="L252">        synchronized (tileItems) {</span>
+<span class="fc" id="L253">            return transform(tileItems,</span>
+<span class="pc bpc" id="L254" title="2 of 4 branches missed.">                             ti -&gt; ti instanceof TileImprovement</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">                                &amp;&amp; (!completedOnly || ((TileImprovement)ti).isComplete()),</span>
+<span class="fc" id="L256">                             ti -&gt; (TileImprovement)ti);</span>
+        }
+    }
+
+    /**
+     * Gets a list of the {@code TileImprovement}s in this
+     * {@code TileItemContainer}.
+     *
+     * @return A list of {@code TileImprovement}s.
+     */
+    public List&lt;TileImprovement&gt; getImprovements() {
+<span class="nc" id="L267">        return getImprovements(false);</span>
+    }
+
+    /**
+     * Gets a list of the completed {@code TileImprovement}s in
+     * this {@code TileItemContainer}.
+     *
+     * @return A list of {@code TileImprovement}s.
+     */
+    public List&lt;TileImprovement&gt; getCompleteImprovements() {
+<span class="fc" id="L277">        return getImprovements(true);</span>
+    }
+
+    /**
+     * Find a tile item matching a predicate.
+     *
+     * @param pred The {@code Predicate} to match.
+     * @return The {@code TileItem} found, or null if none present.
+     */
+    private TileItem findTileItem(Predicate&lt;TileItem&gt; pred) {
+<span class="fc" id="L287">        synchronized (tileItems) {</span>
+<span class="fc" id="L288">            return find(tileItems, pred);</span>
+        }
+    }
+
+    /**
+     * Gets any lost city rumour in this container.
+     *
+     * @return A {@code LostCityRumour} item if any, or null if
+     *     not found.
+     */
+    public final LostCityRumour getLostCityRumour() {
+<span class="fc" id="L299">        return (LostCityRumour)findTileItem(ti -&gt; ti instanceof LostCityRumour);</span>
+    }
+
+    /**
+     * Gets any resource item.
+     *
+     * @return A {@code Resource} item, or null is none found.
+     */
+    public final Resource getResource() {
+<span class="fc" id="L308">        return (Resource)findTileItem(ti -&gt; ti instanceof Resource);</span>
+    }
+
+    /**
+     * Gets any road improvement in this container.
+     *
+     * @return A road {@code TileImprovement} if any, or null if
+     *     not found.
+     */
+    public TileImprovement getRoad() {
+<span class="fc" id="L318">        return (TileImprovement)findTileItem(ti -&gt;</span>
+<span class="fc bfc" id="L319" title="All 4 branches covered.">            ti instanceof TileImprovement &amp;&amp; ((TileImprovement)ti).isRoad());</span>
+    }
+
+    /**
+     * Gets any river improvement in this container.
+     *
+     * @return A river {@code TileImprovement} if any, or null if
+     *     not found.
+     */
+    public TileImprovement getRiver() {
+<span class="fc" id="L329">        return (TileImprovement)findTileItem(ti -&gt;</span>
+<span class="fc bfc" id="L330" title="All 4 branches covered.">            ti instanceof TileImprovement &amp;&amp; ((TileImprovement)ti).isRiver());</span>
+    }
+
+    /**
+     * Check whether this tile has a completed improvement of the given
+     * type.
+     *
+     * @param type The {@code TileImprovementType} to check for.
+     * @return Whether the tile has the improvement and the improvement is
+     *     completed.
+     */
+    public boolean hasImprovement(TileImprovementType type) {
+<span class="fc" id="L342">        TileImprovement improvement = getImprovement(type);</span>
+<span class="fc bfc" id="L343" title="All 4 branches covered.">        return improvement != null &amp;&amp; improvement.isComplete();</span>
+    }
+
+    /**
+     * Remove improvements incompatible with the given TileType.  This
+     * method is called whenever the type of the container's tile
+     * changes, i.e. due to clearing.
+     */
+    public void removeIncompatibleImprovements() {
+<span class="fc" id="L352">        TileType tileType = tile.getType();</span>
+<span class="fc" id="L353">        boolean removed = false;</span>
+<span class="fc" id="L354">        synchronized (tileItems) {</span>
+<span class="fc" id="L355">            TileImprovement river = getRiver();</span>
+<span class="fc bfc" id="L356" title="All 4 branches covered.">            if(river != null &amp;&amp; !river.isTileTypeAllowed(tileType)</span>
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">                &amp;&amp; !tileType.isWater()) {</span>
+<span class="fc" id="L358">                river.updateRiverConnections(null);</span>
+            }
+<span class="fc" id="L360">            removed = removeInPlace(tileItems,</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">                                    ti -&gt; !ti.isTileTypeAllowed(tileType));</span>
+<span class="fc" id="L362">        }</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        if (removed) invalidateCache();</span>
+<span class="fc" id="L364">    }</span>
+
+    /**
+     * Determine the total bonus for a goods type.  Checks resources
+     * and all improvements, unless onlyNatural is true, in which case
+     * only natural improvements will be considered.
+     *
+     * This is not used for normal production, but is necessary to
+     * calculate colony center tile secondary production, which does
+     * not profit from artificial improvements such as plowing.  It is
+     * also used to assess which goods are likely to be most
+     * productive on a tile.
+     *
+     * @param goodsType The {@code GoodsType} to check.
+     * @param unitType The {@code UnitType} to check.
+     * @param potential The base potential production.
+     * @param onlyNatural Only allow natural improvements.
+     * @return The resulting production.
+     */
+    public int getTotalBonusPotential(GoodsType goodsType, UnitType unitType,
+                                      int potential, boolean onlyNatural) {
+<span class="nc" id="L385">        int result = potential;</span>
+<span class="nc bnc" id="L386" title="All 2 branches missed.">        for (TileItem item : transform(getTileItems(),</span>
+<span class="nc bnc" id="L387" title="All 4 branches missed.">                                       ti -&gt; !onlyNatural || ti.isNatural())) {</span>
+<span class="nc" id="L388">            result = item.applyBonus(goodsType, unitType, result);</span>
+<span class="nc" id="L389">        }</span>
+<span class="nc" id="L390">        return result;</span>
+    }
+
+    /**
+     * Gets the production modifiers for the given type of goods and unit.
+     *
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType The optional {@code unitType} to produce them.
+     * @return A stream of the applicable {@code Modifier}s.
+     */
+    public Stream&lt;Modifier&gt; getProductionModifiers(GoodsType goodsType,
+                                                   UnitType unitType) {
+<span class="fc" id="L402">        synchronized (tileItems) {</span>
+<span class="fc" id="L403">            return flatten(tileItems,</span>
+<span class="fc" id="L404">                ti -&gt; ti.getProductionModifiers(goodsType, unitType));</span>
+        }
+    }
+    
+    public Stream&lt;Modifier&gt; getProductionModifiersWithoutResource(GoodsType goodsType,
+            UnitType unitType) {
+<span class="nc" id="L410">        synchronized (tileItems) {</span>
+<span class="nc" id="L411">            return tileItems.stream()</span>
+<span class="nc bnc" id="L412" title="All 2 branches missed.">                    .filter(ti -&gt; !(ti instanceof Resource))</span>
+<span class="nc" id="L413">                    .flatMap(ti -&gt; ti.getProductionModifiers(goodsType, unitType));</span>
+        }
+    }
+
+    /**
+     * Does this container contain an item that allows the tile to
+     * produce a goods type?
+     *
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType The optional {@code unitType} to produce with.
+     * @return True if this container allows the goods type to be produced.
+     */
+    public boolean canProduce(GoodsType goodsType, UnitType unitType) {
+<span class="fc" id="L426">        synchronized (tileItems) {</span>
+<span class="fc" id="L427">            return any(tileItems, ti -&gt; ti.canProduce(goodsType, unitType));</span>
+        }
+    }
+
+    /**
+     * Determine the movement cost to this {@code Tile} from
+     * another {@code Tile}.
+     * Does not consider special unit abilities.
+     *
+     * @param fromTile The {@code Tile} to move from.
+     * @param targetTile The {@code Tile} to move to.
+     * @param basicMoveCost The basic cost.
+     * @return The movement cost.
+     */
+    public int getMoveCost(Tile fromTile, Tile targetTile, int basicMoveCost) {
+<span class="fc" id="L442">        int moveCost = basicMoveCost;</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">        for (TileItem item : transform(getTileItems(), ti -&gt;</span>
+<span class="fc bfc" id="L444" title="All 2 branches covered.">                (ti instanceof TileImprovement</span>
+<span class="pc bpc" id="L445" title="1 of 2 branches missed.">                    &amp;&amp; ((TileImprovement)ti).isComplete()))) {</span>
+<span class="fc" id="L446">            Direction direction = targetTile.getDirection(fromTile);</span>
+<span class="pc bpc" id="L447" title="1 of 2 branches missed.">            if (direction == null) return INFINITY;</span>
+<span class="fc" id="L448">            moveCost = Math.min(moveCost,</span>
+<span class="fc" id="L449">                ((TileImprovement)item).getMoveCost(direction, moveCost));</span>
+<span class="fc" id="L450">        }</span>
+<span class="fc" id="L451">        return moveCost;</span>
+    }
+
+    /**
+     * Copy the tile items from another {@code TileItemContainer},
+     * observing a layer maximum.
+     *
+     * Note that some types need to be looked up in the spec as the tic
+     * parameter might be an import from a different game.
+     *
+     * @param tic The {@code TileItemContainer} to copy from.
+     * @param layer The maximum {@code Layer} to import from.
+     */
+    public void copyFrom(TileItemContainer tic, Layer layer) {
+<span class="fc" id="L465">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L466">        final Game game = getGame();</span>
+<span class="fc" id="L467">        List&lt;TileItem&gt; otherItems = tic.getTileItems();</span>
+<span class="fc" id="L468">        List&lt;TileItem&gt; result = new ArrayList&lt;TileItem&gt;();</span>
+<span class="fc bfc" id="L469" title="All 2 branches covered.">        for (TileItem item : transform(otherItems, ti -&gt;</span>
+<span class="fc bfc" id="L470" title="All 2 branches covered.">                                       layer.compareTo(ti.getLayer()) &gt;= 0)) {</span>
+<span class="fc bfc" id="L471" title="All 2 branches covered.">            if (item instanceof Resource) {</span>
+<span class="fc" id="L472">                Resource resource = (Resource)item;</span>
+<span class="fc" id="L473">                ResourceType type</span>
+<span class="fc" id="L474">                    = spec.getResourceType(resource.getType().getId());</span>
+<span class="fc" id="L475">                result.add(new Resource(game, tile, type, resource.getQuantity()));</span>
+<span class="fc bfc" id="L476" title="All 2 branches covered.">            } else if (item instanceof LostCityRumour) {</span>
+<span class="fc" id="L477">                LostCityRumour rumour = (LostCityRumour)item;</span>
+<span class="fc" id="L478">                result.add(new LostCityRumour(game, tile,</span>
+<span class="fc" id="L479">                        rumour.getType(), rumour.getName()));</span>
+<span class="pc bpc" id="L480" title="1 of 2 branches missed.">            } else if (item instanceof TileImprovement) {</span>
+<span class="fc" id="L481">                TileImprovement improvement = (TileImprovement)item;</span>
+<span class="fc bfc" id="L482" title="All 2 branches covered.">                if (layer.compareTo(Map.Layer.ALL) &gt;= 0</span>
+<span class="fc bfc" id="L483" title="All 2 branches covered.">                    || improvement.getType().isNatural()) {</span>
+<span class="fc" id="L484">                    TileImprovementType type</span>
+<span class="fc" id="L485">                        = spec.getTileImprovementType(improvement.getType().getId());</span>
+<span class="fc" id="L486">                    final TileImprovement tileImprovement = new TileImprovement(game, tile, type,</span>
+<span class="fc" id="L487">                                                   improvement.getStyle());</span>
+<span class="fc" id="L488">                    tileImprovement.setMagnitude(improvement.getMagnitude());</span>
+<span class="fc" id="L489">                    result.add(tileImprovement);</span>
+                }
+<span class="fc" id="L491">            } else {</span>
+<span class="nc" id="L492">                logger.warning(&quot;Bogus tile item: &quot; + item.getId());</span>
+            }
+<span class="fc" id="L494">        }</span>
+<span class="fc" id="L495">        setTileItems(result);</span>
+<span class="fc" id="L496">    }</span>
+
+    /**
+     * Checks if the specified {@code TileItem} is in this container.
+     *
+     * @param t The {@code TileItem} to test the presence of.
+     * @return True if the tile item is present.
+     */
+    public boolean contains(TileItem t) {
+<span class="nc" id="L505">        synchronized (tileItems) {</span>
+<span class="nc" id="L506">            return tileItems.contains(t);</span>
+        }
+    }
+
+
+    // Low level
+
+    /**
+     * Removes all references to this object.
+     */
+    @Override
+    public void disposeResources() {
+<span class="nc" id="L518">        clearTileItems();</span>
+<span class="nc" id="L519">        super.disposeResources();</span>
+<span class="nc" id="L520">    }</span>
+
+
+    // Override FreeColGameObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IntegrityType checkIntegrity(boolean fix, LogBuilder lb) {
+<span class="fc" id="L530">        IntegrityType result = super.checkIntegrity(fix, lb);</span>
+<span class="fc bfc" id="L531" title="All 2 branches covered.">        for (TileItem ti : getTileItems()) {</span>
+<span class="fc" id="L532">            IntegrityType integ = ti.checkIntegrity(fix, lb);</span>
+<span class="pc bpc" id="L533" title="1 of 2 branches missed.">            if (fix) {</span>
+                // There might still be maps floating around with
+                // rivers that go nowhere.
+<span class="fc bfc" id="L536" title="All 2 branches covered.">                if (ti instanceof TileImprovement) {</span>
+<span class="fc" id="L537">                    TileImprovement tim = (TileImprovement)ti;</span>
+<span class="fc bfc" id="L538" title="All 2 branches covered.">                    if (tim.isRiver()) {</span>
+                        // @compat 0.11.5 Its not sure if these could ever
+                        // exist in broken maps from before 0.10.5 which later
+                        // got upgraded with 0.11.x (x&lt;6), so better be safe.
+<span class="pc bpc" id="L542" title="1 of 2 branches missed.">                        if (tim.getStyle() == null) {</span>
+<span class="nc" id="L543">                            lb.add(&quot;\n  TileImprovement null river style: &quot;, tim);</span>
+<span class="nc" id="L544">                            integ = integ.fail();</span>
+                        } else
+                        // end @compat
+
+                        // The map editor can not ensure these are not
+                        // put into the map, else it would be impossible
+                        // to add any rivers, unless code for map saving
+                        // would be changed to filter these out.
+<span class="pc bpc" id="L552" title="1 of 2 branches missed.">                        if (&quot;0000&quot;.equals(tim.getStyle().toString())) {</span>
+<span class="nc" id="L553">                            lb.add(&quot;\n  TileImprovement 0000 river: &quot;, tim);</span>
+<span class="nc" id="L554">                            integ = integ.fail();</span>
+                        }
+                    }
+                }
+
+<span class="pc bpc" id="L559" title="1 of 2 branches missed.">                if (!integ.safe()) {</span>
+<span class="nc" id="L560">                    logger.warning(&quot;Removing broken TileImprovement: &quot;</span>
+<span class="nc" id="L561">                        + ti.getId());</span>
+<span class="nc" id="L562">                    removeTileItem(ti);</span>
+<span class="nc" id="L563">                    integ = integ.fix();</span>
+                }
+            }
+<span class="fc" id="L566">            result = result.combine(integ);</span>
+<span class="fc" id="L567">        }</span>
+<span class="fc" id="L568">        return result;</span>
+    }
+
+
+    // Overide FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L579">        TileItemContainer o = copyInCast(other, TileItemContainer.class);</span>
+<span class="nc bnc" id="L580" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L581">        final Game game = getGame();</span>
+<span class="nc" id="L582">        this.tile = game.updateRef(o.getTile());</span>
+<span class="nc" id="L583">        clearTileItems();</span>
+<span class="nc bnc" id="L584" title="All 2 branches missed.">        for (TileItem ti : o.getTileItems()) {</span>
+            // Allow creation, tile item might be new
+            // FIXME: lazy OO
+<span class="nc" id="L587">            TileItem nti = game.update(ti, true);</span>
+<span class="nc bnc" id="L588" title="All 2 branches missed.">            if (nti == null) {</span>
+<span class="nc" id="L589">                throw new RuntimeException(&quot;TileItem class fail &quot; + ti);</span>
+            }
+<span class="nc" id="L591">            addTileItem(nti);</span>
+<span class="nc" id="L592">        }</span>
+<span class="nc" id="L593">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String TILE_TAG = &quot;tile&quot;;
+    // @compat 0.11.3
+    private static final String OLD_TILE_IMPROVEMENT_TAG = &quot;tileimprovement&quot;;
+    // end @compat 0.11.3
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L610">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L612">        xw.writeAttribute(TILE_TAG, tile);</span>
+<span class="fc" id="L613">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L620">        super.writeChildren(xw);</span>
+
+<span class="fc bfc" id="L622" title="All 2 branches covered.">        for (TileItem item : getTileItems()) {</span>
+<span class="fc" id="L623">            item.toXML(xw);</span>
+<span class="fc" id="L624">        }</span>
+<span class="fc" id="L625">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L632">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L634">        tile = xr.findFreeColGameObject(getGame(), TILE_TAG,</span>
+                                        Tile.class, (Tile)null, true);
+<span class="fc" id="L636">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+        // Clear containers.
+<span class="fc" id="L644">        clearTileItems();</span>
+
+<span class="fc" id="L646">        super.readChildren(xr);</span>
+<span class="fc" id="L647">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L654">        final Game game = getGame();</span>
+<span class="fc" id="L655">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L657" title="All 2 branches covered.">        if (LostCityRumour.TAG.equals(tag)) {</span>
+<span class="fc" id="L658">            LostCityRumour lcr = xr.readFreeColObject(game, LostCityRumour.class);</span>
+<span class="pc bpc" id="L659" title="1 of 2 branches missed.">            if (lcr != null) addTileItem(lcr);</span>
+
+<span class="fc bfc" id="L661" title="All 2 branches covered.">        } else if (Resource.TAG.equals(tag)) {</span>
+<span class="fc" id="L662">            addTileItem(xr.readFreeColObject(game, Resource.class));</span>
+
+<span class="pc bpc" id="L664" title="1 of 2 branches missed.">        } else if (TileImprovement.TAG.equals(tag)</span>
+                   // @compat 0.11.3
+<span class="nc bnc" id="L666" title="All 2 branches missed.">                   || OLD_TILE_IMPROVEMENT_TAG.equals(tag)</span>
+                   // end @compat 0.11.3
+                   ) {
+<span class="fc" id="L669">            addTileItem(xr.readFreeColObject(game, TileImprovement.class));</span>
+
+        } else {
+<span class="nc" id="L672">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L674">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L679">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L689">        StringBuilder sb = new StringBuilder(64);</span>
+<span class="nc" id="L690">        sb.append('[').append(getId());</span>
+<span class="nc bnc" id="L691" title="All 2 branches missed.">        for (TileItem item : getTileItems()) sb.append(' ').append(item);</span>
+<span class="nc" id="L692">        sb.append(']');</span>
+<span class="nc" id="L693">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,493 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AIGoods.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai</a> &gt; <span class="el_source">AIGoods.java</span></div><h1>AIGoods.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai;
+
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Colony;
+import static net.sf.freecol.common.model.Constants.*;
+import net.sf.freecol.common.model.Europe;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Locatable;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.PathNode;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.common.util.Utils;
+import net.sf.freecol.server.ai.mission.Mission;
+
+
+/**
+ * Objects of this class contains AI-information for a single {@link Goods}.
+ */
+public final class AIGoods extends TransportableAIObject {
+
+<span class="fc" id="L51">    private static final Logger logger = Logger.getLogger(AIGoods.class.getName());</span>
+
+    public static final String TAG = &quot;aiGoods&quot;;
+
+    /** The underlying goods. */
+    private Goods goods;
+
+    /** The destination location for the goods. */
+    private Location destination;
+
+
+    /**
+     * Creates a new uninitialized {@code AIGoods}.
+     *
+     * @param aiMain The main AI-object.
+     * @param id The object identifier.
+     */
+    public AIGoods(AIMain aiMain, String id) {
+<span class="fc" id="L69">        super(aiMain, id);</span>
+
+<span class="fc" id="L71">        this.goods = null;</span>
+<span class="fc" id="L72">        this.destination = null;</span>
+<span class="fc" id="L73">        this.initialized = false;</span>
+<span class="fc" id="L74">    }</span>
+
+    /**
+     * Creates a new {@code AIGoods}.
+     *
+     * @param aiMain The main AI-object.
+     * @param location The location of the goods.
+     * @param type The type of goods.
+     * @param amount The amount of goods.
+     * @param destination The destination of the goods. This is the
+     *      {@code Location} to which the goods should be transported.
+     */
+    public AIGoods(AIMain aiMain, Location location, GoodsType type,
+                   int amount, Location destination) {
+<span class="fc" id="L88">        this(aiMain, TAG + &quot;:&quot; + aiMain.getNextId());</span>
+
+<span class="fc" id="L90">        this.goods = new Goods(aiMain.getGame(), location, type, amount);</span>
+<span class="fc" id="L91">        this.destination = destination;</span>
+<span class="fc" id="L92">        setInitialized();</span>
+<span class="fc" id="L93">    }</span>
+
+    /**
+     * Creates a new {@code AIGoods} from the given
+     * XML-representation.
+     *
+     * @param aiMain The main AI-object.
+     * @param xr The input stream containing the XML.
+     * @exception XMLStreamException if a problem was encountered
+     *      during parsing.
+     */
+    public AIGoods(AIMain aiMain,
+                   FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L106">        super(aiMain, xr);</span>
+
+<span class="nc" id="L108">        setInitialized();</span>
+<span class="nc" id="L109">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    public void setInitialized() {
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        this.initialized = getGoods() != null;</span>
+<span class="fc" id="L117">    }</span>
+
+    /**
+     * Gets the goods this {@code AIGoods} is controlling.
+     *
+     * @return The {@code Goods}.
+     */
+    public final Goods getGoods() {
+<span class="fc" id="L125">        return this.goods;</span>
+    }
+
+    /**
+     * Sets the goods this {@code AIGoods} is controlling.
+     *
+     * @param goods The new {@code Goods}.
+     */
+    public final void setGoods(Goods goods) {
+<span class="fc" id="L134">        this.goods = goods;</span>
+<span class="fc" id="L135">    }</span>
+
+    /**
+     * Gets the type of goods this {@code AIGoods} is controlling.
+     *
+     * @return The {@code GoodsType}.
+     */
+    public final GoodsType getGoodsType() {
+<span class="nc" id="L143">        return goods.getType();</span>
+    }
+
+    /**
+     * Gets the amount of goods this {@code AIGoods} is controlling.
+     *
+     * @return The amount of goods.
+     */
+    public final int getGoodsAmount() {
+<span class="nc" id="L152">        return goods.getAmount();</span>
+    }
+
+    /**
+     * Sets the amount of goods this {@code AIGoods} is controlling.
+     *
+     * @param amount The new amount of goods.
+     */
+    public final void setGoodsAmount(int amount) {
+<span class="nc" id="L161">        goods.setAmount(amount);</span>
+<span class="nc" id="L162">    }</span>
+
+
+    // Internal
+
+    /**
+     * Goods leaves a ship.
+     *
+     * @param amount The amount of goods to unload.
+     * @return True if the unload succeeds.
+     */
+    private boolean leaveTransport(int amount) {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (!(goods.getLocation() instanceof Unit)) return false;</span>
+<span class="nc" id="L175">        final Unit carrier = (Unit)goods.getLocation();</span>
+<span class="nc" id="L176">        final GoodsType type = goods.getType();</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (carrier.getGoodsCount(type) &lt; amount) return false;</span>
+
+<span class="nc" id="L179">        final AIUnit aiCarrier = getAIMain().getAIUnit(carrier);</span>
+<span class="nc" id="L180">        int oldAmount = carrier.getGoodsCount(type);</span>
+<span class="nc" id="L181">        boolean result = AIMessage.askUnloadGoods(type, amount, aiCarrier);</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (result) {</span>
+<span class="nc" id="L183">            int newAmount = carrier.getGoodsCount(type);</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">            if (oldAmount - newAmount != amount) {</span>
+                // FIXME: sort this out.
+                // For now, do not tolerate partial unloads.
+<span class="nc" id="L187">                logger.warning(&quot;Partial goods unload, expected: &quot; + amount</span>
+                    + &quot;, got: &quot; + (oldAmount - newAmount));
+<span class="nc" id="L189">                result = false;</span>
+            }
+<span class="nc" id="L191">            logger.fine(&quot;Unloaded &quot; + amount + &quot; &quot; + type</span>
+                + &quot; from &quot; + oldAmount + &quot; leaving &quot; + newAmount
+<span class="nc" id="L193">                + &quot; off of &quot; + carrier + &quot; at &quot; + carrier.getLocation());</span>
+        }   
+<span class="nc" id="L195">        return result;</span>
+    }
+
+
+    // Implement TransportableAIObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Locatable getTransportLocatable() {
+<span class="fc" id="L206">        return getGoods();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTransportSource() {
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">        return (goods == null) ? null : goods.getLocation();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTransportDestination() {
+<span class="fc" id="L222">        return this.destination;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setTransportDestination(Location destination) {
+<span class="fc" id="L230">        this.destination = destination;</span>
+<span class="fc" id="L231">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public PathNode getDeliveryPath(Unit carrier, Location dst) {
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">        if (dst == null) dst = Location.upLoc(getTransportDestination());</span>
+
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        PathNode path = (goods.getLocation() == carrier) ? carrier.findPath(dst)</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">            : (goods.getLocation() instanceof Unit) ? null</span>
+<span class="fc" id="L242">            : carrier.findPath(goods.getLocation(), dst);</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (path != null) path.convertToGoodsDeliveryPath();</span>
+<span class="fc" id="L244">        return path;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public PathNode getIntermediatePath(Unit carrier, Location dst) {
+<span class="fc" id="L252">        return null; // NYI</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean carriableBy(Unit carrier) {
+<span class="fc" id="L260">        return carrier.couldCarry(getGoods());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canMove() {
+<span class="nc" id="L268">        return false;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean leaveTransport() {
+<span class="nc" id="L276">        return leaveTransport(null);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean leaveTransport(Direction direction) {
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        if (direction != null) return false;</span>
+<span class="nc" id="L285">        return leaveTransport(goods.getAmount());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean joinTransport(Unit carrier, Direction direction) {
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">        if (direction != null) return false;</span>
+<span class="fc" id="L294">        final AIUnit aiCarrier = getAIMain().getAIUnit(carrier);</span>
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">        if (aiCarrier == null) return false;</span>
+
+<span class="fc" id="L297">        final GoodsType type = goods.getType();</span>
+<span class="fc" id="L298">        boolean failed = false;</span>
+<span class="fc" id="L299">        int oldAmount = carrier.getGoodsCount(type),</span>
+<span class="fc" id="L300">            goodsAmount = goods.getAmount(),</span>
+<span class="fc" id="L301">            amount = Math.min(goodsAmount, carrier.getLoadableAmount(type));</span>
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">        if (AIMessage.askLoadGoods(goods.getLocation(), type, amount,</span>
+                                   aiCarrier)) {
+<span class="fc" id="L304">            setGoods(new Goods(getGame(), carrier, type, amount));</span>
+<span class="fc" id="L305">            final Colony colony = carrier.getColony();</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">            if (colony != null) {</span>
+<span class="fc" id="L307">                getAIMain().getAIColony(colony).removeExportGoods(this);</span>
+            }
+        }
+<span class="fc" id="L310">        logger.fine(&quot;Loaded &quot; + amount + &quot; &quot; + type.getSuffix()</span>
+            + &quot; over &quot; + oldAmount + &quot; leaving &quot; + (goodsAmount - amount)
+<span class="fc" id="L312">            + &quot; onto &quot; + carrier + &quot; at &quot; + carrier.getLocation());</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">        return !failed;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String invalidReason() {
+<span class="fc" id="L321">        String reason = Mission.invalidTransportableReason(this);</span>
+        Settlement s;
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">        return (reason != null)</span>
+<span class="nc" id="L324">            ? reason</span>
+<span class="pc bpc" id="L325" title="1 of 4 branches missed.">            : (goods.getLocation() instanceof Unit</span>
+                &amp;&amp; destination instanceof Settlement
+<span class="nc" id="L327">                &amp;&amp; !((Unit)goods.getLocation())</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">                    .getOwner().owns(s = (Settlement)destination))</span>
+<span class="nc" id="L329">            ? &quot;transportableDestination-&quot; + s.getName() + &quot;-captured-by-&quot;</span>
+<span class="nc" id="L330">                + s.getOwner().getDebugName()</span>
+<span class="fc" id="L331">            : null;</span>
+    }
+
+
+    // Override AIObject
+
+    /**
+     * Disposes this object.
+     */
+    @Override
+    public void dispose() {
+<span class="nc" id="L342">        dropTransport();</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">        if (destination != null) {</span>
+<span class="nc bnc" id="L344" title="All 2 branches missed.">            if (destination instanceof Colony) {</span>
+<span class="nc" id="L345">                AIColony aic = getAIMain().getAIColony((Colony)destination);</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">                if (aic != null) aic.removeExportGoods(this);</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">            } else if (destination instanceof Europe) {</span>
+                // Nothing to remove.
+            } else {
+<span class="nc" id="L350">                logger.warning(&quot;Unknown type of destination: &quot; + destination);</span>
+            }
+<span class="nc" id="L352">            destination = null;</span>
+        }
+<span class="nc" id="L354">        goods = null;</span>
+<span class="nc" id="L355">        super.dispose();</span>
+<span class="nc" id="L356">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IntegrityType checkIntegrity(boolean fix, LogBuilder lb) {
+<span class="nc" id="L363">        IntegrityType result = super.checkIntegrity(fix, lb);</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">        String why = (!result.safe()) ? &quot;super&quot;</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">            : (goods == null) ? &quot;null-goods&quot;</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">            : (goods.getType() == null) ? &quot;null-goods-type&quot;</span>
+<span class="nc bnc" id="L367" title="All 2 branches missed.">            : (goods.getAmount() &lt;= 0) ? &quot;non-positive-goods-amount&quot;</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">            : (goods.getLocation() == null) ? &quot;null-location&quot;</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">            : (((FreeColGameObject)goods.getLocation()).isDisposed()) ? &quot;disposed-location&quot;</span>
+<span class="nc" id="L370">            : null;</span>
+<span class="nc bnc" id="L371" title="All 2 branches missed.">        if (destination != null</span>
+<span class="nc bnc" id="L372" title="All 2 branches missed.">            &amp;&amp; ((FreeColGameObject)destination).isDisposed()) {</span>
+<span class="nc bnc" id="L373" title="All 2 branches missed.">            if (fix) {</span>
+<span class="nc" id="L374">                lb.add(&quot;\n  Fixing disposed destination for: &quot;, getId());</span>
+<span class="nc" id="L375">                destination = null;</span>
+<span class="nc" id="L376">                result = result.fix();</span>
+            } else {
+<span class="nc" id="L378">                why = &quot;disposed-destination&quot;;</span>
+            }
+        }
+<span class="nc bnc" id="L381" title="All 2 branches missed.">        if (why != null) {</span>
+<span class="nc" id="L382">            lb.add(&quot;\n  AIGoods with &quot;, why, &quot;: &quot;, getId());</span>
+<span class="nc" id="L383">            result = result.fail();</span>
+        }
+<span class="nc" id="L385">        return result;</span>
+    }
+
+
+    // Serialization
+
+    private static final String DESTINATION_TAG = &quot;destination&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L399">        super.writeAttributes(xw);</span>
+
+<span class="nc bnc" id="L401" title="All 2 branches missed.">        if (destination != null) {</span>
+<span class="nc" id="L402">            xw.writeAttribute(DESTINATION_TAG, destination.getId());</span>
+        }
+<span class="nc" id="L404">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L411">        super.writeChildren(xw);</span>
+
+<span class="nc bnc" id="L413" title="All 2 branches missed.">        if (goods != null) goods.toXML(xw);</span>
+<span class="nc" id="L414">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L421">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L423">        final Game game = getAIMain().getGame();</span>
+
+<span class="nc" id="L425">        destination = xr.getLocationAttribute(game, DESTINATION_TAG, false);</span>
+<span class="nc" id="L426">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L433">        final String tag = xr.getLocalName();</span>
+
+<span class="nc bnc" id="L435" title="All 2 branches missed.">        if (Goods.TAG.equals(tag)) {</span>
+<span class="nc bnc" id="L436" title="All 2 branches missed.">            if (goods != null) {</span>
+<span class="nc" id="L437">                goods.readFromXML(xr);</span>
+            } else {
+<span class="nc" id="L439">                goods = new Goods(getAIMain().getGame(), xr);</span>
+            }
+
+        } else {
+<span class="nc" id="L443">            super.readChild(xr);</span>
+        }
+<span class="nc" id="L445">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L451">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="fc bfc" id="L461" title="All 2 branches covered.">        if (!(o instanceof AIGoods)) return false;</span>
+<span class="fc" id="L462">        AIGoods other = (AIGoods)o;</span>
+<span class="pc bpc" id="L463" title="1 of 2 branches missed.">        return Utils.equals(this.goods, other.goods)</span>
+<span class="pc bpc" id="L464" title="1 of 2 branches missed.">            &amp;&amp; Utils.equals(this.destination, other.destination)</span>
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">            &amp;&amp; super.equals(other);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="nc" id="L473">        int hash = super.hashCode();</span>
+<span class="nc" id="L474">        hash = 37 * hash + Utils.hashCode(this.goods);</span>
+<span class="nc" id="L475">        return 37 * hash + Utils.hashCode(this.destination);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L483">        LogBuilder lb = new LogBuilder(64);</span>
+<span class="fc" id="L484">        lb.add(&quot;[&quot;, getId(), &quot; &quot;, goods);</span>
+<span class="pc bpc" id="L485" title="1 of 2 branches missed.">        if (goods != null) lb.add(&quot; at &quot;, goods.getLocation());</span>
+<span class="fc" id="L486">        lb.add(&quot; -&gt; &quot;, destination);</span>
+<span class="fc" id="L487">        AIUnit transport = getTransport();</span>
+<span class="fc bfc" id="L488" title="All 2 branches covered.">        if (transport != null) lb.add(&quot; using &quot;, transport.getUnit());</span>
+<span class="fc" id="L489">        lb.add(&quot;/&quot;, getTransportPriority(), &quot;]&quot;);</span>
+<span class="fc" id="L490">        return lb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Scrolling.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui</a> &gt; <span class="el_source">Scrolling.java</span></div><h1>Scrolling.java</h1><pre class="source lang-java linenums">package net.sf.freecol.client.gui;
+
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.Point;
+import java.awt.event.MouseEvent;
+
+import javax.swing.SwingUtilities;
+
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.control.FreeColClientHolder;
+import net.sf.freecol.client.gui.mapviewer.MapAsyncPainter;
+import net.sf.freecol.common.MemoryManager;
+import net.sf.freecol.common.model.Direction;
+
+/**
+ * Handles scrolling on the main map.
+ */
+public final class Scrolling extends FreeColClientHolder {
+
+    /** Space to auto-scroll. */
+    protected static final int AUTO_SCROLL_SPACE = 6;
+
+    /** Space to drag-scroll. */
+    private static final int DRAG_SCROLL_SPACE = 100;
+    
+    private final Canvas canvas;
+    
+    /** The scroll thread itself. */
+<span class="nc" id="L31">    private volatile ScrollThread scrollThread = null;</span>
+<span class="nc" id="L32">    private volatile Object scrollThreadLock = new Object();</span>
+    
+    
+    public Scrolling(FreeColClient freeColClient, Canvas canvas) {
+<span class="nc" id="L36">        super(freeColClient);</span>
+<span class="nc" id="L37">        this.canvas = canvas;</span>
+<span class="nc" id="L38">    }</span>
+    
+    
+    /**
+     * Auto-scroll to a mouse position if necessary.
+     *
+     * @param e The {@code MouseEvent} initiating the scroll.
+     */
+    public void performAutoScrollIfActive(MouseEvent e) {
+<span class="nc bnc" id="L47" title="All 4 branches missed.">        if (e.getComponent().isEnabled() &amp;&amp; getClientOptions().getBoolean(ClientOptions.AUTO_SCROLL)) {</span>
+<span class="nc" id="L48">            final int autoScrollSpace = getGUI().getFixedImageLibrary().scaleInt(AUTO_SCROLL_SPACE);</span>
+<span class="nc" id="L49">            scroll(e, autoScrollSpace);</span>
+<span class="nc" id="L50">        } else {</span>
+<span class="nc" id="L51">            stopScrollIfScrollIsActive();</span>
+        }
+<span class="nc" id="L53">    }</span>
+
+    /**
+     * Drag-scroll to a mouse position if necessary.
+     *
+     * @param e The {@code MouseEvent} initiating the scroll.
+     */
+    public void performDragScrollIfActive(MouseEvent e) {
+<span class="nc bnc" id="L61" title="All 4 branches missed.">        if (e.getComponent().isEnabled() &amp;&amp; getClientOptions().getBoolean(ClientOptions.MAP_SCROLL_ON_DRAG)) {</span>
+<span class="nc" id="L62">            final int dragScrollSpace = getGUI().getFixedImageLibrary().scaleInt(DRAG_SCROLL_SPACE);</span>
+<span class="nc" id="L63">            scroll(e, dragScrollSpace);</span>
+<span class="nc" id="L64">        } else {</span>
+<span class="nc" id="L65">            stopScrollIfScrollIsActive();</span>
+        }
+<span class="nc" id="L67">    }</span>
+    
+    
+    /**
+     * Stop scrolling.
+     */
+    public void stopScrollIfScrollIsActive() {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (scrollThread != null) {</span>
+<span class="nc" id="L75">            synchronized (scrollThreadLock) {</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                if (scrollThread != null) {</span>
+<span class="nc" id="L77">                    scrollThread.abort();</span>
+                }
+<span class="nc" id="L79">                scrollThread = null;</span>
+<span class="nc" id="L80">            }</span>
+        }
+<span class="nc" id="L82">        getGUI().stopMapAsyncPainter();</span>
+<span class="nc" id="L83">    }</span>
+
+    /**
+     * Scroll the map if the given (x,y) coordinate is close to an edge.
+     *
+     * @param e The {@code MouseEvent} initiating the scroll.
+     * @param scrollSpace The clearance from the relevant edge
+     */
+    private void scroll(MouseEvent e, int scrollSpace) {
+<span class="nc" id="L92">        final Point panePoint = SwingUtilities.convertPoint((Component) e.getSource(), e.getPoint(), getRootComponent());</span>
+<span class="nc" id="L93">        final Direction direction = getScrollDirection(panePoint.x, panePoint.y, scrollSpace);</span>
+        
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (direction == null) {</span>
+<span class="nc" id="L96">            stopScrollIfScrollIsActive();</span>
+<span class="nc" id="L97">            return;</span>
+        }
+        
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (getMap() == null) {</span>
+<span class="nc" id="L101">            return;</span>
+        }
+        
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (isAsyncPainterEnabled()) {</span>
+<span class="nc" id="L105">            final MapAsyncPainter mapAsyncPainter = getGUI().useMapAsyncPainter();</span>
+<span class="nc" id="L106">            mapAsyncPainter.setScrollDirection(direction);</span>
+<span class="nc" id="L107">            return;</span>
+        }
+        
+<span class="nc" id="L110">        synchronized (scrollThreadLock) {</span>
+<span class="nc bnc" id="L111" title="All 4 branches missed.">            if (scrollThread != null &amp;&amp; !scrollThread.isAborted()) {</span>
+<span class="nc" id="L112">                scrollThread.setDirection(direction);</span>
+<span class="nc" id="L113">                return;</span>
+            }
+
+<span class="nc" id="L116">            stopScrollIfScrollIsActive();</span>
+<span class="nc" id="L117">            scrollThread = new ScrollThread(getFreeColClient());</span>
+<span class="nc" id="L118">            scrollThread.setDirection(direction);</span>
+<span class="nc" id="L119">            scrollThread.start();</span>
+<span class="nc" id="L120">        }</span>
+<span class="nc" id="L121">    }</span>
+    
+    private boolean isAsyncPainterEnabled() {
+<span class="nc" id="L124">        return MemoryManager.isSmoothScrollingEnabled();</span>
+    }
+    
+    /**
+     * Work out what direction to scroll the map if a coordinate is close
+     * to an edge.
+     *
+     * @param x The x coordinate.
+     * @param y The y coordinate.
+     * @param scrollSpace The clearance from the relevant edge
+     * @return The {@code Direction} to scroll, or null if not.
+     */
+    private Direction getScrollDirection(int x, int y, int scrollSpace) {
+        Direction ret;
+<span class="nc" id="L138">        final Dimension size = getRootComponent().getSize();</span>
+<span class="nc bnc" id="L139" title="All 4 branches missed.">        if (x &lt; scrollSpace &amp;&amp; y &lt; scrollSpace) { // Upper-Left</span>
+<span class="nc" id="L140">            ret = Direction.NW;</span>
+<span class="nc bnc" id="L141" title="All 4 branches missed.">        } else if (x &gt;= size.width - scrollSpace</span>
+            &amp;&amp; y &lt; scrollSpace) { // Upper-Right
+<span class="nc" id="L143">            ret = Direction.NE;</span>
+<span class="nc bnc" id="L144" title="All 4 branches missed.">        } else if (x &gt;= size.width - scrollSpace</span>
+            &amp;&amp; y &gt;= size.height - scrollSpace) { // Bottom-Right
+<span class="nc" id="L146">            ret = Direction.SE;</span>
+<span class="nc bnc" id="L147" title="All 4 branches missed.">        } else if (x &lt; scrollSpace</span>
+            &amp;&amp; y &gt;= size.height - scrollSpace) { // Bottom-Left
+<span class="nc" id="L149">            ret = Direction.SW;</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        } else if (y &lt; scrollSpace) { // Top</span>
+<span class="nc" id="L151">            ret = Direction.N;</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        } else if (x &gt;= size.width - scrollSpace) { // Right</span>
+<span class="nc" id="L153">            ret = Direction.E;</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        } else if (y &gt;= size.height - scrollSpace) { // Bottom</span>
+<span class="nc" id="L155">            ret = Direction.S;</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        } else if (x &lt; scrollSpace) { // Left</span>
+<span class="nc" id="L157">            ret = Direction.W;</span>
+        } else {
+<span class="nc" id="L159">            ret = null;</span>
+        }
+<span class="nc" id="L161">        return ret;</span>
+    }
+    
+    private Component getRootComponent() {
+<span class="nc" id="L165">        return canvas.getParentFrame().getRootPane();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

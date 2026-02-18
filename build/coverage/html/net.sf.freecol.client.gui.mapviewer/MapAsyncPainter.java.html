@@ -1,0 +1,365 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MapAsyncPainter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.mapviewer</a> &gt; <span class="el_source">MapAsyncPainter.java</span></div><h1>MapAsyncPainter.java</h1><pre class="source lang-java linenums">package net.sf.freecol.client.gui.mapviewer;
+
+import java.awt.Dimension;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Transparency;
+import java.awt.image.BufferedImage;
+import java.util.Objects;
+import java.util.concurrent.locks.LockSupport;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.util.Utils;
+
+/**
+ * Supports asynchronous painting to a buffer. This allows frames to be rendered
+ * in parallel with the GUI thread (that is, the &quot;EDT&quot; - Event Dispatching Thread).
+ * 
+ * Asynchronous painting is needed for smooth scrolling, but it can in the future
+ * also be used if we start getting lots of animated content on the map.
+ */
+public final class MapAsyncPainter {
+
+<span class="nc" id="L26">    private static final Logger logger = Logger.getLogger(MapAsyncPainter.class.getName());</span>
+    
+    /**
+     * Activates debug output to STDOUT explaining how prerendered images
+     * are produced and consumed.
+     */
+    private static final boolean DEBUG_ASYNC_EVENTS_TO_STDOUT = false;
+    
+    /**
+     * The {@code MapViewer} this painter is servicing.
+     */
+    private MapViewer mapViewer;
+
+    /**
+     * The current direction scrolling direction.
+     * 
+     * Volatile since it's modified from the EDT and read from the MapRendererThread
+     */
+<span class="nc" id="L44">    private volatile Direction scrollDirection = null;</span>
+    
+    private final MapRendererThread mapRendererThread;
+    
+<span class="nc" id="L48">    private final Object consumptionLock = new Object();</span>
+<span class="nc" id="L49">    private volatile boolean aborted = false;    </span>
+<span class="nc" id="L50">    private volatile boolean consumed = true;</span>
+<span class="nc" id="L51">    private volatile boolean consumerIgnoresOldBuffer = true;</span>
+<span class="nc" id="L52">    private volatile long lastRenderTimestamp = System.currentTimeMillis();</span>
+<span class="nc" id="L53">    private boolean used = false;</span>
+    
+    private Point mapFocusPointBackBuffer;
+    private BufferedImage backBufferImage;
+    private BufferedImage nextBackBufferImage;
+       
+    private final Dimension size;
+    private final Dimension origSize;  
+    
+    private final int scrollBufferSizeInPixels;
+    private final int keepScrollPixelsForChangingDirection;
+    
+    static {
+        if (DEBUG_ASYNC_EVENTS_TO_STDOUT) {
+            System.out.println();
+            System.out.println(&quot;Map Async Debug enabled:&quot;);
+            System.out.println(&quot;p\tPrerendering started&quot;);
+            System.out.println(&quot;123\tTime taken prerendering&quot;);
+            System.out.println(&quot;P\tPrerendered image delivered for consumption&quot;);
+            System.out.println(&quot;#\tPrerendered image invalidated and dropped&quot;);
+            System.out.println(&quot;.\tPrerendered image used&quot;);
+            System.out.println(&quot;.\tPrerendered image used&quot;);
+            System.out.println(&quot;!\tNew prerendered image needed immediately&quot;);
+            System.out.println();
+        }
+<span class="nc" id="L78">    }</span>
+    
+<span class="nc" id="L80">    public MapAsyncPainter(MapViewer mapViewer) {</span>
+<span class="nc" id="L81">        final MapViewerBounds mvb = mapViewer.getMapViewerBounds();</span>
+<span class="nc" id="L82">        final TileBounds tb = mvb.getTileBounds();</span>
+<span class="nc" id="L83">        this.mapViewer = mapViewer;</span>
+<span class="nc" id="L84">        this.origSize = mvb.getSize();</span>
+<span class="nc" id="L85">        this.scrollBufferSizeInPixels = tb.getWidth() * 2;</span>
+<span class="nc" id="L86">        this.size = new Dimension(origSize.width + scrollBufferSizeInPixels * 2, origSize.height + scrollBufferSizeInPixels * 2);</span>
+        
+<span class="nc" id="L88">        this.keepScrollPixelsForChangingDirection = tb.getWidth();</span>
+<span class="nc" id="L89">        this.mapFocusPointBackBuffer = mvb.getFocusMapPoint();</span>
+        
+<span class="nc" id="L91">        this.backBufferImage = Utils.getGoodGraphicsDevice()</span>
+<span class="nc" id="L92">                .getDefaultConfiguration()</span>
+<span class="nc" id="L93">                .createCompatibleImage(size.width, size.height, Transparency.OPAQUE);</span>
+<span class="nc" id="L94">        this.nextBackBufferImage = Utils.getGoodGraphicsDevice()</span>
+<span class="nc" id="L95">                .getDefaultConfiguration()</span>
+<span class="nc" id="L96">                .createCompatibleImage(size.width, size.height, Transparency.OPAQUE);</span>
+        
+<span class="nc" id="L98">        mapRendererThread = new MapRendererThread(size, tb, mvb.getFocus(), this.mapFocusPointBackBuffer);</span>
+<span class="nc" id="L99">    }</span>
+    
+    /**
+     * Gets the next image to be rendered. This operation blocks until the image is ready.
+     * 
+     * @return A {@code BufferedImage} containing the entire map view to be displayed.
+     */
+    public BufferedImage getBackBufferImage() {
+        while (true) {
+<span class="nc" id="L108">            synchronized (consumptionLock) {</span>
+                try {
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                    while (consumed) {</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">                        if (aborted) {</span>
+<span class="nc" id="L112">                            return null;</span>
+                        }
+<span class="nc" id="L114">                        consumptionLock.wait();</span>
+                    }
+<span class="nc" id="L116">                } catch (InterruptedException e) {}</span>
+<span class="nc" id="L117">            }</span>
+            
+<span class="nc bnc" id="L119" title="All 2 branches missed.">            if (aborted) {</span>
+<span class="nc" id="L120">                return null;</span>
+            }
+
+<span class="nc" id="L123">            final long now = System.currentTimeMillis();</span>
+<span class="nc" id="L124">            final Point newFocus = getNewFocusPoint(now);</span>
+            
+<span class="nc" id="L126">            int xDiff = newFocus.x - mapFocusPointBackBuffer.x;</span>
+<span class="nc" id="L127">            int yDiff = newFocus.y - mapFocusPointBackBuffer.y;</span>
+<span class="nc" id="L128">            int focusInBufferX = size.width / 2 + xDiff;</span>
+<span class="nc" id="L129">            int focusInBufferY = size.height / 2 + yDiff;</span>
+<span class="nc" id="L130">            int x = focusInBufferX - origSize.width / 2;</span>
+<span class="nc" id="L131">            int y = focusInBufferY - origSize.height / 2;</span>
+            
+<span class="nc bnc" id="L133" title="All 8 branches missed.">            if (x &gt;= 0</span>
+                    &amp;&amp; y &gt;= 0
+                    &amp;&amp; x + origSize.width &lt;= size.width
+                    &amp;&amp; y + origSize.height &lt;= size.height) {
+<span class="nc" id="L137">                used = true;</span>
+<span class="nc" id="L138">                lastRenderTimestamp = now;</span>
+<span class="nc" id="L139">                mapViewer.getMapViewerBounds().setFocusMapPoint(newFocus);</span>
+                if (DEBUG_ASYNC_EVENTS_TO_STDOUT) {
+                    System.out.print(&quot;.&quot;);
+                }
+<span class="nc" id="L143">                consumerIgnoresOldBuffer = false;</span>
+                
+<span class="nc" id="L145">                return backBufferImage.getSubimage(x, y, origSize.width, origSize.height);</span>
+            }
+            
+            if (DEBUG_ASYNC_EVENTS_TO_STDOUT) {
+                System.out.print(&quot;!&quot;);
+            }
+<span class="nc bnc" id="L151" title="All 2 branches missed.">            if (!used) {</span>
+                if (DEBUG_ASYNC_EVENTS_TO_STDOUT) {
+                    System.out.println(&quot;\n\nWARNING: PRERENDERED IMAGE COMPLETELY UNUSED\nCoordinates: x1=&quot;
+                            + x + &quot;, y1=&quot; + y + &quot;, x2&quot; + (x + origSize.width) + &quot;, y2&quot; + (y + origSize.height)
+                            + &quot; \nOut-of-bounds in buffer: &quot; + size + &quot;\n&quot;);
+                }
+<span class="nc" id="L157">                consumerIgnoresOldBuffer = true;</span>
+            }
+            
+<span class="nc" id="L160">            consumed = true;</span>
+<span class="nc" id="L161">            LockSupport.unpark(mapRendererThread);</span>
+<span class="nc" id="L162">        }</span>
+    }
+    
+    /**
+     * Updates the scrolling direction on the map.
+     * 
+     * @param scrollDirection The direction the map should be scrolled in.
+     */
+    public void setScrollDirection(Direction scrollDirection) {
+<span class="nc" id="L171">        Objects.requireNonNull(scrollDirection, &quot;scrollDirection&quot;);</span>
+        
+<span class="nc bnc" id="L173" title="All 2 branches missed.">        final boolean initialized = (this.scrollDirection != null);</span>
+<span class="nc" id="L174">        this.scrollDirection = scrollDirection;</span>
+        
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (!initialized) {</span>
+<span class="nc" id="L177">            mapRendererThread.start();</span>
+        }
+        
+<span class="nc" id="L180">        LockSupport.unpark(mapRendererThread);</span>
+<span class="nc" id="L181">    }</span>
+
+    /**
+     * Stops this async painter.
+     */
+    public void stop() {
+<span class="nc" id="L187">        aborted = true;</span>
+<span class="nc" id="L188">        LockSupport.unpark(mapRendererThread);</span>
+<span class="nc" id="L189">        synchronized (consumptionLock) {</span>
+<span class="nc" id="L190">            consumptionLock.notifyAll();</span>
+<span class="nc" id="L191">        }</span>
+<span class="nc" id="L192">    }</span>
+    
+    /**
+     * Checks if this async painter has been stopped.
+     * @return {@code true} if this painter has been stopped.
+     */
+    public boolean isStopped() {
+<span class="nc" id="L199">        return aborted;</span>
+    }
+
+
+    private Point getNewFocusPoint(final long now) {
+        final Point newFocus;
+<span class="nc bnc" id="L205" title="All 2 branches missed.">        if (consumerIgnoresOldBuffer) {</span>
+<span class="nc" id="L206">            newFocus = mapViewer.getMapViewerBounds().getFocusMapPoint();</span>
+        } else {
+<span class="nc" id="L208">            newFocus = determineMapFocusPointOnRender(now);</span>
+        }
+<span class="nc" id="L210">        return newFocus;</span>
+    }
+    
+    
+    private static Point plusOffsets(Point point, Direction direction, int offsetX, int offsetY) {
+<span class="nc bnc" id="L215" title="All 9 branches missed.">        switch (direction) {</span>
+<span class="nc" id="L216">        case N: return new Point(point.x, point.y - offsetY);</span>
+<span class="nc" id="L217">        case S: return new Point(point.x, point.y + offsetY);</span>
+<span class="nc" id="L218">        case E: return new Point(point.x + offsetX, point.y);</span>
+<span class="nc" id="L219">        case W: return new Point(point.x - offsetX, point.y);</span>
+<span class="nc" id="L220">        case NW: return new Point(point.x - offsetX, point.y - offsetY);</span>
+<span class="nc" id="L221">        case NE: return new Point(point.x + offsetX, point.y - offsetY);</span>
+<span class="nc" id="L222">        case SW: return new Point(point.x - offsetX, point.y + offsetY);</span>
+<span class="nc" id="L223">        case SE: return new Point(point.x + offsetX, point.y + offsetY);</span>
+<span class="nc" id="L224">        default: throw new IllegalStateException(&quot;Unknown direction: &quot; + direction);</span>
+        }
+    }
+    
+    private Point scrollFocusOnOriginalSize(Point point, final Direction direction) {
+<span class="nc" id="L229">        final int offset = scrollBufferSizeInPixels - 1 - keepScrollPixelsForChangingDirection / 2;</span>
+<span class="nc" id="L230">        return plusOffsets(point, direction, offset, offset);</span>
+    }
+    
+    private Point scrollFocusOnBufferSize(Point point, final Direction direction) {
+<span class="nc" id="L234">        final int offset = scrollBufferSizeInPixels * 2 - 2 - keepScrollPixelsForChangingDirection;</span>
+<span class="nc" id="L235">        return plusOffsets(point, direction, offset, offset);</span>
+    }
+    
+    private Point determineMapFocusPointOnRender(long now) {
+<span class="nc" id="L239">        final long timeElapsed = now - lastRenderTimestamp;</span>
+<span class="nc" id="L240">        final int divisor = 2;</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        final int pixelsMoved = (int) (timeElapsed / divisor) + ((timeElapsed % divisor &gt;= divisor / 2) ? 1 : 0);</span>
+<span class="nc" id="L242">        final Point newFocus = plusOffsets(mapViewer.getMapViewerBounds().getFocusMapPoint(), scrollDirection, pixelsMoved, pixelsMoved);</span>
+        
+<span class="nc" id="L244">        return newFocus;</span>
+    }
+    
+    /**
+     * The thread producing images for {@link #getBackBufferImage}.
+     */
+    private final class MapRendererThread extends Thread {
+        
+        private final MapViewerBounds internalRenderMapViewerBounds;
+<span class="nc" id="L253">        private boolean ignoreOldBuffer = false;</span>
+        
+        
+<span class="nc" id="L256">        private MapRendererThread(Dimension size, TileBounds tileBounds, Tile focusTile, Point initialFocus) {</span>
+<span class="nc" id="L257">            this.internalRenderMapViewerBounds = new MapViewerBounds();</span>
+<span class="nc" id="L258">            this.internalRenderMapViewerBounds.changeSize(size, tileBounds);</span>
+<span class="nc" id="L259">            this.internalRenderMapViewerBounds.setFocus(focusTile);</span>
+<span class="nc" id="L260">            this.internalRenderMapViewerBounds.setFocusMapPoint(initialFocus);</span>
+<span class="nc" id="L261">        }</span>
+
+        
+        @Override
+        public void run() {
+<span class="nc" id="L266">            final int MAX_EXCEPTIONS = 100;</span>
+<span class="nc" id="L267">            int reportedExceptions = 0;</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">            while (!aborted) {</span>
+                try {
+<span class="nc" id="L270">                    paint();</span>
+<span class="nc" id="L271">                } catch (Exception e) {</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">                    if (reportedExceptions &lt; MAX_EXCEPTIONS) { </span>
+<span class="nc" id="L273">                        logger.log(Level.WARNING, &quot;Unhandled exception while painting.&quot;, e);</span>
+<span class="nc" id="L274">                        reportedExceptions++;</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">                        if (reportedExceptions == MAX_EXCEPTIONS) {</span>
+<span class="nc" id="L276">                            logger.severe(&quot;Stopped logging exceptions from the async painting thread since there have been produced too many.&quot;);</span>
+                        }
+                    }
+                    try {
+<span class="nc" id="L280">                        Thread.sleep(MAX_EXCEPTIONS);</span>
+<span class="nc" id="L281">                    } catch (InterruptedException e1) {}</span>
+<span class="nc" id="L282">                }</span>
+            }
+<span class="nc" id="L284">        }</span>
+        
+        
+        private void paint() {
+<span class="nc bnc" id="L288" title="All 2 branches missed.">            if (aborted) {</span>
+<span class="nc" id="L289">                return;</span>
+            }
+            
+            if (DEBUG_ASYNC_EVENTS_TO_STDOUT) {
+                System.out.print(&quot;p&quot;);
+            }
+            
+<span class="nc" id="L296">            final long now = System.currentTimeMillis();</span>
+<span class="nc" id="L297">            final Point newFocus = getNewFocusPoint(now);</span>
+<span class="nc" id="L298">            final Direction direction = scrollDirection;</span>
+<span class="nc" id="L299">            final Point nextMapFocusPointBackBuffer = produceRenderedImage(newFocus, direction);</span>
+            
+<span class="nc" id="L301">            ignoreOldBuffer = false;</span>
+            
+            if (DEBUG_ASYNC_EVENTS_TO_STDOUT) {
+                System.out.print(&quot; &quot; + (System.currentTimeMillis() - now) + &quot; &quot;);
+            }
+            
+<span class="nc bnc" id="L307" title="All 4 branches missed.">            while (!consumed &amp;&amp; !aborted) {</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">                if (direction != scrollDirection) {</span>
+                    // TODO: Reuse parts of the image.
+                    if (DEBUG_ASYNC_EVENTS_TO_STDOUT) {
+                        System.out.print(&quot;#&quot;);
+                    }
+<span class="nc" id="L313">                    ignoreOldBuffer = true;</span>
+<span class="nc" id="L314">                    return;</span>
+                }
+<span class="nc" id="L316">                LockSupport.park();</span>
+            }
+            
+<span class="nc bnc" id="L319" title="All 2 branches missed.">            if (aborted) {</span>
+<span class="nc" id="L320">                return;</span>
+            }
+            
+<span class="nc" id="L323">            deliverRenderedImage(nextMapFocusPointBackBuffer);</span>
+<span class="nc" id="L324">        }</span>
+
+
+        private Point produceRenderedImage(final Point newFocus, final Direction direction) {
+            Point nextMapFocusPointBackBuffer;
+<span class="nc" id="L329">            final Graphics2D g2d = nextBackBufferImage.createGraphics();</span>
+            try {
+<span class="nc bnc" id="L331" title="All 6 branches missed.">                if (consumerIgnoresOldBuffer || ignoreOldBuffer || consumed) {</span>
+<span class="nc" id="L332">                    nextMapFocusPointBackBuffer = scrollFocusOnOriginalSize(newFocus, direction);</span>
+                } else {
+<span class="nc" id="L334">                    nextMapFocusPointBackBuffer = scrollFocusOnBufferSize(mapFocusPointBackBuffer, direction);</span>
+                }
+                
+<span class="nc" id="L337">                internalRenderMapViewerBounds.setFocusMapPoint(nextMapFocusPointBackBuffer);</span>
+<span class="nc" id="L338">                mapViewer.paintMap(g2d, size, internalRenderMapViewerBounds);</span>
+            } finally {
+<span class="nc" id="L340">                g2d.dispose();</span>
+            }
+<span class="nc" id="L342">            return nextMapFocusPointBackBuffer;</span>
+        }
+
+
+        private void deliverRenderedImage(Point nextMapFocusPointBackBuffer) {
+<span class="nc" id="L347">            final BufferedImage next = backBufferImage;</span>
+<span class="nc" id="L348">            backBufferImage = nextBackBufferImage;</span>
+<span class="nc" id="L349">            nextBackBufferImage = next;</span>
+<span class="nc" id="L350">            mapFocusPointBackBuffer = nextMapFocusPointBackBuffer;</span>
+            
+            if (DEBUG_ASYNC_EVENTS_TO_STDOUT) {
+                System.out.println(&quot;P&quot;);
+            }
+
+<span class="nc" id="L356">            synchronized (consumptionLock) {</span>
+<span class="nc" id="L357">                ignoreOldBuffer = false;</span>
+<span class="nc" id="L358">                used = false;</span>
+<span class="nc" id="L359">                consumed = false;</span>
+<span class="nc" id="L360">                consumptionLock.notifyAll();</span>
+<span class="nc" id="L361">            }</span>
+<span class="nc" id="L362">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,843 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TradeRouteInputPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">TradeRouteInputPanel.java</span></div><h1>TradeRouteInputPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import static net.sf.freecol.common.util.CollectionUtils.any;
+import static net.sf.freecol.common.util.CollectionUtils.matchKeyEquals;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.awt.Component;
+import java.awt.GridLayout;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+import java.awt.event.MouseListener;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.swing.AbstractAction;
+import javax.swing.DefaultListModel;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextField;
+import javax.swing.ListCellRenderer;
+import javax.swing.SwingConstants;
+import javax.swing.TransferHandler;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
+import javax.swing.plaf.PanelUI;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.label.GoodsTypeLabel;
+import net.sf.freecol.client.gui.plaf.FreeColSelectedPanelUI;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Europe;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.TradeLocation;
+import net.sf.freecol.common.model.TradeRoute;
+import net.sf.freecol.common.model.TradeRouteStop;
+
+
+/**
+ * Allows the user to edit trade routes.
+ */
+public final class TradeRouteInputPanel extends FreeColPanel 
+    implements ListSelectionListener {
+
+<span class="nc" id="L85">    private static final Logger logger = Logger.getLogger(TradeRouteInputPanel.class.getName());</span>
+
+<span class="nc" id="L87">    public static final DataFlavor STOP_FLAVOR</span>
+        = new DataFlavor(TradeRouteStop.class, &quot;Stop&quot;);
+
+    private class DestinationCellRenderer extends JLabel
+        implements ListCellRenderer&lt;String&gt; {
+
+<span class="nc" id="L93">        public DestinationCellRenderer() {</span>
+<span class="nc" id="L94">            setOpaque(true);</span>
+<span class="nc" id="L95">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Component getListCellRendererComponent(JList&lt;? extends String&gt; list,
+                                                      String value,
+                                                      int index,
+                                                      boolean isSelected,
+                                                      boolean cellHasFocus) {
+<span class="nc" id="L106">            FreeColGameObject fcgo = getGame().getFreeColGameObject(value);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">            if (fcgo instanceof Location) {</span>
+<span class="nc" id="L108">                setText(Messages.message(((Location)fcgo).getLocationLabel()));</span>
+            } else {
+<span class="nc" id="L110">                setText(value);</span>
+            }
+<span class="nc bnc" id="L112" title="All 2 branches missed.">            setForeground((isSelected) ? list.getSelectionForeground()</span>
+<span class="nc" id="L113">                : list.getForeground());</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">            setBackground((isSelected) ? list.getSelectionBackground()</span>
+<span class="nc" id="L115">                : list.getBackground());</span>
+<span class="nc" id="L116">            return this;</span>
+        }
+    }
+
+    /**
+     * Panel for all types of goods that can be loaded onto a carrier.
+     * This should *not* change under drag/drop, but a drop indicates
+     * that the dropped goods type is no longer needed to be loaded
+     * at the currently selected stop.
+     */
+    private class AllGoodsTypesPanel extends GoodsTypePanel {
+
+        /** The currently selected goods types. */
+        private List&lt;GoodsTypeLabel&gt; labels;
+        
+<span class="nc" id="L131">        public AllGoodsTypesPanel(List&lt;GoodsTypeLabel&gt; labels) {</span>
+<span class="nc" id="L132">            super(new GridLayout(0, 4, MARGIN, MARGIN), true);</span>
+
+<span class="nc" id="L134">            this.labels = labels;</span>
+<span class="nc" id="L135">            setOpaque(false);</span>
+<span class="nc" id="L136">            setBorder(Utility.localizedBorder(&quot;goods&quot;));</span>
+<span class="nc" id="L137">            reset();</span>
+<span class="nc" id="L138">        }</span>
+
+        public void reset() {
+<span class="nc" id="L141">            setLabels(this.labels);</span>
+<span class="nc" id="L142">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void setEnabled(boolean enable) {
+<span class="nc" id="L149">            super.setEnabled(enable);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">            for (Component child : getComponents()) {</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">                if (child instanceof GoodsTypeLabel) child.setEnabled(enable);</span>
+            }
+<span class="nc" id="L153">        }</span>
+
+        // Interface DropTarget
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Component add(Component comp, boolean editState) {
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            if (comp instanceof GoodsTypeLabel) {</span>
+<span class="nc" id="L163">                GoodsTypeLabel gtl = (GoodsTypeLabel)comp;</span>
+<span class="nc" id="L164">                cancelImport(gtl);</span>
+                
+                // XXX: Do not add the component -- we already have the GoodsType here.
+                
+<span class="nc" id="L168">                return comp;</span>
+            } else {
+<span class="nc" id="L170">                return super.add(comp);</span>
+            }
+        }
+    }
+
+    /**
+     * Panel for the types of goods that are to be loaded onto the carrier
+     * at the current stop.  This changes under drag/drop, and a drop
+     * adds the dropped goods type to be loaded at the currently selected
+     * stop.
+     */
+    private class StopGoodsTypesPanel extends GoodsTypePanel {
+
+<span class="nc" id="L183">        public StopGoodsTypesPanel() {</span>
+<span class="nc" id="L184">            super(new MigLayout(&quot;wrap 10&quot;), false);</span>
+<span class="nc" id="L185">        }</span>
+
+        // Interface DropTarget
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Component add(Component comp, boolean editState) {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">            if (comp instanceof GoodsTypeLabel) {</span>
+<span class="nc" id="L195">                final GoodsTypeLabel dndComp = (GoodsTypeLabel) comp;</span>
+<span class="nc" id="L196">                final Component newComp = super.add(new GoodsTypeLabel(dndComp), editState);</span>
+<span class="nc" id="L197">                enableImport(dndComp.getType());</span>
+<span class="nc" id="L198">                revalidate();</span>
+<span class="nc" id="L199">                repaint();</span>
+<span class="nc" id="L200">                return newComp;</span>
+            } else {
+<span class="nc" id="L202">                return super.add(comp);</span>
+            }
+        }
+    }
+        
+    private static class StopListTransferable implements Transferable {
+
+        private final List&lt;TradeRouteStop&gt; stops;
+
+
+<span class="nc" id="L212">        public StopListTransferable(List&lt;TradeRouteStop&gt; stops) {</span>
+<span class="nc" id="L213">            this.stops = stops;</span>
+<span class="nc" id="L214">        }</span>
+
+        // Interface Transferable
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Object getTransferData(DataFlavor flavor) {
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            return (flavor == STOP_FLAVOR) ? stops : null;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public DataFlavor[] getTransferDataFlavors() {
+<span class="nc" id="L231">            return new DataFlavor[] { STOP_FLAVOR };</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean isDataFlavorSupported(DataFlavor flavor) {
+<span class="nc bnc" id="L239" title="All 2 branches missed.">            return flavor == STOP_FLAVOR;</span>
+        }
+    }
+
+    /**
+     * TransferHandler for Stops.
+     */
+<span class="nc" id="L246">    private class StopListHandler extends TransferHandler {</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean canImport(JComponent c, DataFlavor[] flavors) {
+<span class="nc" id="L253">            return any(flavors, matchKeyEquals(STOP_FLAVOR));</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        protected Transferable createTransferable(JComponent c) {
+<span class="nc" id="L261">            final JList&lt;?&gt; list = (JList&lt;?&gt;) c;</span>
+<span class="nc" id="L262">            final DefaultListModel&lt;?&gt; model = (DefaultListModel&lt;?&gt;) list.getModel();</span>
+<span class="nc" id="L263">            final int[] indicies = list.getSelectedIndices();</span>
+<span class="nc" id="L264">            final List&lt;TradeRouteStop&gt; stops = new ArrayList&lt;&gt;(indicies.length);</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">            for (int i : indicies) {</span>
+<span class="nc" id="L266">                stops.add((TradeRouteStop) model.get(i));</span>
+            }
+<span class="nc" id="L268">            return new StopListTransferable(stops);</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public int getSourceActions(JComponent c) {
+<span class="nc" id="L276">            return MOVE;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean importData(JComponent target, Transferable data) {
+<span class="nc" id="L284">            final JList&lt;TradeRouteStop&gt; stl = TradeRouteInputPanel.this.stopList;</span>
+            try {
+<span class="nc bnc" id="L286" title="All 4 branches missed.">                if (target == stl &amp;&amp; canImport(target, data.getTransferDataFlavors())) {</span>
+                    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L288">                    final List&lt;TradeRouteStop&gt; stops = (List&lt;TradeRouteStop&gt;) data.getTransferData(STOP_FLAVOR);</span>
+                    
+<span class="nc" id="L290">                    final DefaultListModel&lt;TradeRouteStop&gt; newModel = new DefaultListModel&lt;&gt;();</span>
+<span class="nc" id="L291">                    final int targetIndex = stl.getMaxSelectionIndex();</span>
+                    
+<span class="nc" id="L293">                    final List&lt;TradeRouteStop&gt; oldList = getAllValues(stl);</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">                    if (targetIndex &lt; 0) {</span>
+<span class="nc" id="L295">                        oldList.removeAll(stops);</span>
+<span class="nc" id="L296">                        newModel.addAll(oldList);</span>
+<span class="nc" id="L297">                        newModel.addAll(stops);</span>
+                    } else {
+<span class="nc" id="L299">                        final List&lt;TradeRouteStop&gt; beforeList = new ArrayList&lt;&gt;(oldList.subList(0, targetIndex));</span>
+<span class="nc" id="L300">                        beforeList.removeAll(stops);</span>
+                        
+<span class="nc" id="L302">                        final List&lt;TradeRouteStop&gt; afterList = new ArrayList&lt;&gt;(oldList.subList(targetIndex, oldList.size()));</span>
+<span class="nc" id="L303">                        afterList.removeAll(stops);</span>
+                        
+<span class="nc" id="L305">                        newModel.addAll(beforeList);</span>
+<span class="nc" id="L306">                        newModel.addAll(stops);</span>
+<span class="nc" id="L307">                        newModel.addAll(afterList);</span>
+                    }
+                    
+<span class="nc" id="L310">                    stopListModel = newModel;</span>
+<span class="nc" id="L311">                    stl.setModel(newModel);</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">                    if (targetIndex &lt; 0) {</span>
+<span class="nc" id="L313">                        stl.setSelectedIndex(newModel.getSize() - 1);</span>
+                    } else {
+<span class="nc" id="L315">                        stl.setSelectedIndex(targetIndex);</span>
+                    }
+<span class="nc" id="L317">                    stl.invalidate();</span>
+<span class="nc" id="L318">                    stl.repaint();</span>
+                    
+<span class="nc" id="L320">                    return true;</span>
+                }
+<span class="nc" id="L322">            } catch (IOException e) {</span>
+<span class="nc" id="L323">                logger.log(Level.WARNING, &quot;Drag&amp;drop failed.&quot;, e);</span>
+<span class="nc" id="L324">                return false;</span>
+<span class="nc" id="L325">            } catch (UnsupportedFlavorException e) {</span>
+<span class="nc" id="L326">                logger.log(Level.WARNING, &quot;Drag&amp;drop failed.&quot;, e);</span>
+<span class="nc" id="L327">                return false;</span>
+<span class="nc" id="L328">            } catch (RuntimeException e) {</span>
+<span class="nc" id="L329">                logger.log(Level.WARNING, &quot;Drag&amp;drop failed.&quot;, e);</span>
+<span class="nc" id="L330">                throw e;</span>
+<span class="nc" id="L331">            }</span>
+<span class="nc" id="L332">            return false;</span>
+        }
+
+        private List&lt;TradeRouteStop&gt; getAllValues(final JList&lt;TradeRouteStop&gt; jList) {
+<span class="nc" id="L336">            final List&lt;TradeRouteStop&gt; oldList = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L337" title="All 2 branches missed.">            for (int i=0; i&lt;jList.getModel().getSize(); i++) {</span>
+<span class="nc" id="L338">                oldList.add(jList.getModel().getElementAt(i));</span>
+            }
+<span class="nc" id="L340">            return oldList;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        protected void exportDone(JComponent source, Transferable data, int action) {
+<span class="nc" id="L348">        }</span>
+    }
+
+    private class StopRenderer implements ListCellRenderer&lt;TradeRouteStop&gt; {
+
+<span class="nc" id="L353">        private final JPanel SELECTED_COMPONENT = new JPanel();</span>
+<span class="nc" id="L354">        private final JPanel NORMAL_COMPONENT = new JPanel();</span>
+
+<span class="nc" id="L356">        public StopRenderer() {</span>
+<span class="nc" id="L357">            NORMAL_COMPONENT.setLayout(new MigLayout(&quot;&quot;, &quot;[center][]&quot;));</span>
+<span class="nc" id="L358">            NORMAL_COMPONENT.setOpaque(false);</span>
+<span class="nc" id="L359">            SELECTED_COMPONENT.setLayout(new MigLayout(&quot;&quot;, &quot;[center][]&quot;));</span>
+<span class="nc" id="L360">            SELECTED_COMPONENT.setOpaque(false);</span>
+<span class="nc" id="L361">            SELECTED_COMPONENT.setUI((PanelUI)FreeColSelectedPanelUI</span>
+<span class="nc" id="L362">                .createUI(SELECTED_COMPONENT));</span>
+<span class="nc" id="L363">        }</span>
+
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Component getListCellRendererComponent(JList&lt;? extends TradeRouteStop&gt; list,
+                                                      TradeRouteStop value,
+                                                      int index,
+                                                      boolean isSelected,
+                                                      boolean hasFocus) {
+<span class="nc bnc" id="L375" title="All 2 branches missed.">            JPanel panel = (isSelected) ? SELECTED_COMPONENT</span>
+<span class="nc" id="L376">                : NORMAL_COMPONENT;</span>
+<span class="nc" id="L377">            panel.removeAll();</span>
+<span class="nc" id="L378">            panel.setForeground(list.getForeground());</span>
+<span class="nc" id="L379">            panel.setFont(list.getFont());</span>
+<span class="nc" id="L380">            Location location = value.getLocation();</span>
+<span class="nc" id="L381">            ImageLibrary lib = getImageLibrary();</span>
+            ImageIcon ii;
+            JLabel name;
+
+<span class="nc bnc" id="L385" title="All 2 branches missed.">            if (location instanceof TradeLocation) {</span>
+<span class="nc" id="L386">                TradeLocation tl = (TradeLocation) location;</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">                if (tl.canBeInput() == true) {</span>
+<span class="nc" id="L388">                    name = tl.getNameAsJlabel();</span>
+                } else   {
+<span class="nc" id="L390">                    throw new IllegalStateException(&quot;Bogus location: &quot; + location);</span>
+                }
+<span class="nc" id="L392">            } else {</span>
+<span class="nc" id="L393">                throw new IllegalStateException(&quot;Bogus location: &quot; + location);</span>
+            }
+
+<span class="nc bnc" id="L396" title="All 2 branches missed.">            if (location instanceof Europe) {</span>
+<span class="nc" id="L397">                Player owner = ((Europe)location).getOwner();</span>
+<span class="nc" id="L398">                ii = new ImageIcon(lib.getSmallerNationImage(owner.getNation()));</span>
+<span class="nc bnc" id="L399" title="All 2 branches missed.">            } else if (location instanceof Colony) {</span>
+<span class="nc" id="L400">                Colony colony = (Colony) location;</span>
+<span class="nc" id="L401">                ii = new ImageIcon(lib.getSmallerSettlementImage(colony));</span>
+<span class="nc" id="L402">            } else {</span>
+<span class="nc" id="L403">                throw new IllegalStateException(&quot;Bogus location: &quot; + location);</span>
+            }
+            
+<span class="nc" id="L406">            name.setVerticalTextPosition(SwingConstants.CENTER);</span>
+            
+<span class="nc" id="L408">            final int width = (int) (80 * getImageLibrary().getScaleFactor());</span>
+<span class="nc" id="L409">            final int height = (int) (60 * getImageLibrary().getScaleFactor());</span>
+<span class="nc" id="L410">            panel.add(new JLabel(ii), &quot;spany, width &quot; + width + &quot;, height &quot; + height);</span>
+<span class="nc" id="L411">            panel.add(name, &quot;span, wrap&quot;);</span>
+<span class="nc bnc" id="L412" title="All 2 branches missed.">            for (GoodsType cargo : value.getCargo()) {</span>
+<span class="nc" id="L413">                ii = new ImageIcon(lib.getSmallerGoodsTypeImage(cargo));</span>
+<span class="nc" id="L414">                panel.add(new JLabel(ii));</span>
+<span class="nc" id="L415">            }</span>
+<span class="nc" id="L416">            return panel;</span>
+        }
+    }
+
+
+    /**
+     * The original route passed to this panel.  We are careful not to
+     * modify it until we are sure all is well.
+     */
+    private final TradeRoute newRoute;
+
+    /** The TransferHandler for the cargo labels. */
+    private TransferHandler transferHandler;
+
+    /** Mouse listener to use throughout. */
+    private transient MouseListener dragListener;
+
+    /** Model to contain the current stops. */
+    private DefaultListModel&lt;TradeRouteStop&gt; stopListModel;
+
+    /** The list of stops to show. */
+    private JList&lt;TradeRouteStop&gt; stopList;
+
+    /** The user-editable name of the trade route. */
+    private JTextField tradeRouteName;
+
+    /** A box to select stops to add. */
+    private JComboBox&lt;String&gt; destinationSelector;
+
+    /** Toggle message display. */
+    private JCheckBox messagesBox;
+
+    /** A button to add stops with. */
+    private JButton addStopButton;
+
+    /** A button to remove stops with. */
+    private JButton removeStopButton;
+
+    /** The panel displaying all goods types that could be transported. */
+    private AllGoodsTypesPanel allGoodsTypesPanel;
+
+    /** The panel displaying the goods types to collect at the selected stop. */
+    private StopGoodsTypesPanel stopGoodsTypesPanel;
+
+
+    /**
+     * Create a panel to define trade route cargos.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param newRoute The {@code TradeRoute} to operate on.
+     */
+    public TradeRouteInputPanel(FreeColClient freeColClient,
+                                TradeRoute newRoute) {
+<span class="nc" id="L469">        super(freeColClient, null,</span>
+              new MigLayout(&quot;wrap 4, fill&quot;, &quot;[]20[fill]rel&quot;));
+
+<span class="nc" id="L472">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L473">        final Player player = getMyPlayer();</span>
+<span class="nc" id="L474">        final TradeRoute tradeRoute = newRoute.copy(game);</span>
+
+<span class="nc" id="L476">        this.newRoute = newRoute;</span>
+<span class="nc" id="L477">        this.transferHandler = new DefaultTransferHandler(freeColClient, this);</span>
+<span class="nc" id="L478">        this.dragListener = new DragListener(freeColClient, this);</span>
+
+<span class="nc" id="L480">        this.stopListModel = new DefaultListModel&lt;&gt;();</span>
+<span class="nc bnc" id="L481" title="All 2 branches missed.">        for (TradeRouteStop stop : tradeRoute.getStopList()) {</span>
+<span class="nc" id="L482">            this.stopListModel.addElement(stop);</span>
+<span class="nc" id="L483">        }</span>
+
+<span class="nc" id="L485">        this.stopList = new JList&lt;&gt;(this.stopListModel);</span>
+<span class="nc" id="L486">        this.stopList.setCellRenderer(new StopRenderer());</span>
+<span class="nc" id="L487">        this.stopList.setDragEnabled(true);</span>
+<span class="nc" id="L488">        this.stopList.setTransferHandler(new StopListHandler());</span>
+<span class="nc" id="L489">        this.stopList.addKeyListener(new KeyListener() {</span>
+
+                @Override
+                public void keyTyped(KeyEvent e) {
+<span class="nc bnc" id="L493" title="All 2 branches missed.">                    if (e.getKeyChar() == KeyEvent.VK_DELETE) {</span>
+<span class="nc" id="L494">                        deleteCurrentlySelectedStops();</span>
+                    }
+<span class="nc" id="L496">                }</span>
+
+                @Override
+<span class="nc" id="L499">                public void keyPressed(KeyEvent e) {} // Ignore</span>
+
+                @Override
+<span class="nc" id="L502">                public void keyReleased(KeyEvent e) {} // Ignore</span>
+            });
+<span class="nc" id="L504">        this.stopList.addListSelectionListener(this);</span>
+<span class="nc" id="L505">        JScrollPane tradeRouteView = new JScrollPane(stopList);</span>
+
+<span class="nc" id="L507">        JLabel nameLabel</span>
+<span class="nc" id="L508">            = Utility.localizedLabel(&quot;tradeRouteInputPanel.nameLabel&quot;);</span>
+<span class="nc" id="L509">        this.tradeRouteName = new JTextField(tradeRoute.getName());</span>
+
+<span class="nc" id="L511">        JLabel destinationLabel</span>
+<span class="nc" id="L512">            = Utility.localizedLabel(&quot;tradeRouteInputPanel.destinationLabel&quot;);</span>
+<span class="nc" id="L513">        this.destinationSelector = new JComboBox&lt;&gt;();</span>
+<span class="nc" id="L514">        this.destinationSelector.setRenderer(new DestinationCellRenderer());</span>
+<span class="nc" id="L515">        StringTemplate template</span>
+<span class="nc" id="L516">            = StringTemplate.template(&quot;tradeRouteInputPanel.allColonies&quot;);</span>
+<span class="nc" id="L517">        this.destinationSelector.addItem(Messages.message(template));</span>
+<span class="nc bnc" id="L518" title="All 2 branches missed.">        if (player.getEurope() != null) {</span>
+<span class="nc" id="L519">            this.destinationSelector.addItem(player.getEurope().getId());</span>
+        }
+<span class="nc bnc" id="L521" title="All 2 branches missed.">        for (Colony colony : player.getColonyList()) {</span>
+<span class="nc" id="L522">            this.destinationSelector.addItem(colony.getId());</span>
+<span class="nc" id="L523">        }</span>
+
+<span class="nc" id="L525">        this.messagesBox</span>
+<span class="nc" id="L526">            = new JCheckBox(Messages.message(&quot;tradeRouteInputPanel.silence&quot;));</span>
+<span class="nc" id="L527">        this.messagesBox.setSelected(tradeRoute.isSilent());</span>
+<span class="nc" id="L528">        this.messagesBox.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L529">                tradeRoute.setSilent(messagesBox.isSelected());</span>
+<span class="nc" id="L530">            });</span>
+
+<span class="nc" id="L532">        this.addStopButton</span>
+<span class="nc" id="L533">            = Utility.localizedButton(&quot;tradeRouteInputPanel.addStop&quot;);</span>
+<span class="nc" id="L534">        this.addStopButton.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L535">                addSelectedStops();</span>
+<span class="nc" id="L536">            });</span>
+
+<span class="nc" id="L538">        this.removeStopButton</span>
+<span class="nc" id="L539">            = Utility.localizedButton(&quot;tradeRouteInputPanel.removeStop&quot;);</span>
+<span class="nc" id="L540">        this.removeStopButton.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L541">                deleteCurrentlySelectedStops();</span>
+<span class="nc" id="L542">            });</span>
+
+<span class="nc" id="L544">        final List&lt;GoodsType&gt; gtl = getSpecification().getGoodsTypeList();</span>
+<span class="nc" id="L545">        this.allGoodsTypesPanel = new AllGoodsTypesPanel(transform(gtl,</span>
+<span class="nc" id="L546">                GoodsType::isStorable, gt -&gt; buildCargoLabel(gt)));</span>
+<span class="nc" id="L547">        this.allGoodsTypesPanel.setTransferHandler(this.transferHandler);</span>
+<span class="nc" id="L548">        this.allGoodsTypesPanel.setEnabled(false);</span>
+
+<span class="nc" id="L550">        this.stopGoodsTypesPanel = new StopGoodsTypesPanel();</span>
+<span class="nc" id="L551">        this.stopGoodsTypesPanel.setTransferHandler(this.transferHandler);</span>
+
+<span class="nc" id="L553">        JButton cancelButton = Utility.localizedButton(&quot;cancel&quot;);</span>
+<span class="nc" id="L554">        cancelButton.setActionCommand(CANCEL);</span>
+<span class="nc" id="L555">        cancelButton.addActionListener(this);</span>
+<span class="nc" id="L556">        setEscapeAction(new AbstractAction() {</span>
+                @Override
+                public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L559">                    TradeRouteInputPanel.this.cancelTradeRoute();</span>
+<span class="nc" id="L560">                }</span>
+            });
+                    
+<span class="nc" id="L563">        add(Utility.localizedHeader(&quot;tradeRouteInputPanel.editRoute&quot;,</span>
+                                    Utility.FONTSPEC_TITLE),
+            &quot;span, align center&quot;);
+<span class="nc" id="L566">        add(tradeRouteView, &quot;span 1 5, grow&quot;);</span>
+<span class="nc" id="L567">        add(nameLabel);</span>
+<span class="nc" id="L568">        add(this.tradeRouteName, &quot;span&quot;);</span>
+<span class="nc" id="L569">        add(destinationLabel);</span>
+<span class="nc" id="L570">        add(this.destinationSelector, &quot;span&quot;);</span>
+<span class="nc" id="L571">        add(this.messagesBox);</span>
+<span class="nc" id="L572">        add(this.addStopButton);</span>
+<span class="nc" id="L573">        add(this.removeStopButton, &quot;span&quot;);</span>
+<span class="nc" id="L574">        add(this.allGoodsTypesPanel, &quot;span&quot;);</span>
+        
+<span class="nc" id="L576">        final int iconHeight = (int) (80 * getImageLibrary().getScaleFactor());</span>
+<span class="nc" id="L577">        add(this.stopGoodsTypesPanel, &quot;span, height &quot; + iconHeight + &quot;px:, growy&quot;);</span>
+<span class="nc" id="L578">        add(okButton, &quot;newline 20, span, split 2, tag ok&quot;);</span>
+<span class="nc" id="L579">        add(cancelButton, &quot;tag cancel&quot;);</span>
+        
+<span class="nc" id="L581">        setEscapeAction(new AbstractAction() {</span>
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L584">                cancelButton.doClick();</span>
+<span class="nc" id="L585">            }</span>
+        });
+
+        // update cargo panel if stop is selected
+<span class="nc bnc" id="L589" title="All 2 branches missed.">        if (this.stopListModel.getSize() &gt; 0) {</span>
+<span class="nc" id="L590">            this.stopList.setSelectedIndex(0);</span>
+<span class="nc" id="L591">            updateCargoPanel(this.stopListModel.firstElement());</span>
+        }
+        // update buttons according to selection
+<span class="nc" id="L594">        updateButtons();</span>
+
+<span class="nc" id="L596">        getGUI().restoreSavedSize(this, getPreferredSize());</span>
+<span class="nc" id="L597">    }</span>
+
+    /**
+     * Update the cargo panel to show a given stop.
+     *
+     * @param stop The {@code TradeRouteStop} to select.
+     */
+    private void updateCargoPanel(TradeRouteStop stop) {
+<span class="nc bnc" id="L605" title="All 2 branches missed.">        this.stopGoodsTypesPanel.setLabels((stop == null) ? null</span>
+<span class="nc" id="L606">            : transform(stop.getCargo(), GoodsType::isStorable,</span>
+<span class="nc" id="L607">                        gt -&gt; buildCargoLabel(gt)));</span>
+<span class="nc" id="L608">    }</span>
+
+    /**
+     * Import new goods at the selected stops.
+     *
+     * @param gt The {@code GoodsType} to import.
+     */
+    private void enableImport(GoodsType gt) {
+<span class="nc bnc" id="L616" title="All 2 branches missed.">        if (gt == null) return;</span>
+<span class="nc bnc" id="L617" title="All 2 branches missed.">        for (int stopIndex : this.stopList.getSelectedIndices()) {</span>
+<span class="nc" id="L618">            TradeRouteStop stop = this.stopListModel.get(stopIndex);</span>
+<span class="nc" id="L619">            stop.addCargo(gt);</span>
+            
+<span class="nc" id="L621">            final int[] idx = this.stopList.getSelectedIndices();</span>
+<span class="nc bnc" id="L622" title="All 2 branches missed.">            if (idx.length &gt; 0) {</span>
+<span class="nc" id="L623">                updateCargoPanel(this.stopListModel.get(idx[0]));</span>
+            }
+        }
+<span class="nc" id="L626">        this.stopList.revalidate();</span>
+<span class="nc" id="L627">        this.stopList.repaint();</span>
+<span class="nc" id="L628">    }</span>
+
+    /**
+     * Cancel import of goods at the selected stops.
+     *
+     * @param gt The {@code GoodsType} to stop importing.
+     */
+    private void cancelImport(GoodsTypeLabel gtl) {
+<span class="nc" id="L636">        this.stopGoodsTypesPanel.remove(gtl);</span>
+        
+<span class="nc" id="L638">        final GoodsType gt = gtl.getType();</span>
+<span class="nc bnc" id="L639" title="All 2 branches missed.">        for (int stopIndex : this.stopList.getSelectedIndices()) {</span>
+<span class="nc" id="L640">            TradeRouteStop stop = this.stopListModel.get(stopIndex);</span>
+<span class="nc" id="L641">            List&lt;GoodsType&gt; cargo = new ArrayList&lt;&gt;(stop.getCargo());</span>
+            
+            // Only remove the GoodsType once.
+<span class="nc" id="L644">            final int cargoIndex = cargo.indexOf(gt);</span>
+<span class="nc bnc" id="L645" title="All 2 branches missed.">            if (cargoIndex &gt;= 0) {</span>
+<span class="nc" id="L646">                cargo.remove(cargoIndex);</span>
+<span class="nc" id="L647">                stop.setCargo(cargo);</span>
+            }
+        }
+<span class="nc" id="L650">        this.stopList.revalidate();</span>
+<span class="nc" id="L651">        this.stopList.repaint();</span>
+<span class="nc" id="L652">        this.stopGoodsTypesPanel.revalidate();</span>
+<span class="nc" id="L653">        this.stopGoodsTypesPanel.repaint();</span>
+<span class="nc" id="L654">    }</span>
+
+    /**
+     * Add any stops selected in the destination selector.
+     */
+    private void addSelectedStops() {
+<span class="nc" id="L660">        int startIndex = -1;</span>
+<span class="nc" id="L661">        int endIndex = -1;</span>
+<span class="nc" id="L662">        int sel = this.destinationSelector.getSelectedIndex();</span>
+<span class="nc bnc" id="L663" title="All 2 branches missed.">        if (sel == 0) { // All colonies + Europe</span>
+<span class="nc" id="L664">            startIndex = 1;</span>
+<span class="nc" id="L665">            endIndex = this.destinationSelector.getItemCount();</span>
+        } else { // just one place
+<span class="nc" id="L667">            startIndex = sel;</span>
+<span class="nc" id="L668">            endIndex = startIndex+1;</span>
+        }
+<span class="nc" id="L670">        List&lt;GoodsType&gt; cargo</span>
+<span class="nc" id="L671">            = transform(this.stopGoodsTypesPanel.getComponents(),</span>
+<span class="nc" id="L672">                        c -&gt; c instanceof GoodsTypeLabel,</span>
+<span class="nc" id="L673">                        c -&gt; ((GoodsTypeLabel)c).getType());</span>
+<span class="nc" id="L674">        int maxIndex = this.stopList.getMaxSelectionIndex();</span>
+<span class="nc bnc" id="L675" title="All 2 branches missed.">        for (int i = startIndex; i &lt; endIndex; i++) {</span>
+<span class="nc" id="L676">            String id = this.destinationSelector.getItemAt(i);</span>
+<span class="nc" id="L677">            FreeColGameObject fcgo = getGame().getFreeColGameObject(id);</span>
+<span class="nc bnc" id="L678" title="All 2 branches missed.">            if (fcgo instanceof Location) {</span>
+<span class="nc" id="L679">                TradeRouteStop stop</span>
+<span class="nc" id="L680">                    = new TradeRouteStop(getGame(), (Location)fcgo);</span>
+<span class="nc" id="L681">                stop.setCargo(cargo);</span>
+<span class="nc bnc" id="L682" title="All 2 branches missed.">                if (maxIndex &lt; 0) {</span>
+<span class="nc" id="L683">                    this.stopListModel.addElement(stop);</span>
+                } else {
+<span class="nc" id="L685">                    maxIndex++;</span>
+<span class="nc" id="L686">                    this.stopListModel.add(maxIndex, stop);</span>
+                }
+            }
+        }
+<span class="nc" id="L690">    }</span>
+
+    /**
+     * Convenience function to build a new {@code GoodsTypeLabel}.
+     *
+     * @param gt The {@code GoodsType} for the label.
+     * @return A {@code GoodsTypeLabel} for the goods type.
+     */
+    private GoodsTypeLabel buildCargoLabel(GoodsType gt) {
+<span class="nc" id="L699">        GoodsTypeLabel label = new GoodsTypeLabel(getFreeColClient(), gt);</span>
+<span class="nc" id="L700">        label.setTransferHandler(this.transferHandler);</span>
+<span class="nc" id="L701">        label.addMouseListener(this.dragListener);</span>
+<span class="nc" id="L702">        return label;</span>
+    }
+
+    /**
+     * Delete any stops currently selected in the stop list.
+     */
+    private void deleteCurrentlySelectedStops() {
+<span class="nc" id="L709">        int count = 0;</span>
+<span class="nc" id="L710">        int lastIndex = 0;</span>
+<span class="nc bnc" id="L711" title="All 2 branches missed.">        for (int index : this.stopList.getSelectedIndices()) {</span>
+<span class="nc" id="L712">            this.stopListModel.remove(index - count);</span>
+<span class="nc" id="L713">            count++;</span>
+<span class="nc" id="L714">            lastIndex = index;</span>
+        }
+
+        // If the remaining list is non-empty, make sure that the
+        // element beneath the last of the previously selected is
+        // selected (ie, delete one of many, the one -under- the
+        // deleted is selected) the user can then click in the list
+        // once, and continue deleting without having to click in the
+        // list again.
+<span class="nc bnc" id="L723" title="All 2 branches missed.">        if (this.stopListModel.getSize() &gt; 0) {</span>
+<span class="nc" id="L724">            this.stopList.setSelectedIndex(lastIndex - count + 1);</span>
+        }
+<span class="nc" id="L726">    }</span>
+
+
+    /**
+     * Make sure the original route is invalid and remove this panel.
+     *
+     * Public so that this panel can be signalled to close if the parent
+     * TradeRoutePanel is closed.
+     */
+    public void cancelTradeRoute() {
+<span class="nc" id="L736">        this.newRoute.setName(null);</span>
+<span class="nc" id="L737">        getGUI().removeComponent(this);</span>
+<span class="nc" id="L738">    }</span>
+
+    /**
+     * Enables the remove stop button if a stop is selected and disables it
+     * otherwise.
+     */
+    private void updateButtons() {
+<span class="nc" id="L745">        this.addStopButton.setEnabled(this.stopListModel.getSize() </span>
+<span class="nc bnc" id="L746" title="All 2 branches missed.">            &lt; this.destinationSelector.getItemCount() - 1);</span>
+<span class="nc bnc" id="L747" title="All 2 branches missed.">        this.removeStopButton.setEnabled(this.stopList.getSelectedIndices()</span>
+            .length &gt; 0);
+<span class="nc" id="L749">    }</span>
+
+    /**
+     * Check that the trade route is valid.
+     *
+     * @return True if the trade route is valid.
+     */
+    private boolean verifyNewTradeRoute() {
+        // Update the trade route with the current settings
+<span class="nc" id="L758">        this.newRoute.setName(tradeRouteName.getText());</span>
+<span class="nc" id="L759">        this.newRoute.clearStops();</span>
+<span class="nc bnc" id="L760" title="All 2 branches missed.">        for (int index = 0; index &lt; this.stopListModel.getSize(); index++) {</span>
+<span class="nc" id="L761">            this.newRoute.addStop(this.stopListModel.get(index));</span>
+        }
+<span class="nc" id="L763">        this.newRoute.setSilent(this.messagesBox.isSelected());</span>
+
+<span class="nc" id="L765">        StringTemplate err = this.newRoute.verify();</span>
+<span class="nc bnc" id="L766" title="All 2 branches missed.">        if (err != null) {</span>
+<span class="nc" id="L767">            getGUI().showInformationPanel(err);</span>
+<span class="nc" id="L768">            this.newRoute.setName(null); // Mark as unacceptable</span>
+<span class="nc" id="L769">            return false;</span>
+        }
+<span class="nc" id="L771">        return true;</span>
+    }
+
+
+    // Interface ActionListener
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L782">        final String command = ae.getActionCommand();</span>
+<span class="nc bnc" id="L783" title="All 2 branches missed.">        if (command == null) return;</span>
+<span class="nc bnc" id="L784" title="All 3 branches missed.">        switch (command) {</span>
+        case OK:
+<span class="nc bnc" id="L786" title="All 2 branches missed.">            if (!verifyNewTradeRoute()) return;</span>
+            // Return to TradeRoutePanel, which will add the route
+            // if needed, and it is valid.
+<span class="nc" id="L789">            super.actionPerformed(ae);</span>
+<span class="nc" id="L790">            break;</span>
+        case CANCEL:
+<span class="nc" id="L792">            cancelTradeRoute();</span>
+<span class="nc" id="L793">            break;</span>
+        default:
+<span class="nc" id="L795">            super.actionPerformed(ae);</span>
+            break;
+        }
+<span class="nc" id="L798">    }</span>
+
+
+    // Interface ListSelectionListener
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void valueChanged(ListSelectionEvent e) {
+<span class="nc bnc" id="L808" title="All 2 branches missed.">        if (e.getValueIsAdjusting()) return;</span>
+<span class="nc" id="L809">        int[] idx = this.stopList.getSelectedIndices();</span>
+<span class="nc bnc" id="L810" title="All 2 branches missed.">        if (idx.length &gt; 0) {</span>
+<span class="nc" id="L811">            updateCargoPanel(this.stopListModel.get(idx[0]));</span>
+<span class="nc" id="L812">            this.allGoodsTypesPanel.setEnabled(true);</span>
+        } else {
+<span class="nc" id="L814">            this.allGoodsTypesPanel.setEnabled(false);</span>
+        }
+<span class="nc" id="L816">        updateButtons();</span>
+<span class="nc" id="L817">    }</span>
+
+
+    // Override Component
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void removeNotify() {
+<span class="nc" id="L827">        this.transferHandler = null;</span>
+<span class="nc" id="L828">        this.dragListener = null;</span>
+<span class="nc" id="L829">        this.stopListModel.clear();</span>
+<span class="nc" id="L830">        this.stopListModel = null;</span>
+<span class="nc" id="L831">        this.stopList = null;</span>
+<span class="nc" id="L832">        this.tradeRouteName = null;</span>
+<span class="nc" id="L833">        this.destinationSelector = null;</span>
+<span class="nc" id="L834">        this.messagesBox = null;</span>
+<span class="nc" id="L835">        this.addStopButton = null;</span>
+<span class="nc" id="L836">        this.removeStopButton = null;</span>
+<span class="nc" id="L837">        this.stopGoodsTypesPanel = null;</span>
+<span class="nc" id="L838">        this.allGoodsTypesPanel = null;</span>
+
+<span class="nc" id="L840">        super.removeNotify();</span>
+<span class="nc" id="L841">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

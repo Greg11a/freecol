@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColonizationMapLoader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.generator</a> &gt; <span class="el_source">ColonizationMapLoader.java</span></div><h1>ColonizationMapLoader.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.generator;
+
+import java.io.EOFException;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.TileImprovement;
+import net.sf.freecol.common.model.TileImprovementStyle;
+import net.sf.freecol.common.model.TileImprovementType;
+import net.sf.freecol.common.model.TileItemContainer;
+import net.sf.freecol.common.model.TileType;
+import net.sf.freecol.common.model.Map.Layer;
+import net.sf.freecol.common.model.Specification;
+
+
+/**
+ * Just pass the name of a Colonization map file (with extension &quot;.MP&quot;).
+ *
+ * The map file starts with a six-byte header. Byte zero encodes the
+ * map width, byte two encodes the map height. The function of the
+ * other bytes is unknown, their values, however, are fixed. The
+ * header is followed by three &quot;layers&quot;, each the size of the map. The
+ * first &quot;layer&quot; encodes the terrain type. The function of the other
+ * layers is unknown. They are filled with zero bytes.
+ *
+ * It seems that the least significant three bits encode the basic
+ * terrain type, the next two bits encode the forest overlay and
+ * the special tile types ice, ocean and sea lanes. The three most
+ * significant bits encode combinations of the hill, mountain and
+ * river overlays.
+ *
+ * bits 0-2: tile type
+ * bit 3 (8): forest
+ * bit 4 (16): forest
+ * bits 3+4 (24): special, values larger than 26 are not defined
+ *
+ * bits 5-7: overlays
+ * 0: nothing
+ * 1: hill
+ * 2: minor river
+ * 3: hill + minor river (extremely rare)
+ * 4: nothing
+ * 5: mountain
+ * 6: major river
+ * 7: mountain + major river (never seen)
+ */
+public class ColonizationMapLoader implements MapLoader {
+
+<span class="nc" id="L74">    private static final Logger logger = Logger.getLogger(ColonizationMapLoader.class.getName());</span>
+
+    public static final int WIDTH = 0;
+    public static final int HEIGHT = 2;
+    public static final int OCEAN = 25;
+    public static final int HIGH_SEAS = 26;
+
+    /**
+     * A String array of title types. Each represents
+     *      a single type of tile available in FreeCol.
+     */
+<span class="nc" id="L85">    private static final String[] tiletypes = {</span>
+        &quot;tundra&quot;,
+        &quot;desert&quot;,
+        &quot;plains&quot;,
+        &quot;prairie&quot;,
+        &quot;grassland&quot;,
+        &quot;savannah&quot;,
+        &quot;marsh&quot;,
+        &quot;swamp&quot;,
+        &quot;borealForest&quot;,
+        &quot;scrubForest&quot;,
+        &quot;mixedForest&quot;,
+        &quot;broadleafForest&quot;,
+        &quot;coniferForest&quot;,
+        &quot;tropicalForest&quot;,
+        &quot;wetlandForest&quot;,
+        &quot;rainForest&quot;,
+        &quot;borealForest&quot;,
+        &quot;scrubForest&quot;,
+        &quot;mixedForest&quot;,
+        &quot;broadleafForest&quot;,
+        &quot;coniferForest&quot;,
+        &quot;tropicalForest&quot;,
+        &quot;wetlandForest&quot;,
+        &quot;rainForest&quot;,
+        &quot;arctic&quot;,
+        &quot;ocean&quot;,
+        &quot;highSeas&quot;,
+    };
+
+
+    /**
+     * A byte array of file headers
+     */
+<span class="nc" id="L119">    private static final byte[] header = {</span>
+        58, 0, 72, 0, 4, 0
+    };
+
+    private byte[] layer1;
+
+
+<span class="nc" id="L126">    public ColonizationMapLoader(File file) throws IOException {</span>
+
+<span class="nc" id="L128">        try (RandomAccessFile reader = new RandomAccessFile(file, &quot;r&quot;)) {</span>
+<span class="nc" id="L129">            reader.readFully(header);</span>
+
+<span class="nc" id="L131">            int size = header[WIDTH] * header[HEIGHT];</span>
+<span class="nc" id="L132">            layer1 = new byte[size];</span>
+<span class="nc" id="L133">            reader.readFully(layer1);</span>
+<span class="nc" id="L134">        } catch (EOFException ee) {</span>
+<span class="nc" id="L135">            logger.log(Level.SEVERE, &quot;File (&quot; + file + &quot;) is too short.&quot;, ee);</span>
+<span class="nc" id="L136">        } catch (FileNotFoundException fe) {</span>
+            
+<span class="nc" id="L138">            logger.log(Level.SEVERE, &quot;File (&quot; + file + &quot;) was not found.&quot;, fe);</span>
+<span class="nc" id="L139">        } catch (IOException e) {</span>
+<span class="nc" id="L140">            logger.log(Level.SEVERE, &quot;File (&quot; + file + &quot;) is corrupt and cannot be read.&quot;, e);</span>
+<span class="nc" id="L141">        }</span>
+
+<span class="nc" id="L143">    }</span>
+
+    /**
+     * {@inheritDoc}
+     *
+     * @return The highest {@code Layer} value
+     */
+    @Override
+    public Layer loadMap(Game game, Layer layer) {
+<span class="nc" id="L152">        Specification spec = game.getSpecification();</span>
+<span class="nc" id="L153">        Tile[][] tiles = new Tile[header[WIDTH]][header[HEIGHT]];</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        Layer highestLayer = layer.compareTo(getHighestLayer()) &lt; 0</span>
+<span class="nc" id="L155">            ? layer : getHighestLayer();</span>
+<span class="nc" id="L156">        int index = 0;</span>
+<span class="nc" id="L157">        TileType tileType = null;</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        if (highestLayer == Layer.LAND) {</span>
+            // import only the land / water distinction
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            for (int y = 0; y &lt; header[HEIGHT]; y++) {</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">                for (int x = 0; x &lt; header[WIDTH]; x++) {</span>
+<span class="nc" id="L162">                    int decimal = layer1[index] &amp; 0xff;</span>
+<span class="nc" id="L163">                    int terrain = decimal &amp; 0b11111;</span>
+<span class="nc bnc" id="L164" title="All 4 branches missed.">                    tileType = (terrain == OCEAN || terrain == HIGH_SEAS) ?</span>
+<span class="nc" id="L165">                        TileType.WATER : TileType.LAND;</span>
+<span class="nc" id="L166">                    index++;</span>
+                }
+            }
+        } else {
+<span class="nc" id="L170">            TileImprovementType riverType = spec.getTileImprovementType(&quot;model.improvement.river&quot;);</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">            for (int y = 0; y &lt; header[HEIGHT]; y++) {</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">                for (int x = 0; x &lt; header[WIDTH]; x++) {</span>
+<span class="nc" id="L173">                    int decimal = layer1[index] &amp; 0xff;</span>
+<span class="nc" id="L174">                    int terrain = decimal &amp; 0b11111;</span>
+<span class="nc" id="L175">                    int overlay = decimal &gt;&gt; 5;</span>
+
+<span class="nc bnc" id="L177" title="All 2 branches missed.">                    if (terrain &lt; tiletypes.length) {</span>
+<span class="nc" id="L178">                        tileType = spec.getTileType(&quot;model.tile.&quot; + tiletypes[terrain]);</span>
+<span class="nc bnc" id="L179" title="All 4 branches missed.">                    } else if (overlay == 1 || overlay == 3) {</span>
+<span class="nc" id="L180">                        tileType = spec.getTileType(&quot;model.tile.hills&quot;);</span>
+<span class="nc bnc" id="L181" title="All 4 branches missed.">                    } else if (overlay == 5 || overlay == 7) {</span>
+<span class="nc" id="L182">                        tileType = spec.getTileType(&quot;model.tile.mountains&quot;);</span>
+                    }
+<span class="nc" id="L184">                    tiles[x][y] = new Tile(game, tileType, x, y);</span>
+<span class="nc bnc" id="L185" title="All 10 branches missed.">                    if (highestLayer == Layer.RIVERS</span>
+                        &amp;&amp; (overlay == 2 || overlay == 3 || overlay == 6 || overlay == 7)) {
+<span class="nc" id="L187">                        TileItemContainer container = new TileItemContainer(game, tiles[x][y]);</span>
+<span class="nc" id="L188">                        TileImprovement river =</span>
+                            new TileImprovement(game, tiles[x][y], riverType,
+<span class="nc" id="L190">                                TileImprovementStyle.getInstance(TileImprovement.EMPTY_RIVER_STYLE));//TODO: connections!</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">                        river.setMagnitude(overlay &lt;= 3 ? 1 : 2);</span>
+<span class="nc" id="L192">                        container.tryAddTileItem(river);</span>
+<span class="nc" id="L193">                        tiles[x][y].setTileItemContainer(container);</span>
+                    }
+<span class="nc" id="L195">                    index++;</span>
+                }
+            }
+        }
+<span class="nc" id="L199">        return highestLayer;</span>
+    }
+
+    /**
+     *  {@inheritDoc}
+     *
+     *  @return The {@code Layer} value for RIVERS
+     */
+    @Override
+    public Layer getHighestLayer() {
+<span class="nc" id="L209">        return Layer.RIVERS;</span>
+    }
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

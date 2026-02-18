@@ -1,0 +1,713 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GoodsContainer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">GoodsContainer.java</span></div><h1>GoodsContainer.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.function.Predicate;
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import static net.sf.freecol.common.model.Constants.*;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+
+/**
+ * Contains goods and can be used by a {@link Location} to make certain
+ * tasks easier.
+ */
+public class GoodsContainer extends FreeColGameObject implements Ownable {
+
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="fc" id="L45">    private static final Logger logger = Logger.getLogger(GoodsContainer.class.getName());</span>
+
+    public static final String TAG = &quot;goodsContainer&quot;;
+
+    /** The size of a standard `hold' of data. */
+    public static final int CARGO_SIZE = 100;
+
+    /**
+     * Value to use for apparent unlimited quantities of goods
+     * (e.g. warehouse contents in Europe, amount of food a colony can
+     * import).  Has to be signficantly bigger than any one unit could
+     * expect to carry, but not so huge as to look silly in user
+     * messages.
+     */
+    public static final int HUGE_CARGO_SIZE = 100 * CARGO_SIZE;
+
+    /**
+     * The list of Goods stored in this {@code GoodsContainer}.
+     *
+     * Always accessed synchronized (except I/O).
+     */
+<span class="fc" id="L66">    private final Map&lt;GoodsType, Integer&gt; storedGoods = new HashMap&lt;&gt;();</span>
+
+    /** 
+     * The previous list of Goods stored in this
+     * {@code GoodsContainer}.
+     *
+     * Always accessed synchronized and *after synchronized(storedGoods)*.
+     * This is only touched rarely so the extra lock is tolerable.
+     * (Not synchronized during I/O)
+     */
+<span class="fc" id="L76">    private final Map&lt;GoodsType, Integer&gt; oldStoredGoods = new HashMap&lt;&gt;();</span>
+
+    /** The location for this {@code GoodsContainer}. */
+<span class="fc" id="L79">    private Location parent = null;</span>
+
+
+    /**
+     * Creates an empty {@code GoodsContainer}.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param parent The {@code Location} this
+     *     {@code GoodsContainer} contains goods for.
+     */
+    public GoodsContainer(Game game, Location parent) {
+<span class="fc" id="L90">        super(game);</span>
+
+<span class="fc" id="L92">        this.parent = parent;</span>
+<span class="fc" id="L93">    }</span>
+
+    /**
+     * Create a new {@code GoodsContainer}.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param id The object identifier.
+     */
+    public GoodsContainer(Game game, String id) {
+<span class="fc" id="L102">        super(game, id);</span>
+<span class="fc" id="L103">    }</span>
+
+
+    /**
+     * Get the parent location.
+     *
+     * @return The parent {@code Location}.
+     */
+    protected Location getParent() {
+<span class="nc" id="L112">        return this.parent;</span>
+    }
+
+    /**
+     * Set the goods location.
+     *
+     * @param location The {@code Location} to set.
+     */
+    public void setLocation(Location location) {
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (location == null) {</span>
+<span class="nc" id="L122">            throw new RuntimeException(&quot;Null GoodsContainer location: &quot; + this);</span>
+        }
+<span class="fc" id="L124">        this.parent = location;</span>
+<span class="fc" id="L125">    }</span>
+
+    /**
+     * Get the stored goods.
+     *
+     * @return A map of the stored goods.
+     */
+    protected Map&lt;GoodsType, Integer&gt; getStoredGoods() {
+<span class="nc" id="L133">        return this.storedGoods;</span>
+    }
+
+    /**
+     * Set the stored goods.
+     *
+     * @param goods A map of the new stored goods.
+     */
+    protected void setStoredGoods(Map&lt;GoodsType, Integer&gt; goods) {
+<span class="nc" id="L142">        synchronized (this.storedGoods) {</span>
+<span class="nc" id="L143">            this.storedGoods.clear();</span>
+<span class="nc" id="L144">            this.storedGoods.putAll(goods);</span>
+<span class="nc" id="L145">        }</span>
+<span class="nc" id="L146">    }</span>
+
+    /**
+     * Get the old stored goods.
+     *
+     * @return A map of the old stored goods.
+     */
+    protected Map&lt;GoodsType, Integer&gt; getOldStoredGoods() {
+<span class="nc" id="L154">        return this.oldStoredGoods;</span>
+    }
+    
+    /**
+     * Set the old stored goods.
+     *
+     * @param goods A map of the new old stored goods.
+     */
+    protected void setOldStoredGoods(Map&lt;GoodsType, Integer&gt; goods) {
+<span class="nc" id="L163">        synchronized (this.oldStoredGoods) {</span>
+<span class="nc" id="L164">            this.oldStoredGoods.clear();</span>
+<span class="nc" id="L165">            this.oldStoredGoods.putAll(goods);</span>
+<span class="nc" id="L166">        }</span>
+<span class="nc" id="L167">    }</span>
+
+    /**
+     * Checks if the specified {@code Goods} is in this container.
+     *
+     * @param &lt;T&gt; The base type of the goods.
+     * @param g The goods to test the presence of.
+     * @return True if there is enough of the specified goods present that it
+     *     can be removed without error.
+     */
+    public &lt;T extends AbstractGoods&gt; boolean contains(T g) {
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        return getGoodsCount(g.getType()) &gt;= g.getAmount();</span>
+    }
+
+    /**
+     * Gets the amount of one type of goods in this container.
+     *
+     * @param type The {@code GoodsType} being looked for.
+     * @return The amount of this type of goods in this container.
+     */
+    public int getGoodsCount(GoodsType type) {
+<span class="fc" id="L188">        synchronized (this.storedGoods) {</span>
+<span class="fc" id="L189">            Integer val = this.storedGoods.get(type);</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">            return (val == null) ? 0 : val;</span>
+        }
+    }
+
+    /**
+     * Gets the amount of one type of goods at the beginning of the turn.
+     *
+     * @param type The {@code GoodsType} being looked for.
+     * @return The amount of this type of goods in this container at
+     *     the beginning of the turn
+     */
+    public int getOldGoodsCount(GoodsType type) {
+<span class="fc" id="L202">        synchronized (this.oldStoredGoods) {</span>
+<span class="fc" id="L203">            Integer val = this.oldStoredGoods.get(type);</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            return (val == null) ? 0 : val;</span>
+        }
+    }
+
+    /**
+     * Adds goods to this goods container.
+     *
+     * @param &lt;T&gt; The base type of the goods.
+     * @param goods The goods to add.
+     * @return True if the addition succeeds.
+     */
+    public &lt;T extends AbstractGoods&gt; boolean addGoods(T goods) {
+<span class="nc" id="L216">        return addGoods(goods.getType(), goods.getAmount());</span>
+    }
+
+    /**
+     * Adds goods by type and amount to this goods container.
+     *
+     * Note: negative amounts are allowed.
+     *
+     * @param type The {@code GoodsType} to add.
+     * @param amount The amount of goods to add.
+     * @return True if the addition succeeds.
+     */
+    public boolean addGoods(GoodsType type, int amount) {
+<span class="fc" id="L229">        int oldAmount = getGoodsCount(type);</span>
+<span class="fc" id="L230">        int newAmount = oldAmount + amount;</span>
+
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">        if (newAmount &lt; 0) {</span>
+<span class="nc" id="L233">            throw new IllegalStateException(&quot;Operation would leave &quot;</span>
+                + newAmount + &quot; goods of type &quot; + type
+                + &quot; in Location &quot; + parent);
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        } else if (newAmount == 0) {</span>
+<span class="fc" id="L237">            synchronized (this.storedGoods) {</span>
+<span class="fc" id="L238">                this.storedGoods.remove(type);</span>
+<span class="fc" id="L239">            }</span>
+        } else {
+<span class="fc" id="L241">            synchronized (this.storedGoods) {</span>
+<span class="fc" id="L242">                this.storedGoods.put(type, newAmount);</span>
+<span class="fc" id="L243">            }</span>
+        }
+        
+<span class="fc" id="L246">        invalidateCache();</span>
+        
+<span class="fc" id="L248">        return true;</span>
+    }
+
+    /**
+     * Removes goods from this goods container.
+     *
+     * @param &lt;T&gt; The base type of the goods.
+     * @param goods The goods to remove from this container.
+     * @return The {@code Goods} actually removed.
+     */
+    public &lt;T extends AbstractGoods&gt; Goods removeGoods(T goods) {
+<span class="nc" id="L259">        return removeGoods(goods.getType(), goods.getAmount());</span>
+    }
+
+    /**
+     * Removes all goods of a given type from this goods container.
+     *
+     * @param type The {@code GoodsType} to remove.
+     * @return The {@code Goods} actually removed.
+     */
+    public Goods removeGoods(GoodsType type) {
+<span class="nc" id="L269">        return removeGoods(type, INFINITY);</span>
+    }
+
+    /**
+     * Removes goods by type and amount from this goods container.
+     *
+     * @param type The {@code GoodsType} to remove.
+     * @param amount The amount of goods to remove.
+     * @return The {@code Goods} actually removed, which may have a
+     *     lower actual amount, or null if nothing removed.
+     */
+    public Goods removeGoods(GoodsType type, int amount) {
+<span class="fc" id="L281">        int oldAmount = getGoodsCount(type);</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        if (oldAmount &lt;= 0) return null;</span>
+
+<span class="fc" id="L284">        int newAmount = oldAmount - amount;</span>
+        Goods removedGoods;
+<span class="fc bfc" id="L286" title="All 2 branches covered.">        if (newAmount &gt; 0) {</span>
+<span class="fc" id="L287">            removedGoods = new Goods(getGame(), null, type, amount);</span>
+<span class="fc" id="L288">            synchronized (this.storedGoods) {</span>
+<span class="fc" id="L289">                this.storedGoods.put(type, newAmount);</span>
+<span class="fc" id="L290">            }</span>
+        } else {
+<span class="fc" id="L292">            removedGoods = new Goods(getGame(), null, type, oldAmount);</span>
+<span class="fc" id="L293">            synchronized (this.storedGoods) {</span>
+<span class="fc" id="L294">                this.storedGoods.remove(type);</span>
+<span class="fc" id="L295">            }</span>
+        }
+        
+<span class="fc" id="L298">        invalidateCache();</span>
+        
+<span class="fc" id="L300">        return removedGoods;</span>
+    }
+
+    private void invalidateCache() {
+<span class="pc bpc" id="L304" title="1 of 4 branches missed.">        if (parent != null &amp;&amp; (parent instanceof GoodsLocation)) {</span>
+<span class="fc" id="L305">            ((GoodsLocation) parent).invalidateCache();</span>
+        }
+<span class="fc" id="L307">    }</span>
+
+    /**
+     * Set the amount of goods in this container.
+     *
+     * @param goodsType The {@code GoodsType} to set the amount of.
+     * @param newAmount The new amount.
+     */
+    public void setAmount(GoodsType goodsType, int newAmount) {
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        if (newAmount == 0) {</span>
+<span class="nc" id="L317">            synchronized (this.storedGoods) {</span>
+<span class="nc" id="L318">                this.storedGoods.remove(goodsType);</span>
+<span class="nc" id="L319">            }</span>
+        } else {
+<span class="nc" id="L321">            synchronized (this.storedGoods) {</span>
+<span class="nc" id="L322">                this.storedGoods.put(goodsType, newAmount);</span>
+<span class="nc" id="L323">            }</span>
+        }
+<span class="nc" id="L325">        invalidateCache();</span>
+<span class="nc" id="L326">    }</span>
+
+    /**
+     * Remove all goods.
+     */
+    public void removeAll() {
+<span class="fc" id="L332">        synchronized (this.storedGoods) {</span>
+<span class="fc" id="L333">            this.storedGoods.clear();</span>
+<span class="fc" id="L334">        }</span>
+<span class="fc" id="L335">        invalidateCache();</span>
+<span class="fc" id="L336">    }</span>
+
+    /**
+     * Clear both containers.
+     */
+    private void clearContainers() {
+<span class="fc" id="L342">        synchronized (this.storedGoods) {</span>
+<span class="fc" id="L343">            this.storedGoods.clear();</span>
+<span class="fc" id="L344">            synchronized (this.oldStoredGoods) {</span>
+<span class="fc" id="L345">                this.oldStoredGoods.clear();</span>
+<span class="fc" id="L346">            }</span>
+<span class="fc" id="L347">        }</span>
+<span class="fc" id="L348">    }</span>
+
+    /**
+     * Removes all goods above given amount, provided that the goods
+     * are storable and do not ignore warehouse limits.
+     *
+     * @param newAmount The threshold.
+     */
+    public void removeAbove(final int newAmount) {
+<span class="fc" id="L357">        synchronized (this.storedGoods) {</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">            if (newAmount &lt;= 0) {</span>
+<span class="nc" id="L359">                this.storedGoods.clear();</span>
+<span class="nc" id="L360">                return;</span>
+            }
+<span class="fc" id="L362">            final Predicate&lt;Entry&lt;GoodsType, Integer&gt;&gt; hiPred = e -&gt; {</span>
+<span class="fc" id="L363">                final GoodsType gt = e.getKey();</span>
+<span class="fc bfc" id="L364" title="All 4 branches covered.">                return gt.isStorable() &amp;&amp; !gt.limitIgnored()</span>
+<span class="fc bfc" id="L365" title="All 2 branches covered.">                    &amp;&amp; e.getValue() &gt; newAmount;</span>
+            };
+<span class="fc" id="L367">            forEachMapEntry(this.storedGoods, hiPred,</span>
+<span class="fc" id="L368">                            e -&gt; this.storedGoods.put(e.getKey(), newAmount));</span>
+<span class="fc" id="L369">        }</span>
+<span class="fc" id="L370">        invalidateCache();</span>
+<span class="fc" id="L371">    }</span>
+
+    /**
+     * Checks if any storable type of goods has reached the given amount.
+     *
+     * @param amount The amount to check.
+     * @return True if any storable, capacity limited goods has reached the
+     *     given amount.
+     */
+    public boolean hasReachedCapacity(int amount) {
+<span class="nc" id="L381">        synchronized (this.storedGoods) {</span>
+<span class="nc" id="L382">            return any(this.storedGoods.entrySet(), e -&gt;</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">                       e.getKey().isStorable()</span>
+<span class="nc bnc" id="L384" title="All 2 branches missed.">                           &amp;&amp; !e.getKey().limitIgnored()</span>
+<span class="nc bnc" id="L385" title="All 2 branches missed.">                           &amp;&amp; e.getValue() &gt; amount);</span>
+        }
+    }
+
+    /**
+     * Gets the amount of space that the goods in this container will consume.
+     * Each occupied cargo slot contains an amount in [1, CARGO_SIZE].
+     *
+     * @return The amount of space taken by this containers goods.
+     */
+    public int getSpaceTaken() {
+<span class="fc" id="L396">        synchronized (this.storedGoods) {</span>
+<span class="fc" id="L397">            return sum(this.storedGoods.values(),</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">                       amount -&gt; ((amount % CARGO_SIZE == 0)</span>
+<span class="fc" id="L399">                           ? amount/CARGO_SIZE</span>
+<span class="fc" id="L400">                           : amount/CARGO_SIZE + 1));</span>
+        }
+    }
+
+    /**
+     * Gets a list containing all holds of goods in this goods container.
+     * Each {@code Goods} returned has a maximum amount of CARGO_SIZE.
+     *
+     * @return A list of {@code Goods}.
+     */
+    public List&lt;Goods&gt; getGoodsList() {
+<span class="fc" id="L411">        final Game game = getGame();</span>
+<span class="fc" id="L412">        List&lt;Goods&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L413">        synchronized (this.storedGoods) {</span>
+<span class="fc" id="L414">            forEachMapEntry(this.storedGoods, e -&gt; {</span>
+<span class="fc" id="L415">                    int amount = e.getValue();</span>
+<span class="fc bfc" id="L416" title="All 2 branches covered.">                    while (amount &gt; 0) {</span>
+<span class="fc" id="L417">                        result.add(new Goods(game, parent, e.getKey(),</span>
+<span class="pc bpc" id="L418" title="1 of 2 branches missed.">                                ((amount &gt;= CARGO_SIZE) ? CARGO_SIZE : amount)));</span>
+<span class="fc" id="L419">                        amount -= CARGO_SIZE;</span>
+                    }
+<span class="fc" id="L421">                });</span>
+<span class="fc" id="L422">        }</span>
+<span class="fc" id="L423">        return result;</span>
+    }
+
+    /**
+     * Gets a list of all goods in this goods container.  There is
+     * only one {@code Goods} for each distinct {@code GoodsType}.
+     *
+     * @return A list of {@code Goods}.
+     */
+    public List&lt;Goods&gt; getCompactGoodsList() {
+<span class="fc" id="L433">        final Game game = getGame();</span>
+<span class="fc" id="L434">        synchronized (this.storedGoods) {</span>
+<span class="fc" id="L435">            return transform(this.storedGoods.entrySet(),</span>
+<span class="pc bpc" id="L436" title="1 of 2 branches missed.">                             e -&gt; e.getValue() &gt; 0,</span>
+<span class="fc" id="L437">                             e -&gt; new Goods(game, parent, e.getKey(), e.getValue()));</span>
+        }
+    }
+
+    /**
+     * Save the current stored goods of this goods container in the old
+     * stored goods.
+     */
+    public void saveState() {
+<span class="fc" id="L446">        synchronized (this.storedGoods) {</span>
+<span class="fc" id="L447">            synchronized (this.oldStoredGoods) {</span>
+<span class="fc" id="L448">                this.oldStoredGoods.clear();</span>
+<span class="fc" id="L449">                this.oldStoredGoods.putAll(this.storedGoods);</span>
+<span class="fc" id="L450">            }</span>
+<span class="fc" id="L451">        }</span>
+<span class="fc" id="L452">    }</span>
+
+    /**
+     * Restore the current stored goods of this goods container to the
+     * old state.
+     */
+    public void restoreState() {
+<span class="nc" id="L459">        synchronized (this.storedGoods) {</span>
+<span class="nc" id="L460">            synchronized (this.oldStoredGoods) {</span>
+<span class="nc" id="L461">                this.storedGoods.clear();</span>
+<span class="nc" id="L462">                this.storedGoods.putAll(this.oldStoredGoods);</span>
+<span class="nc" id="L463">            }</span>
+<span class="nc" id="L464">        }</span>
+<span class="nc" id="L465">    }</span>
+
+    /**
+     * Has this goods containers contents changed from what was recorded
+     * last time the state was saved?
+     *
+     * @return True if the contents have changed.
+     */
+    public boolean hasChanged() {
+<span class="nc" id="L474">        return any(getSpecification().getGoodsTypeList(),</span>
+<span class="nc bnc" id="L475" title="All 2 branches missed.">                   gt -&gt; getOldGoodsCount(gt) != getGoodsCount(gt));</span>
+    }
+
+    /**
+     * Fire property changes for all goods that have seen level changes
+     * since the last saveState().
+     *
+     * @return True if something changed.
+     */
+    public boolean fireChanges() {
+<span class="nc" id="L485">        boolean ret = false;</span>
+<span class="nc bnc" id="L486" title="All 2 branches missed.">        for (GoodsType type : getSpecification().getGoodsTypeList()) {</span>
+<span class="nc" id="L487">            int oldCount = getOldGoodsCount(type);</span>
+<span class="nc" id="L488">            int newCount = getGoodsCount(type);</span>
+<span class="nc bnc" id="L489" title="All 2 branches missed.">            if (oldCount != newCount) {</span>
+<span class="nc" id="L490">                firePropertyChange(type.getId(), oldCount, newCount);</span>
+<span class="nc" id="L491">                ret = true;</span>
+            }
+<span class="nc" id="L493">        }</span>
+<span class="nc" id="L494">        return ret;</span>
+    }
+
+    /**
+     * Utility to move goods from one location to another.
+     *
+     * @param src The source {@code GoodsContainer}.
+     * @param goodsType The {@code GoodsType} to move.
+     * @param amount The amount of goods to move.
+     * @param dst The new {@code GoodsContainer}.
+     */
+    public static void moveGoods(GoodsContainer src,
+                                 GoodsType goodsType, int amount,
+                                 GoodsContainer dst) {
+<span class="pc bpc" id="L508" title="1 of 2 branches missed.">        if (src != null) {</span>
+<span class="fc" id="L509">            src.saveState();</span>
+<span class="fc" id="L510">            src.removeGoods(goodsType, amount);</span>
+        }
+<span class="fc bfc" id="L512" title="All 2 branches covered.">        if (dst != null) {</span>
+<span class="fc" id="L513">            dst.saveState();</span>
+<span class="fc" id="L514">            dst.addGoods(goodsType, amount);</span>
+        }
+<span class="fc" id="L516">    }</span>
+
+    
+    // Interface Ownable
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Player getOwner() {
+<span class="pc bpc" id="L526" title="1 of 2 branches missed.">        return (parent instanceof Ownable) ? ((Ownable)parent).getOwner()</span>
+<span class="nc" id="L527">            : null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setOwner(Player p) {
+<span class="nc" id="L535">        throw new UnsupportedOperationException(&quot;Can not set GoodsContainer owner&quot;);</span>
+    }
+
+    // Override FreeColGameObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void disposeResources() {
+<span class="fc" id="L545">        clearContainers();</span>
+<span class="fc" id="L546">        super.disposeResources();</span>
+<span class="fc" id="L547">    }</span>
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L557">        GoodsContainer o = copyInCast(other, GoodsContainer.class);</span>
+<span class="nc bnc" id="L558" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+        // Parent is fixed, and not serialized
+<span class="nc" id="L560">        this.setStoredGoods(o.getStoredGoods());</span>
+<span class="nc" id="L561">        this.setOldStoredGoods(o.getOldStoredGoods());</span>
+<span class="nc" id="L562">        return true;</span>
+    }
+
+
+    // Serialization
+
+    public static final String AMOUNT_TAG = &quot;amount&quot;;
+    public static final String OLD_STORED_GOODS_TAG = &quot;oldStoredGoods&quot;;
+    public static final String STORED_GOODS_TAG = &quot;storedGoods&quot;;
+    public static final String TYPE_TAG = &quot;type&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L579">        super.writeChildren(xw);</span>
+
+<span class="pc bpc" id="L581" title="1 of 2 branches missed.">        if (xw.validFor(getOwner())) {</span>
+
+<span class="fc" id="L583">            synchronized (this.storedGoods) {</span>
+<span class="fc" id="L584">                writeStorage(xw, STORED_GOODS_TAG, this.storedGoods);</span>
+<span class="fc" id="L585">                synchronized (this.oldStoredGoods) {</span>
+<span class="fc" id="L586">                    writeStorage(xw, OLD_STORED_GOODS_TAG, this.oldStoredGoods);</span>
+<span class="fc" id="L587">                }</span>
+<span class="fc" id="L588">            }</span>
+        }
+<span class="fc" id="L590">    }</span>
+
+    /**
+     * Write a storage container to a stream.
+     *
+     * @param xw The {@code FreeColXMLWriter} to write to.
+     * @param tag The element tag.
+     * @param storage The storage container.
+     * @exception XMLStreamException if there is a problem writing to
+     *     the stream.
+     */
+    private void writeStorage(FreeColXMLWriter xw, String tag,
+                              Map&lt;GoodsType, Integer&gt; storage) throws XMLStreamException {
+<span class="fc bfc" id="L603" title="All 2 branches covered.">        if (storage.isEmpty()) return;</span>
+
+<span class="fc" id="L605">        xw.writeStartElement(tag);</span>
+
+<span class="fc bfc" id="L607" title="All 2 branches covered.">        for (GoodsType goodsType : sort(storage.keySet())) {</span>
+            
+<span class="fc" id="L609">            xw.writeStartElement(Goods.TAG);</span>
+
+<span class="fc" id="L611">            xw.writeAttribute(TYPE_TAG, goodsType);</span>
+
+<span class="fc" id="L613">            xw.writeAttribute(AMOUNT_TAG, storage.get(goodsType));</span>
+
+<span class="fc" id="L615">            xw.writeEndElement();</span>
+<span class="fc" id="L616">        }</span>
+
+<span class="fc" id="L618">        xw.writeEndElement();</span>
+<span class="fc" id="L619">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+        // Clear containers.
+<span class="fc" id="L627">        clearContainers();</span>
+
+<span class="fc" id="L629">        super.readChildren(xr);</span>
+<span class="fc" id="L630">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L637">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L639" title="All 2 branches covered.">        if (OLD_STORED_GOODS_TAG.equals(tag)) {</span>
+<span class="fc" id="L640">            synchronized (this.oldStoredGoods) {</span>
+<span class="fc" id="L641">                readStorage(xr, this.oldStoredGoods);</span>
+<span class="fc" id="L642">            }</span>
+
+<span class="pc bpc" id="L644" title="1 of 2 branches missed.">        } else if (STORED_GOODS_TAG.equals(tag)) {</span>
+<span class="fc" id="L645">            synchronized (this.storedGoods) {</span>
+<span class="fc" id="L646">                readStorage(xr, this.storedGoods);</span>
+<span class="fc" id="L647">            }</span>
+
+        } else {
+<span class="nc" id="L650">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L652">    }</span>
+
+    /**
+     * Read a storage container from a stream.
+     *
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @param storage The storage container.
+     * @exception XMLStreamException if there is a problem reading from
+     *     the stream.
+     */
+    private void readStorage(FreeColXMLReader xr,
+        Map&lt;GoodsType, Integer&gt; storage) throws XMLStreamException {
+<span class="fc" id="L664">        final Specification spec = getGame().getSpecification();</span>
+
+<span class="fc bfc" id="L666" title="All 2 branches covered.">        while (xr.moreTags()) {</span>
+<span class="fc" id="L667">            String tag = xr.getLocalName();</span>
+
+<span class="pc bpc" id="L669" title="1 of 2 branches missed.">            if (Goods.TAG.equals(tag)) {</span>
+<span class="fc" id="L670">                GoodsType goodsType = xr.getType(spec, TYPE_TAG,</span>
+                    GoodsType.class, (GoodsType)null);
+
+<span class="fc" id="L673">                int amount = xr.getAttribute(AMOUNT_TAG, 0);</span>
+
+<span class="fc" id="L675">                storage.put(goodsType, amount);</span>
+
+<span class="fc" id="L677">            } else {</span>
+<span class="nc" id="L678">                throw new XMLStreamException(&quot;Bogus GoodsContainer tag: &quot;</span>
+                    + tag);
+            }
+<span class="fc" id="L681">            xr.closeTag(tag);</span>
+<span class="fc" id="L682">        }</span>
+<span class="fc" id="L683">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L688">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L698">        final String sep = &quot;, &quot;;</span>
+<span class="nc" id="L699">        StringBuilder sb = new StringBuilder(128);</span>
+<span class="nc" id="L700">        sb.append('[').append(getId()).append(&quot; [&quot;);</span>
+        // Do not bother to synchronize containers for display
+<span class="nc" id="L702">        forEachMapEntry(storedGoods, e -&gt;</span>
+<span class="nc" id="L703">            sb.append(e.getKey()).append('=').append(e.getValue()).append(sep));</span>
+<span class="nc" id="L704">        sb.setLength(sb.length() - sep.length());</span>
+<span class="nc" id="L705">        sb.append(&quot;][&quot;);</span>
+<span class="nc" id="L706">        forEachMapEntry(oldStoredGoods, e -&gt;</span>
+<span class="nc" id="L707">            sb.append(e.getKey()).append('=').append(e.getValue()).append(sep));</span>
+<span class="nc" id="L708">        sb.setLength(sb.length() - sep.length());</span>
+<span class="nc" id="L709">        sb.append(&quot;]]&quot;);</span>
+<span class="nc" id="L710">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

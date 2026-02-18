@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Stance.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">Stance.java</span></div><h1>Stance.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import net.sf.freecol.common.i18n.Messages;
+import static net.sf.freecol.common.util.StringUtils.*;
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
+
+/**
+ * The stance one player has towards another player.
+ *   Valid transitions:
+ *
+ *   [FROM] \  [TO]  U  A  P  C  W        Reasons
+ *   ----------------------------------   a = attack
+ *   UNCONTACTED  |  -  x  c  x  i    |   c = contact
+ *   ALLIANCE     |  x  -  d  x  adit |   d = act of diplomacy
+ *   PEACE        |  x  d  -  x  adit |   i = incitement/rebellion
+ *   CEASE_FIRE   |  x  d  t  -  adit |   t = change of tension
+ *   WAR          |  x  d  ds dt -    |   s = surrender
+ *   ----------------------------------   x = invalid
+ */
+<span class="fc" id="L41">public enum Stance implements Named {</span>
+<span class="fc" id="L42">    UNCONTACTED,</span>
+<span class="fc" id="L43">    ALLIANCE,</span>
+<span class="fc" id="L44">    PEACE,</span>
+<span class="fc" id="L45">    CEASE_FIRE,</span>
+<span class="fc" id="L46">    WAR;</span>
+
+
+    // Helpers to enforce valid transitions
+    private void badStance() {
+<span class="nc" id="L51">    }</span>
+    private void badTransition(Stance newStance) {
+<span class="nc" id="L53">        throw new RuntimeException(&quot;Bad transition: &quot; + this</span>
+            + &quot; -&gt; &quot; + newStance);
+    }
+
+    /**
+     * Check whether tension has changed enough to merit a stance
+     * change.  Do not simply check for crossing tension
+     * thresholds, add in Tension.DELTA to provide a bit of
+     * hysteresis to dampen ringing.
+     *
+     * @param tension The {@code Tension} to check.
+     * @return The {@code Stance} appropriate to the tension level.
+     */
+    public Stance getStanceFromTension(Tension tension) {
+<span class="fc" id="L67">        int value = tension.getValue();</span>
+<span class="pc bpc" id="L68" title="4 of 5 branches missed.">        switch (this) {</span>
+        case WAR: // Cease fire if tension decreases
+<span class="nc bnc" id="L70" title="All 2 branches missed.">            if (value &lt;= Tension.Level.CONTENT.getLimit()-Tension.DELTA) {</span>
+<span class="nc" id="L71">                return Stance.CEASE_FIRE;</span>
+            }
+            break;
+        case CEASE_FIRE: // Peace if tension decreases
+<span class="nc bnc" id="L75" title="All 2 branches missed.">            if (value &lt;= Tension.Level.HAPPY.getLimit()-Tension.DELTA) {</span>
+<span class="nc" id="L76">                return Stance.PEACE;</span>
+            }
+            // Fall through
+        case ALLIANCE: case PEACE: // War if tension increases
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            if (value &gt; Tension.Level.HATEFUL.getLimit()+Tension.DELTA) {</span>
+<span class="nc" id="L81">                return Stance.WAR;</span>
+            }
+            break;
+        case UNCONTACTED:
+<span class="fc" id="L85">            break;</span>
+        default:
+<span class="nc" id="L87">            this.badStance();</span>
+        }
+<span class="fc" id="L89">        return this;</span>
+    }
+
+    /**
+     * A stance change is about to happen.  Get the appropriate tension
+     * modifier.
+     *
+     * @param newStance The new {@code Stance}.
+     * @return A modifier to the current tension.
+     */
+    @SuppressFBWarnings(value=&quot;SF_SWITCH_FALLTHROUGH&quot;)
+    public int getTensionModifier(Stance newStance) {
+<span class="pc bpc" id="L101" title="3 of 6 branches missed.">        switch (newStance) {</span>
+<span class="nc" id="L102">        case UNCONTACTED:     badTransition(newStance);</span>
+<span class="nc" id="L103">            break;</span>
+        case ALLIANCE:
+<span class="nc bnc" id="L105" title="All 6 branches missed.">            switch (this) {</span>
+<span class="nc" id="L106">            case UNCONTACTED: badTransition(newStance);</span>
+<span class="nc" id="L107">            case ALLIANCE:    return 0;</span>
+<span class="nc" id="L108">            case PEACE:       return Tension.ALLIANCE_MODIFIER;</span>
+<span class="nc" id="L109">            case CEASE_FIRE:  return Tension.ALLIANCE_MODIFIER + Tension.PEACE_TREATY_MODIFIER;</span>
+<span class="nc" id="L110">            case WAR:         return Tension.ALLIANCE_MODIFIER + Tension.CEASE_FIRE_MODIFIER + Tension.PEACE_TREATY_MODIFIER;</span>
+<span class="nc" id="L111">            default:          break;</span>
+            }
+            break;
+        case PEACE:
+<span class="pc bpc" id="L115" title="3 of 6 branches missed.">            switch (this) {</span>
+<span class="fc" id="L116">            case UNCONTACTED: return Tension.CONTACT_MODIFIER;</span>
+<span class="nc" id="L117">            case ALLIANCE:    return Tension.DROP_ALLIANCE_MODIFIER;</span>
+<span class="nc" id="L118">            case PEACE:       return 0;</span>
+<span class="fc" id="L119">            case CEASE_FIRE:  return Tension.PEACE_TREATY_MODIFIER;</span>
+<span class="fc" id="L120">            case WAR:         return Tension.CEASE_FIRE_MODIFIER + Tension.PEACE_TREATY_MODIFIER;</span>
+<span class="nc" id="L121">            default:          break;</span>
+            }
+            break;
+        case CEASE_FIRE:
+<span class="pc bpc" id="L125" title="5 of 6 branches missed.">            switch (this) {</span>
+<span class="nc" id="L126">            case UNCONTACTED: badTransition(newStance);</span>
+<span class="nc" id="L127">            case ALLIANCE:    badTransition(newStance);</span>
+<span class="nc" id="L128">            case PEACE:       badTransition(newStance);</span>
+<span class="nc" id="L129">            case CEASE_FIRE:  return 0;</span>
+<span class="fc" id="L130">            case WAR:         return Tension.CEASE_FIRE_MODIFIER;</span>
+<span class="nc" id="L131">            default:          break;</span>
+            }
+            break;
+        case WAR:
+<span class="pc bpc" id="L135" title="4 of 6 branches missed.">            switch (this) {</span>
+<span class="fc" id="L136">            case UNCONTACTED: return Tension.WAR_MODIFIER;</span>
+<span class="nc" id="L137">            case ALLIANCE:    return Tension.WAR_MODIFIER;</span>
+<span class="fc" id="L138">            case PEACE:       return Tension.WAR_MODIFIER;</span>
+<span class="nc" id="L139">            case CEASE_FIRE:  return Tension.RESUME_WAR_MODIFIER;</span>
+<span class="nc" id="L140">            case WAR:         return 0;</span>
+<span class="nc" id="L141">            default:          break;</span>
+            }
+            break;
+        default:
+<span class="nc" id="L145">            throw new RuntimeException(&quot;Bogus newStance: &quot; + newStance);</span>
+        }
+<span class="nc" id="L147">        throw new RuntimeException(&quot;Bogus stance: &quot; + this);</span>
+    }
+
+    /**
+     * Is this stance one that can be incited to war?
+     *
+     * @return True if this stance is incitable.
+     */
+    public boolean isIncitable() {
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        switch (this) {</span>
+<span class="nc" id="L157">        case CEASE_FIRE: case PEACE: return true;</span>
+        default: break;
+        }
+<span class="nc" id="L160">        return false;</span>
+    }
+            
+    /**
+     * Get the stem key.
+     *
+     * @return The stance stem key.
+     */
+    public String getKey() {
+<span class="fc" id="L169">        return &quot;stance.&quot; + getEnumKey(this);</span>
+    }
+
+    /**
+     * Get the message key to use for player messages when stance changes.
+     *
+     * @return A suitable message key.
+     */
+    public String getStanceChangeKey() {
+<span class="fc" id="L178">        return &quot;model.player.&quot; + getKey() + &quot;.declared&quot;;</span>
+    }
+    
+    /**
+     * Get the message key to use for player messages when stance
+     * changes between other players.
+     *
+     * @return A suitable message key.
+     */
+    public String getOtherStanceChangeKey() {
+<span class="nc" id="L188">        return &quot;model.player.&quot; + getKey() + &quot;.others&quot;;</span>
+    }
+    
+    // Implement Named
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getNameKey() {
+<span class="nc" id="L197">        return Messages.nameKey(&quot;model.&quot; + getKey());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

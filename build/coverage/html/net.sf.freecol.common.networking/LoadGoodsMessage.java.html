@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LoadGoodsMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">LoadGoodsMessage.java</span></div><h1>LoadGoodsMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent when loading goods.
+ */
+public class LoadGoodsMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;loadGoods&quot;;
+    private static final String AMOUNT_TAG = &quot;amount&quot;;
+    private static final String CARRIER_TAG = &quot;carrier&quot;;
+    private static final String LOCATION_TAG = &quot;location&quot;;
+    private static final String TYPE_TAG = &quot;type&quot;;
+
+
+    /**
+     * Create a new {@code LoadGoodsMessage}.
+     *
+     * @param loc The {@code Location} of the goods.
+     * @param type The {@code GoodsType} to load.
+     * @param amount The amount of goods to load.
+     * @param carrier The {@code Unit} to load the goods onto.
+     */
+    public LoadGoodsMessage(Location loc, GoodsType type, int amount,
+                            Unit carrier) {
+<span class="fc" id="L57">        super(TAG, LOCATION_TAG, loc.getId(),</span>
+<span class="fc" id="L58">              TYPE_TAG, type.getId(),</span>
+<span class="fc" id="L59">              AMOUNT_TAG, String.valueOf(amount),</span>
+<span class="fc" id="L60">              CARRIER_TAG, carrier.getId());</span>
+<span class="fc" id="L61">    }</span>
+
+    /**
+     * Create a new {@code LoadGoodsMessage} from a stream.
+     *
+     * @param game The {@code Game} to read within.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public LoadGoodsMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L72">        super(TAG, xr, LOCATION_TAG, TYPE_TAG, AMOUNT_TAG, CARRIER_TAG);</span>
+<span class="nc" id="L73">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean currentPlayerMessage() {
+<span class="fc" id="L81">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L89">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="fc" id="L98">        final Game game = freeColServer.getGame();</span>
+<span class="fc" id="L99">        final Specification spec = freeColServer.getSpecification();</span>
+<span class="fc" id="L100">        final String locationId = getStringAttribute(LOCATION_TAG);</span>
+<span class="fc" id="L101">        final String typeId = getStringAttribute(TYPE_TAG);</span>
+<span class="fc" id="L102">        final String carrierId = getStringAttribute(CARRIER_TAG);</span>
+<span class="fc" id="L103">        final String amountString = getStringAttribute(AMOUNT_TAG);</span>
+
+<span class="fc" id="L105">        FreeColGameObject fcgo = game.getFreeColGameObject(locationId);</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (!(fcgo instanceof Location)) {</span>
+<span class="nc" id="L107">            return serverPlayer.clientError(&quot;Not a location: &quot; + locationId);</span>
+        }
+
+        Unit carrier;
+        try {
+<span class="fc" id="L112">            carrier = serverPlayer.getOurFreeColGameObject(carrierId, Unit.class);</span>
+<span class="nc" id="L113">        } catch (Exception e) {</span>
+<span class="nc" id="L114">            return serverPlayer.clientError(e.getMessage());</span>
+<span class="fc" id="L115">        }</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if (!carrier.canCarryGoods()) {</span>
+<span class="nc" id="L117">            return serverPlayer.clientError(&quot;Not a goods carrier: &quot;</span>
+                + carrierId);
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">        } else if (carrier.getTradeLocation() == null) {</span>
+<span class="nc" id="L120">            return serverPlayer.clientError(&quot;Not at a trade location: &quot;</span>
+                + carrierId);
+        }
+
+<span class="fc" id="L124">        GoodsType type = spec.getGoodsType(typeId);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L126">            return serverPlayer.clientError(&quot;Not a goods type: &quot; + typeId);</span>
+        }
+
+        int amount;
+        try {
+<span class="fc" id="L131">            amount = Integer.parseInt(amountString);</span>
+<span class="nc" id="L132">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L133">            return serverPlayer.clientError(&quot;Bad amount: &quot; + amountString);</span>
+<span class="fc" id="L134">        }</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">        if (amount &lt;= 0) {</span>
+<span class="nc" id="L136">            return serverPlayer.clientError(&quot;Amount must be positive: &quot;</span>
+                + amountString);
+        }
+
+        // Load the goods
+<span class="fc" id="L141">        return igc(freeColServer)</span>
+<span class="fc" id="L142">            .loadGoods(serverPlayer, (Location)fcgo, type, amount, carrier);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

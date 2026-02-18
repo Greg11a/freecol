@@ -1,0 +1,632 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnitLocation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">UnitLocation.java</span></div><h1>UnitLocation.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import static net.sf.freecol.common.util.StringUtils.*;
+
+
+/**
+ * The {@code UnitLocation} is a place where a {@code Unit}
+ * can be put.  The UnitLocation can not store any other Locatables,
+ * such as {@link Goods}, or {@link TileItem}s.
+ *
+ * Be *very* careful with use of the units list for low level routines
+ * as distinct from use of getUnits()/getUnitList()/getUnitCount()
+ * etc.  Beware that Colony is a UnitLocation, but it does *not* store
+ * its units in the unit list, they live in its WorkLocations.
+ * Therefore Colony overrides several such routines to do the right thing,
+ * which can lead to confusion especially when debugging.
+ *
+ * @see Locatable
+ */
+public abstract class UnitLocation extends FreeColGameObject implements Location {
+
+<span class="fc" id="L54">    private static final Logger logger = Logger.getLogger(UnitLocation.class.getName());</span>
+
+<span class="fc" id="L56">    public static enum NoAddReason {</span>
+        /**
+         * No reason why Locatable can not be added.
+         */
+<span class="fc" id="L60">        NONE,</span>
+        /**
+         * Unit is already in the location.
+         */
+<span class="fc" id="L64">        ALREADY_PRESENT,</span>
+        /**
+         * Locatable can not be added because it has the wrong
+         * type. E.g. a {@link Building} can not be added to a
+         * {@link Unit}.
+         */
+<span class="fc" id="L70">        WRONG_TYPE,</span>
+        /**
+         * Locatable can not be added because the Location is already
+         * full.
+         */
+<span class="fc" id="L75">        CAPACITY_EXCEEDED,</span>
+        /**
+         * Locatable can not be added because the Location is
+         * occupied by objects belonging to another player.
+         */
+<span class="fc" id="L80">        OCCUPIED_BY_ENEMY,</span>
+        /**
+         * Locatable can not be added because the Location belongs
+         * to another player and does not admit foreign objects.
+         */
+<span class="fc" id="L85">        OWNED_BY_ENEMY,</span>
+        // Enums can not be extended, so ColonyTile-specific failure reasons
+        // have to be here.
+        /**
+         * Claimed and in use by another of our colonies.
+         */
+<span class="fc" id="L91">        ANOTHER_COLONY,</span>
+        /**
+         * Can not add to settlement center tile.
+         */
+<span class="fc" id="L95">        COLONY_CENTER,</span>
+        /**
+         * Missing ability to work colony tile or building.
+         * Currently only produceInWater, which is assumed by the error message
+         */
+<span class="fc" id="L100">        MISSING_ABILITY,</span>
+        /**
+         * The unit has no skill.
+         */
+<span class="fc" id="L104">        MISSING_SKILL,</span>
+        /**
+         * The unit does not have the minimum skill required.
+         */
+<span class="fc" id="L108">        MINIMUM_SKILL,</span>
+        /**
+         * The unit exceeds the maximum skill of this type.
+         */
+<span class="fc" id="L112">        MAXIMUM_SKILL,</span>
+        /**
+         * Either unclaimed or claimed but could be acquired.
+         */
+<span class="fc" id="L116">        CLAIM_REQUIRED,</span>
+        
+        /**
+         * The worker is damaged (not at maximum hitpoints).
+         */
+<span class="fc" id="L121">        WORKER_DAMAGED;</span>
+
+        /**
+         * Get a message key describing this reason.
+         *
+         * @return A message key.
+         */
+        private String getKey() {
+<span class="nc" id="L129">            return &quot;noAddReason.&quot; + getEnumKey(this);</span>
+        }
+
+        /**
+         * Get the description key.
+         *
+         * @return The description key.
+         */
+        public String getDescriptionKey() {
+<span class="nc" id="L138">            return Messages.descriptionKey(&quot;model.&quot; + getKey());</span>
+        }
+    }
+
+    /** The Units present in this Location. */
+<span class="fc" id="L143">    private final List&lt;Unit&gt; units = new ArrayList&lt;&gt;();</span>
+
+
+    /**
+     * Creates a new {@code UnitLocation} instance.
+     *
+     * @param game The enclosing {@code Game}.
+     */
+    public UnitLocation(Game game) {
+<span class="fc" id="L152">        super(game);</span>
+<span class="fc" id="L153">    }</span>
+
+    /**
+     * Creates a new {@code UnitLocation} instance.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param id The object identifier.
+     */
+    public UnitLocation(Game game, String id) {
+<span class="fc" id="L162">        super(game, id);</span>
+<span class="fc" id="L163">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void intern() {
+<span class="nc" id="L171">        super.intern();</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        for (Unit u : this.units) u.intern();</span>
+<span class="nc" id="L173">    }</span>
+    
+    /**
+     * Internal addition of a unit to this location.
+     *
+     * @param u The {@code Unit} to add.
+     * @return True if the unit is added.
+     */
+    private boolean addUnit(Unit u) {
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        if (u == null) return false;</span>
+<span class="fc" id="L183">        boolean ret = false;</span>
+<span class="fc" id="L184">        u.setLocationNoUpdate(this);</span>
+<span class="fc" id="L185">        synchronized (this.units) {</span>
+<span class="fc" id="L186">            ret = this.units.add(u);</span>
+<span class="fc" id="L187">        }</span>
+<span class="fc" id="L188">        return ret;</span>
+    }
+
+
+    // Some useful utilities, marked final as they will work as long
+    // as working implementations of getUnits/List(), getUnitCount(),
+    // getUnitCapacity() and getSettlement() are provided.
+
+    /**
+     * Is this unit location empty?
+     *
+     * @return a {@code boolean} value
+     */
+    public final boolean isEmpty() {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        return getUnitCount() == 0;</span>
+    }
+
+    /**
+     * Is this unit location full?
+     *
+     * @return True if this location is full.
+     */
+    public final boolean isFull() {
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        return getUnitCount() &gt;= getUnitCapacity();</span>
+    }
+
+    /**
+     * Gets the first Unit at this unit location.
+     *
+     * @return The first {@code Unit}.
+     */
+    public final Unit getFirstUnit() {
+<span class="fc" id="L220">        return first(getUnits());</span>
+    }
+
+    /**
+     * Gets the last Unit at this unit location.
+     *
+     * @return The last {@code Unit}.
+     */
+    public final Unit getLastUnit() {
+<span class="nc bnc" id="L229" title="All 2 branches missed.">        if (isEmpty()) return null;</span>
+<span class="nc" id="L230">        List&lt;Unit&gt; units = getUnitList();</span>
+<span class="nc" id="L231">        return units.get(units.size()-1);</span>
+    }
+
+    /**
+     * Gets the total amount of Units at this Location, including
+     * units on a carrier.
+     *
+     * @return The total number of {@code Unit}s at this
+     *     {@code Location}.
+     */
+    public int getTotalUnitCount() {
+<span class="nc" id="L242">        return sum(getUnits(), u -&gt; 1 + u.getUnitCount());</span>
+    }
+
+    /**
+     * Checks if there is a useable carrier unit with a specified
+     * minimum amount of space available in this location.
+     *
+     * @param space The amount of space to require.
+     * @return True if there is a suitable unit present.
+     * @see Unit#isCarrier
+     */
+    public boolean hasCarrierWithSpace(int space) {
+<span class="nc bnc" id="L254" title="All 4 branches missed.">        return any(getUnits(), u -&gt; u.isCarrier() &amp;&amp; !u.isDamagedAndUnderForcedRepair()</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">            &amp;&amp; u.getSpaceLeft() &gt;= space);</span>
+    }
+
+    /**
+     * Gets a list of all naval units here.
+     *
+     * @return A list of naval {@code Unit}s present.
+     */
+    public List&lt;Unit&gt; getNavalUnits() {
+<span class="fc" id="L264">        return transform(getUnits(), Unit::isNaval);</span>
+    }
+
+    /**
+     * Gets a carrier for the supplied unit, if one exists.
+     *
+     * @param unit The {@code Unit} to carry.
+     * @return A suitable carrier or null if none found.
+     */
+    public Unit getCarrierForUnit(Unit unit) {
+<span class="nc" id="L274">        return find(getUnits(), u -&gt; u.couldCarry(unit));</span>
+    }
+
+
+    // Override FreeColGameObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Stream&lt;FreeColGameObject&gt; getDisposables() {
+<span class="fc" id="L285">        synchronized (this.units) {</span>
+<span class="fc" id="L286">            return concat(flatten(this.units, Unit::getDisposables),</span>
+<span class="fc" id="L287">                          super.getDisposables());</span>
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void disposeResources() {
+<span class="fc" id="L296">        synchronized (this.units) {</span>
+<span class="fc" id="L297">            this.units.clear();</span>
+<span class="fc" id="L298">        }</span>
+<span class="fc" id="L299">        super.disposeResources();</span>
+<span class="fc" id="L300">    }</span>
+
+
+    // Interface Location
+    // Inheriting
+    //   FreeColObject.getId()
+    // Does not implement getRank()
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Tile getTile() {
+<span class="fc" id="L313">        return null; // Override this where it becomes meaningful.</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getLocationLabel() {
+<span class="nc" id="L321">        return StringTemplate.key(getId());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getLocationLabelFor(Player player) {
+<span class="fc" id="L329">        return getLocationLabel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean add(Locatable locatable) {
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        if (locatable instanceof Unit) {</span>
+<span class="fc" id="L338">            Unit unit = (Unit) locatable;</span>
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">            if (contains(unit)) {</span>
+<span class="nc" id="L340">                return true;</span>
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">            } else if (canAdd(unit)) {</span>
+<span class="fc" id="L342">                return addUnit(unit);</span>
+            }
+<span class="nc bnc" id="L344" title="All 2 branches missed.">        } else if (locatable instanceof Goods) {</span>
+            // dumping goods is a valid action
+<span class="nc" id="L346">            locatable.setLocation(null);</span>
+<span class="nc" id="L347">            logger.finest(&quot;Dumped &quot; + locatable + &quot; in UnitLocation with id &quot;</span>
+<span class="nc" id="L348">                          + getId());</span>
+<span class="nc" id="L349">            return true;</span>
+        } else {
+<span class="nc" id="L351">            logger.warning(&quot;Tried to add Locatable &quot; + locatable</span>
+<span class="nc" id="L352">                           + &quot; to UnitLocation with id &quot; + getId() + &quot;.&quot;);</span>
+        }
+<span class="nc" id="L354">        return false;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean remove(Locatable locatable) {
+<span class="pc bpc" id="L362" title="1 of 2 branches missed.">        if (locatable instanceof Unit) {</span>
+<span class="fc" id="L363">            Unit unit = (Unit)locatable;</span>
+<span class="fc" id="L364">            synchronized (this.units) {</span>
+<span class="pc bpc" id="L365" title="1 of 2 branches missed.">                if (!this.units.remove(unit)) return false;</span>
+<span class="fc" id="L366">            }</span>
+<span class="fc" id="L367">            unit.setLocationNoUpdate(null);</span>
+<span class="fc" id="L368">            return true;</span>
+        } else {
+<span class="nc" id="L370">            logger.warning(&quot;Tried to remove non-Unit &quot; + locatable</span>
+<span class="nc" id="L371">                           + &quot; from UnitLocation: &quot; + getId());</span>
+<span class="nc" id="L372">            return false;</span>
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean contains(Locatable locatable) {
+<span class="pc bpc" id="L381" title="1 of 2 branches missed.">        if (!(locatable instanceof Unit)) return false;</span>
+<span class="fc" id="L382">        synchronized (this.units) {</span>
+<span class="fc" id="L383">            return this.units.contains(locatable);</span>
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canAdd(Locatable locatable) {
+<span class="fc bfc" id="L392" title="All 2 branches covered.">        return getNoAddReason(locatable) == NoAddReason.NONE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getUnitCount() {
+<span class="fc" id="L400">        synchronized (this.units) {</span>
+<span class="fc" id="L401">            return this.units.size();</span>
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Stream&lt;Unit&gt; getUnits() {
+<span class="fc" id="L410">        synchronized (this.units) {</span>
+<span class="fc" id="L411">            return this.units.stream();</span>
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;Unit&gt; getUnitList() {
+<span class="fc" id="L420">        synchronized (this.units) {</span>
+<span class="fc bfc" id="L421" title="All 2 branches covered.">            return (this.units.isEmpty()) ? Collections.&lt;Unit&gt;emptyList()</span>
+<span class="fc" id="L422">                : new ArrayList&lt;&gt;(this.units);</span>
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public GoodsContainer getGoodsContainer() {
+<span class="nc" id="L431">        return null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Settlement getSettlement() {
+<span class="fc" id="L439">        return null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Colony getColony() {
+        // Final as this will always work if getSettlement() does.
+<span class="fc" id="L448">        Settlement settlement = getSettlement();</span>
+<span class="fc bfc" id="L449" title="All 2 branches covered.">        return (settlement instanceof Colony) ? (Colony)settlement : null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IndianSettlement getIndianSettlement() {
+        // Final as this will always work if getSettlement() does.
+<span class="fc" id="L458">        Settlement settlement = getSettlement();</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">        return (settlement instanceof IndianSettlement)</span>
+<span class="fc" id="L460">            ? (IndianSettlement)settlement : null;</span>
+    }
+
+
+    // Overrideable routines to be implemented by UnitLocation subclasses.
+
+    /**
+     * Gets the current space taken by the units in this location.
+     *
+     * Note that Units are also unit locations, but their space taken is
+     * derived from the spec, so this routine must be overrideable.
+     *
+     * @return The sum of the space taken by the units in this location.
+     */
+    public int getSpaceTaken() {
+<span class="fc" id="L475">        return sum(getUnits(), Unit::getSpaceTaken);</span>
+    }
+
+    /**
+     * Move the given unit to the front of the units list.
+     *
+     * @param u The {@code Unit} to move to the front.
+     */
+    public void moveToFront(Unit u) {
+<span class="nc" id="L484">        synchronized (this.units) {</span>
+<span class="nc bnc" id="L485" title="All 2 branches missed.">            if (this.units.remove(u)) this.units.add(0, u);</span>
+<span class="nc" id="L486">        }</span>
+<span class="nc" id="L487">    }</span>
+
+    /**
+     * Clear the units from this container.
+     */
+    protected void clearUnitList() {
+<span class="fc" id="L493">        synchronized (this.units) {</span>
+<span class="fc" id="L494">            this.units.clear();</span>
+<span class="fc" id="L495">        }</span>
+<span class="fc" id="L496">    }</span>
+
+    /**
+     * Gets the reason why a given {@code Locatable} can not be
+     * added to this Location.
+     *
+     * Be careful to test for unit presence last before success
+     * (NoAddReason.NONE) except perhaps for the capacity test, so
+     * that we can treat ALREADY_PRESENT as success in some cases
+     * (e.g. if the unit changes type --- does it still have a
+     * required skill?)
+     *
+     * FIXME: consider moving this up to Location?
+     *
+     * @param locatable The {@code Locatable} to test.
+     * @return The reason why adding would fail.
+     */
+    public NoAddReason getNoAddReason(Locatable locatable) {
+<span class="pc bpc" id="L514" title="1 of 2 branches missed.">        Unit unit = (locatable instanceof Unit) ? (Unit)locatable : null;</span>
+<span class="pc bpc" id="L515" title="1 of 2 branches missed.">        return (unit == null)</span>
+<span class="nc" id="L516">            ? NoAddReason.WRONG_TYPE</span>
+<span class="pc bpc" id="L517" title="1 of 4 branches missed.">            : (!isEmpty() &amp;&amp; getFirstUnit().getOwner() != unit.getOwner())</span>
+<span class="nc" id="L518">            ? NoAddReason.OCCUPIED_BY_ENEMY</span>
+<span class="pc bpc" id="L519" title="1 of 2 branches missed.">            : (contains(unit))</span>
+<span class="nc" id="L520">            ? NoAddReason.ALREADY_PRESENT</span>
+<span class="fc bfc" id="L521" title="All 2 branches covered.">            : (unit.getSpaceTaken() + getSpaceTaken() &gt; getUnitCapacity())</span>
+<span class="fc" id="L522">            ? NoAddReason.CAPACITY_EXCEEDED</span>
+<span class="fc" id="L523">            : NoAddReason.NONE;</span>
+    }
+
+    /**
+     * Gets the maximum number of {@code Units} this Location
+     * can hold.  To be overridden by subclasses.
+     *
+     * @return Integer.MAX_VALUE, denoting no effective limit.
+     */
+    public int getUnitCapacity() {
+<span class="fc" id="L533">        return Integer.MAX_VALUE;</span>
+    }
+
+    /**
+     * What would the price be for a collection of goods at this location?
+     *
+     * @param goods The list of {@code AbstractGoods} to check for.
+     * @return The net cost of acquiring the goods at this location.
+     * @exception FreeColException if the goods are unavailable for any reason.
+     */
+    public int priceGoods(List&lt;AbstractGoods&gt; goods) throws FreeColException {
+<span class="nc bnc" id="L544" title="All 2 branches missed.">        if (goods.isEmpty()) return 0;</span>
+<span class="nc" id="L545">        throw new FreeColException(&quot;Not available: &quot; + goods.get(0));</span>
+    }
+
+    /**
+     * Equip a unit for a role using resources at this location.
+     *
+     * @param unit The {@code Unit} to equip.
+     * @param role The {@code Role} to build for.
+     * @param roleCount The role count.
+     * @return True if the equipping succeeded.
+     */
+    public boolean equipForRole(Unit unit, Role role, int roleCount) {
+<span class="nc" id="L557">        return false;</span>
+    }
+
+
+    // Overide FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L568">        UnitLocation o = copyInCast(other, UnitLocation.class);</span>
+<span class="nc bnc" id="L569" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L570">        final Game game = getGame();</span>
+<span class="nc" id="L571">        clearUnitList();</span>
+<span class="nc bnc" id="L572" title="All 2 branches missed.">        for (Unit u : o.units) { // Allow creation, unit may be new</span>
+<span class="nc" id="L573">            Unit nu = game.update(u, true);</span>
+<span class="nc" id="L574">            addUnit(nu);</span>
+<span class="nc" id="L575">        }</span>
+<span class="nc" id="L576">        return true;</span>
+    }
+
+
+    // Serialization
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L587">        super.writeChildren(xw);</span>
+
+<span class="fc" id="L589">        synchronized (this.units) {</span>
+            // Do *not* use getUnits/List here, because Colony lies!
+<span class="fc bfc" id="L591" title="All 2 branches covered.">            for (Unit unit : this.units) {</span>
+<span class="pc bpc" id="L592" title="1 of 2 branches missed.">                if (unit.getLocation() != this) {</span>
+<span class="nc" id="L593">                    logger.warning(&quot;UnitLocation &quot; + this</span>
+                        + &quot; contains unit &quot; + unit
+<span class="nc" id="L595">                        + &quot; with bogus location &quot; + unit.getLocation()</span>
+                        + &quot;, fixing.&quot;);
+<span class="nc" id="L597">                    unit.setLocationNoUpdate(this);</span>
+                }
+<span class="fc" id="L599">                unit.toXML(xw);</span>
+<span class="fc" id="L600">            }</span>
+<span class="fc" id="L601">        }</span>
+<span class="fc" id="L602">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+        // Clear containers.
+<span class="fc" id="L610">        clearUnitList();</span>
+
+<span class="fc" id="L612">        super.readChildren(xr);</span>
+<span class="fc" id="L613">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L620">        final String tag = xr.getLocalName();</span>
+
+<span class="pc bpc" id="L622" title="1 of 2 branches missed.">        if (Unit.TAG.equals(tag)) {</span>
+<span class="fc" id="L623">            addUnit(xr.readFreeColObject(getGame(), Unit.class));</span>
+
+        } else {
+<span class="nc" id="L626">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L628">    }</span>
+
+    // getXMLTagName left to subclasses
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

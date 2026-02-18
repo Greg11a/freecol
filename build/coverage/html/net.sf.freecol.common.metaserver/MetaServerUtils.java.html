@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetaServerUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.metaserver</a> &gt; <span class="el_source">MetaServerUtils.java</span></div><h1>MetaServerUtils.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.metaserver;
+
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.matchKeyEquals;
+import static net.sf.freecol.common.util.Utils.delay;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.networking.Connection;
+import net.sf.freecol.common.networking.ConnectionVerificationMessage;
+import net.sf.freecol.common.networking.DisconnectMessage;
+import net.sf.freecol.common.networking.Message;
+import net.sf.freecol.common.networking.MessageHandler;
+import net.sf.freecol.common.networking.RegisterServerMessage;
+import net.sf.freecol.common.networking.RemoveServerMessage;
+import net.sf.freecol.common.networking.ServerListMessage;
+import net.sf.freecol.common.networking.UpdateServerMessage;
+
+
+/**
+ * Wrapper class to contain utility functions used by the FreeColServer to
+ * talk to the meta-server.
+ */
+<span class="nc" id="L59">public class MetaServerUtils {</span>
+
+    private static final long METASERVER_REPLY_TIMEOUT = 10000;
+
+<span class="nc" id="L63">    private static final Logger logger = Logger.getLogger(MetaServerUtils.class.getName());</span>
+
+    /**
+     * Handle messages sent by the meta-server.
+     * Currently, only &quot;serverList&quot;.
+     */
+    public static class MetaInputHandler implements MessageHandler {
+
+<span class="nc" id="L71">        private static final Logger logger = Logger.getLogger(MetaInputHandler.class.getName());</span>
+        
+        /** Callback to swallow server lists. */
+        public final Consumer&lt;List&lt;ServerInfo&gt;&gt; consumer;
+
+
+        /**
+         * Create a new MetaInputHandler with a given consumer.
+         *
+         * @param consumer The {@code Consumer} to swallow the server list.
+         */
+<span class="nc" id="L82">        public MetaInputHandler(Consumer&lt;List&lt;ServerInfo&gt;&gt; consumer) {</span>
+<span class="nc" id="L83">            this.consumer = consumer;</span>
+<span class="nc" id="L84">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        public Message handle(Connection connection, Message message)
+            throws FreeColException {
+<span class="nc bnc" id="L91" title="All 2 branches missed.">            if (message == null) return null;</span>
+<span class="nc" id="L92">            final String tag = message.getType();</span>
+<span class="nc bnc" id="L93" title="All 3 branches missed.">            switch (tag) {</span>
+            case DisconnectMessage.TAG:
+<span class="nc" id="L95">                break;</span>
+            case ServerListMessage.TAG:
+<span class="nc" id="L97">                ServerListMessage slm = (ServerListMessage)message;</span>
+<span class="nc" id="L98">                this.consumer.accept(slm.getServers());</span>
+<span class="nc" id="L99">                break;</span>
+            default:
+<span class="nc" id="L101">                logger.warning(&quot;MetaInputHandler does not handle: &quot; + tag);</span>
+                break;
+            }
+<span class="nc" id="L104">            return null;</span>
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public Message read(Connection connection)
+            throws FreeColException, XMLStreamException {
+<span class="nc" id="L112">            return Message.read(null, connection.getFreeColXMLReader());</span>
+        }
+    }
+
+    /** Client timer update interval. */
+    private static final int UPDATE_INTERVAL = 60000;
+
+    /** Sentinel server info to allow check for activity. */
+<span class="nc" id="L120">    private static final ServerInfo sentinel = new ServerInfo(null,</span>
+        null, -1, -1, -1, false, null, -1);
+
+    /** Type of message to send. */
+<span class="nc" id="L124">    private static enum MetaMessageType {</span>
+<span class="nc" id="L125">        REGISTER,</span>
+<span class="nc" id="L126">        REMOVE,</span>
+<span class="nc" id="L127">        SERVERLIST,</span>
+<span class="nc" id="L128">        UPDATE,</span>
+    };
+    
+<span class="nc" id="L131">    private static Map&lt;Timer, ServerInfo&gt; updaters</span>
+<span class="nc" id="L132">        = Collections.synchronizedMap(new HashMap&lt;&gt;());</span>
+
+
+    // Internal utilities
+
+    /**
+     * Find a timer for the given server.
+     *
+     * @param si The new {@code ServerInfo} to look for.
+     * @return The {@code Timer} found if any.
+     */
+    private static Timer findTimer(final ServerInfo si) {
+<span class="nc" id="L144">        Entry&lt;Timer, ServerInfo&gt; entry = find(updaters.entrySet(),</span>
+<span class="nc" id="L145">            matchKeyEquals(si.getName(),</span>
+<span class="nc" id="L146">                (Entry&lt;Timer,ServerInfo&gt; e) -&gt; e.getValue().getName()));</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        return (entry == null) ? null : entry.getKey();</span>
+    }
+
+    /**
+     * Utility to start an update timer for a given server.
+     *
+     * @param si The new {@code ServerInfo} to update with.
+     * @return True if the timer was started.
+     */
+    private static boolean startTimer(final ServerInfo si) {
+        // This update is really a &quot;Hi! I am still here!&quot;-message,
+        // since an additional update should be sent when a new
+        // player is added to/removed from this server etc.
+<span class="nc" id="L160">        final Timer t = new Timer(true);</span>
+<span class="nc" id="L161">        updaters.put(t, si);</span>
+<span class="nc" id="L162">        t.scheduleAtFixedRate(new TimerTask() {</span>
+                @Override
+                public void run() {
+<span class="nc" id="L165">                    ServerInfo si = updaters.get(t);</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">                    if (si == null) {</span>
+<span class="nc" id="L167">                        cancel();</span>
+                    } else {
+<span class="nc" id="L169">                        updateServer(si);</span>
+                    }
+<span class="nc" id="L171">                }</span>
+            }, UPDATE_INTERVAL, UPDATE_INTERVAL);
+<span class="nc" id="L173">        return true;</span>
+    }
+
+    /**
+     * Update a currently running timer with new server info.
+     *
+     * @param si The new {@code ServerInfo} to update with.
+     * @return True if the timer was updated.
+     */
+    private static boolean updateTimer(final ServerInfo si) {
+<span class="nc" id="L183">        Timer t = findTimer(si);</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        if (t == null) return false;</span>
+<span class="nc" id="L185">        updaters.put(t, si);</span>
+<span class="nc" id="L186">        return true;</span>
+    }
+
+    /**
+     * Stop a currently running timer.
+     *
+     * @param si The new {@code ServerInfo} to update with.
+     * @return True if the timer was remove.
+     */
+    private static boolean stopTimer(final ServerInfo si) {
+<span class="nc" id="L196">        Timer t = findTimer(si);</span>
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        if (t == null) return false;</span>
+<span class="nc" id="L198">        t.cancel();</span>
+<span class="nc" id="L199">        updaters.remove(t);</span>
+<span class="nc" id="L200">        return true;</span>
+    }
+
+    /**
+     * Utility to get a connection to the meta-server and handle the
+     * server list it returns.
+     *
+     * @param lsi A list of {@code ServerInfo} records, to be filled in
+     *     by the meta-server.     
+     * @return A {@code Connection}, or null on failure.
+     */
+    private static Connection getMetaServerConnection(List&lt;ServerInfo&gt; lsi) {
+        // Create a consumer for the response to meta-server
+        // &quot;serverList&quot; messages.  Most of the time we do not care, so
+        // the default is to do nothing, however if we have a non-null
+        // server info list, arrange to fill it.
+<span class="nc" id="L216">        Consumer&lt;List&lt;ServerInfo&gt;&gt; consumer = (List&lt;ServerInfo&gt; l) -&gt; {};</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        if (lsi != null) {</span>
+<span class="nc" id="L218">            lsi.clear();</span>
+<span class="nc" id="L219">            lsi.add(sentinel);</span>
+<span class="nc" id="L220">            consumer = (l) -&gt; {</span>
+<span class="nc" id="L221">                lsi.clear();</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">                if (lsi != null) lsi.addAll(l);</span>
+<span class="nc" id="L223">            };</span>
+        }
+
+<span class="nc" id="L226">        String host = FreeCol.getMetaServerAddress();</span>
+<span class="nc" id="L227">        int port = FreeCol.getMetaServerPort();</span>
+        try {
+            @SuppressWarnings(&quot;resource&quot;)
+<span class="nc" id="L230">            final Connection c = new Connection(host, port, &quot;MetaServer&quot;).setMessageHandler(new MetaInputHandler(consumer));</span>
+<span class="nc" id="L231">            c.startReceiving();</span>
+<span class="nc" id="L232">            return c;</span>
+<span class="nc" id="L233">        } catch (IOException ioe) {</span>
+<span class="nc" id="L234">            logger.log(Level.WARNING, &quot;Could not connect to meta-server: &quot;</span>
+                + host + &quot;:&quot; + port, ioe);
+        }
+<span class="nc" id="L237">        return null;</span>
+    }
+
+    /**
+     * Send a message to the meta-server.
+     *
+     * @param type The {@code MetaMessageType} to send.
+     * @param si The associated {@code ServerInfo}.
+     * @return True if the operation succeeds.
+     */
+    private static boolean metaMessage(MetaMessageType type, ServerInfo si) {
+<span class="nc" id="L248">        try (Connection mc = getMetaServerConnection(null)) {</span>
+<span class="nc bnc" id="L249" title="All 4 branches missed.">            switch (type) {</span>
+            case REGISTER:
+<span class="nc" id="L251">                startTimer(si);</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">                if (mc != null) {</span>
+<span class="nc" id="L253">                    final ConnectionVerificationMessage reply = (ConnectionVerificationMessage) mc.askMessage(</span>
+                            new RegisterServerMessage(si), METASERVER_REPLY_TIMEOUT);
+<span class="nc" id="L255">                    return reply.isConnectable();</span>
+                }
+            case REMOVE:
+<span class="nc" id="L258">                stopTimer(si);</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">                if (mc != null) {</span>
+<span class="nc" id="L260">                    mc.sendMessage(new RemoveServerMessage(si));</span>
+                }
+<span class="nc" id="L262">                return true;</span>
+            case UPDATE:
+<span class="nc" id="L264">                updateTimer(si);</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">                if (mc != null) {</span>
+<span class="nc" id="L266">                    mc.sendMessage(new UpdateServerMessage(si));</span>
+                }
+<span class="nc" id="L268">                return true;</span>
+            default:
+<span class="nc" id="L270">                logger.log(Level.WARNING, &quot;Wrong metaMessage type: &quot; + type);</span>
+                break;
+            }
+<span class="nc bnc" id="L273" title="All 6 branches missed.">        } catch (FreeColException|IOException|XMLStreamException|TimeoutException ex) {</span>
+<span class="nc" id="L274">            logger.log(Level.WARNING, &quot;Meta message &quot; + type + &quot; failure.&quot;, ex);</span>
+            // Do not fail: Try registering again later:
+<span class="nc" id="L276">            return true;</span>
+<span class="nc" id="L277">        }</span>
+<span class="nc" id="L278">        return true;</span>
+    }
+
+
+    // Public interface
+
+    /**
+     * Gets a list of servers from the meta server.
+     *
+     * @return A list of {@link ServerInfo} objects, or null on error.
+     */
+    public static List&lt;ServerInfo&gt; getServerList() {
+<span class="nc" id="L290">        List&lt;ServerInfo&gt; lsi = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L291">        List&lt;ServerInfo&gt; ret = null;</span>
+<span class="nc" id="L292">        Connection mc = getMetaServerConnection(lsi);</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">        if (mc == null) {</span>
+<span class="nc" id="L294">            logger.warning(&quot;Could not connect to metaserver.&quot;);</span>
+<span class="nc" id="L295">            return null;</span>
+        }
+        try {
+<span class="nc" id="L298">            mc.sendMessage(new ServerListMessage());</span>
+
+<span class="nc" id="L300">            final int MAXTRIES = 5;</span>
+<span class="nc" id="L301">            final int SLEEP_TIME = 1000; // 1s</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">            for (int n = MAXTRIES; n &gt; 0; n--) {</span>
+<span class="nc bnc" id="L303" title="All 4 branches missed.">                if (lsi.size() != 1 || lsi.get(0) != sentinel) {</span>
+<span class="nc" id="L304">                    ret = new ArrayList&lt;&gt;(lsi);</span>
+<span class="nc" id="L305">                    break;</span>
+                }
+<span class="nc" id="L307">                delay(SLEEP_TIME, &quot;Delay interrupted&quot;);</span>
+            }
+<span class="nc bnc" id="L309" title="All 2 branches missed.">            if (ret == null) logger.warning(&quot;No response from metaserver.&quot;);</span>
+<span class="nc" id="L310">        } catch (FreeColException|IOException|XMLStreamException ex) {</span>
+<span class="nc" id="L311">            logger.log(Level.WARNING, &quot;Get server list failure&quot;, ex);</span>
+        } finally {
+<span class="nc" id="L313">            mc.close();</span>
+        }
+<span class="nc" id="L315">        return ret;</span>
+    }
+
+    /**
+     * Register a public server.
+     *
+     * If successful, an update timer will be returned, which will
+     * continually send update messages to the meta-server until cancelled.
+     *
+     * @param si The {@code ServerInfo} describing the server to register.
+     * @return True if the server was registered.
+     */
+    public static boolean registerServer(ServerInfo si) {
+<span class="nc" id="L328">        return metaMessage(MetaMessageType.REGISTER, si);</span>
+    }
+
+    /**
+     * Remove a public server.
+     *
+     * @param si The {@code ServerInfo} describing the server to remove.
+     * @return True if the server was removed.
+     */
+    public static boolean removeServer(ServerInfo si) {
+<span class="nc" id="L338">        return metaMessage(MetaMessageType.REMOVE, si);</span>
+    }
+
+    /**
+     * Update a public server.
+     *
+     * @param si The {@code ServerInfo} describing the server to update.
+     * @return True if the server was updated.
+     */
+    public static boolean updateServer(ServerInfo si) {
+<span class="nc" id="L348">        return metaMessage(MetaMessageType.UPDATE, si);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

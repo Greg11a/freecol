@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RebelToolTip.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.tooltip</a> &gt; <span class="el_source">RebelToolTip.java</span></div><h1>RebelToolTip.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.tooltip;
+
+import static net.sf.freecol.common.util.CollectionUtils.forEach;
+
+import java.awt.BorderLayout;
+import java.util.List;
+
+import javax.swing.JLabel;
+import javax.swing.JToolTip;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ModifierFormat;
+import net.sf.freecol.client.gui.label.ProductionLabel;
+import net.sf.freecol.client.gui.panel.FreeColProgressBar;
+import net.sf.freecol.client.gui.panel.MigPanel;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.FeatureContainer;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Modifier;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Turn;
+import net.sf.freecol.common.option.GameOptions;
+
+
+/**
+ * This panel provides detailed information about rebels in a colony.
+ */
+public class RebelToolTip extends JToolTip {
+
+    /**
+     * Creates a RebelToolTip.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param colony The {@code Colony} for which to display information.
+     */
+<span class="nc" id="L60">    public RebelToolTip(FreeColClient freeColClient, Colony colony) {</span>
+<span class="nc" id="L61">        final Specification spec = colony.getSpecification();</span>
+<span class="nc" id="L62">        final List&lt;GoodsType&gt; libertyGoods = spec.getLibertyGoodsTypeList();</span>
+<span class="nc" id="L63">        final int population = colony.getUnitCount();</span>
+<span class="nc" id="L64">        final int solPercent = colony.getSonsOfLiberty();</span>
+<span class="nc" id="L65">        final int rebelCount = Colony.calculateRebelCount(population, solPercent);</span>
+<span class="nc" id="L66">        final Turn turn = colony.getGame().getTurn();</span>
+        
+<span class="nc" id="L68">        setLayout(new BorderLayout());</span>
+<span class="nc" id="L69">        final MigPanel content = new MigPanel(new MigLayout(&quot;fill, wrap 3&quot;, &quot;[300px][50px, right][50px, right]&quot;, &quot;&quot;));</span>
+
+<span class="nc" id="L71">        content.add(Utility.localizedLabel(StringTemplate</span>
+<span class="nc" id="L72">                .template(&quot;rebelToolTip.rebelLabel&quot;)</span>
+<span class="nc" id="L73">                .addName(&quot;%number%&quot;, &quot;&quot;)));</span>
+
+<span class="nc" id="L75">        content.add(new JLabel(Integer.toString(rebelCount)));</span>
+
+<span class="nc" id="L77">        content.add(new JLabel(solPercent + &quot;%&quot;));</span>
+
+<span class="nc" id="L79">        content.add(Utility.localizedLabel(StringTemplate</span>
+<span class="nc" id="L80">                .template(&quot;rebelToolTip.royalistLabel&quot;)</span>
+<span class="nc" id="L81">                .addName(&quot;%number%&quot;, &quot;&quot;)));</span>
+
+<span class="nc" id="L83">        content.add(new JLabel(Integer.toString(population - rebelCount)));</span>
+
+<span class="nc" id="L85">        content.add(new JLabel((100 - solPercent) + &quot;%&quot;));</span>
+
+<span class="nc" id="L87">        int libertyProduction = 0;</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        for (GoodsType goodsType : libertyGoods) {</span>
+<span class="nc" id="L89">            content.add(new JLabel(Messages.getName(goodsType)));</span>
+<span class="nc" id="L90">            int production = colony.getNetProductionOf(goodsType);</span>
+<span class="nc" id="L91">            libertyProduction += production;</span>
+<span class="nc" id="L92">            content.add(new ProductionLabel(freeColClient,</span>
+                    new AbstractGoods(goodsType, production)), &quot;span 2&quot;);
+<span class="nc" id="L94">        }</span>
+<span class="nc" id="L95">        libertyProduction = (int) FeatureContainer</span>
+<span class="nc" id="L96">                .applyModifiers((float) libertyProduction, turn,</span>
+<span class="nc" id="L97">                        colony.getOwner().getModifiers(Modifier.LIBERTY));</span>
+<span class="nc" id="L98">        forEach(colony.getOwner().getModifiers(Modifier.LIBERTY), m -&gt; {</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">                for (JLabel j : ModifierFormat.getModifierLabels(m, null, turn)) {</span>
+<span class="nc" id="L100">                    content.add(j);</span>
+                }
+<span class="nc" id="L102">            });</span>
+
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        boolean capped = spec.getBoolean(GameOptions.BELL_ACCUMULATION_CAPPED)</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">                &amp;&amp; colony.getSonsOfLiberty() &gt;= 100;</span>
+<span class="nc" id="L106">        final int liberty = colony.getLiberty();</span>
+<span class="nc" id="L107">        final int modulo = liberty % Colony.LIBERTY_PER_REBEL;</span>
+<span class="nc" id="L108">        FreeColProgressBar progress</span>
+<span class="nc" id="L109">            = new FreeColProgressBar(freeColClient, libertyGoods.get(0), 0,</span>
+                                     Colony.LIBERTY_PER_REBEL, modulo,
+<span class="nc bnc" id="L111" title="All 2 branches missed.">                                     ((capped) ? 0 : libertyProduction));</span>
+<span class="nc" id="L112">        content.add(progress, &quot;span 3, alignx center, height 20:&quot;);</span>
+
+<span class="nc" id="L114">        int turnsNext = -1, turns50 = -1, turns100 = -1;</span>
+<span class="nc bnc" id="L115" title="All 4 branches missed.">        if (libertyProduction &gt; 0 &amp;&amp; !capped) {</span>
+<span class="nc" id="L116">            List&lt;Integer&gt; bonus = colony.rebelHelper(libertyProduction);</span>
+<span class="nc" id="L117">            turnsNext = bonus.get(0);</span>
+<span class="nc" id="L118">            turns50 = bonus.get(1);</span>
+<span class="nc" id="L119">            turns100 = bonus.get(2);</span>
+        }
+
+<span class="nc" id="L122">        final String na = Messages.message(&quot;notApplicable&quot;);</span>
+<span class="nc" id="L123">        content.add(Utility.localizedLabel(&quot;rebelToolTip.nextMember&quot;));</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        content.add(new JLabel((turnsNext &lt; 0) ? na</span>
+<span class="nc" id="L125">                : String.valueOf((int)Math.ceil(turnsNext))), &quot;skip&quot;);</span>
+
+        // Displays the number of turns until 50% of the population is Rebel
+        // If the colony has passed 50%, then do not display notice.
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (turns50 &gt; 0) {</span>
+<span class="nc" id="L130">            content.add(Utility.localizedLabel(&quot;rebelToolTip.50percent&quot;));</span>
+<span class="nc" id="L131">            content.add(new JLabel(String.valueOf((int)Math.ceil(turns50))), &quot;skip&quot;);</span>
+        }
+
+        // DDisplays the number of turns until 100% of the population is Rebel
+        // If the colony has passed 100%, then do not display notice.
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (turns100 &gt; 0) {</span>
+<span class="nc" id="L137">            content.add(Utility.localizedLabel(&quot;rebelToolTip.100percent&quot;));</span>
+<span class="nc" id="L138">            content.add(new JLabel(String.valueOf((int)Math.ceil(turns100))), &quot;skip&quot;);</span>
+        }
+
+<span class="nc" id="L141">        final int grow = colony.getPreferredSizeChange();</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (grow &gt;= Colony.CHANGE_UPPER_BOUND) {</span>
+<span class="nc" id="L143">            content.add(Utility.localizedLabel(&quot;rebelToolTip.changeMore&quot;));</span>
+<span class="nc" id="L144">            content.add(Utility.localizedLabel(&quot;many&quot;), &quot;skip&quot;);</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        } else if (grow &gt;= 0) {</span>
+<span class="nc" id="L146">            content.add(Utility.localizedLabel(&quot;rebelToolTip.changeMore&quot;));</span>
+<span class="nc" id="L147">            content.add(new JLabel(String.valueOf(grow)), &quot;skip&quot;);</span>
+        } else { // grow &lt; 0
+<span class="nc" id="L149">            content.add(Utility.localizedLabel(&quot;rebelToolTip.changeLess&quot;));</span>
+<span class="nc" id="L150">            content.add(new JLabel(String.valueOf(-grow)), &quot;skip&quot;);</span>
+        }
+<span class="nc" id="L152">        setPreferredSize(content.getPreferredSize());   </span>
+<span class="nc" id="L153">        add(content, BorderLayout.CENTER);</span>
+<span class="nc" id="L154">    }</span>
+
+    // Override Component
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void removeNotify() {
+<span class="nc" id="L163">        super.removeNotify();</span>
+
+<span class="nc" id="L165">        removeAll();</span>
+<span class="nc" id="L166">        setLayout(null);</span>
+<span class="nc" id="L167">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

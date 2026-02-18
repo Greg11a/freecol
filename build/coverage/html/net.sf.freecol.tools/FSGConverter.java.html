@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FSGConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.tools</a> &gt; <span class="el_source">FSGConverter.java</span></div><h1>FSGConverter.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.tools;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.zip.GZIPInputStream;
+
+import net.sf.freecol.FreeCol;
+
+
+/**
+ * Class for converting FreeCol Savegames (fsg-files).
+ * 
+ * @see #getFSGConverter()
+ * @since 0.5.2
+ */
+public class FSGConverter {
+
+    /**
+     * A singleton object of this class.
+     * @see #getFSGConverter()
+     */
+    private static FSGConverter singleton;
+<span class="nc" id="L48">    private static Object singletonLock = new Object();</span>
+
+
+    /**
+     * Creates an instance of {@code FSGConverter}
+     */
+    private FSGConverter() {
+        // Nothing to initialize;
+    }
+    
+    
+    /**
+     * Gets an object for converting FreeCol Savegames.
+     * @return The singleton object.
+     */
+    public static FSGConverter getFSGConverter() {
+        // Using lazy initialization:       
+<span class="nc" id="L65">        synchronized (singletonLock) {</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">            if (singleton == null) {</span>
+<span class="nc" id="L67">                singleton = new FSGConverter();</span>
+            }
+<span class="nc" id="L69">            return singleton;</span>
+        }
+    }
+
+    
+    /**
+     * Converts the given input file to an uncompressed and
+     * indented XML-file.
+     * 
+     * Savegame compression is automatically detected, so using
+     * this method on an uncompressed savegame creates an
+     * indented version of that savegame.
+     * 
+     * @param in The input file.
+     * @param out The output file. This file will be overwritten
+     *      if it already exists.
+     * @throws IOException if thrown while reading or writing the files. 
+     */
+    private void convertToXML(File in, File out) throws IOException {
+<span class="nc" id="L88">        try (InputStream fis = Files.newInputStream(in.toPath());</span>
+<span class="nc" id="L89">            OutputStream fos = Files.newOutputStream(out.toPath())) {</span>
+<span class="nc" id="L90">            convertToXML(fis, fos);</span>
+        }
+<span class="nc" id="L92">    }</span>
+
+    /**
+     * Converts the data from the given input stream to an 
+     * uncompressed and indented text to the output stream.
+     * Both streams are closed by this method.
+     * 
+     * &lt;br&gt;&lt;br&gt;
+     * 
+     * Savegame compression is automatically detected, so using
+     * this method on an uncompressed savegame creates an
+     * indented version of that savegame.
+     * 
+     * @param ins The input stream.
+     * @param outs The output stream.
+     * @exception IOException if thrown while reading or writing the streams. 
+     */
+    private void convertToXML(InputStream ins, OutputStream outs)
+        throws IOException {
+<span class="nc" id="L111">        BufferedInputStream in = new BufferedInputStream(ins);</span>
+<span class="nc" id="L112">        try (BufferedOutputStream out = new BufferedOutputStream(outs)) {</span>
+            // Automatically detect savegame compression:
+<span class="nc" id="L114">            in.mark(10);</span>
+<span class="nc" id="L115">            byte[] buf = new byte[5];</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            if (in.read(buf, 0, buf.length) &lt; buf.length) {</span>
+<span class="nc" id="L117">                System.err.println(&quot;Unable to read header&quot;);</span>
+<span class="nc" id="L118">                return;</span>
+            }
+<span class="nc" id="L120">            in.reset();</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">            if (!&quot;&lt;?xml&quot;.equals(new String(buf, StandardCharsets.UTF_8))) {</span>
+<span class="nc" id="L122">                in = new BufferedInputStream(new GZIPInputStream(ins));</span>
+            }
+
+            // Support for XML comments has not been added:
+<span class="nc" id="L126">            int indent = 0;</span>
+            int i;      
+<span class="nc bnc" id="L128" title="All 2 branches missed.">            while ((i = in.read()) != -1) {</span>
+<span class="nc" id="L129">                char c = (char) i;</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                if (c == '&lt;') {</span>
+<span class="nc" id="L131">                    i = in.read();</span>
+<span class="nc" id="L132">                    char b = (char) i;</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">                    if (b == '/') {</span>
+<span class="nc" id="L134">                        indent -= 4;</span>
+                    }
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                    for (int h=0; h&lt;indent; h++) {</span>
+<span class="nc" id="L137">                        out.write(' ');</span>
+                    }
+<span class="nc" id="L139">                    out.write(c);</span>
+<span class="nc bnc" id="L140" title="All 4 branches missed.">                    if (b != '\n' &amp;&amp; b != '\r') {</span>
+<span class="nc" id="L141">                        out.write(b);</span>
+                    }
+<span class="nc bnc" id="L143" title="All 4 branches missed.">                    if (b != '/' &amp;&amp; b != '?') {</span>
+<span class="nc" id="L144">                        indent += 4;</span>
+                    }
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                } else if (c == '/') {</span>
+<span class="nc" id="L147">                    out.write(c);</span>
+<span class="nc" id="L148">                    i = in.read();</span>
+<span class="nc" id="L149">                    c = (char) i;</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">                    if (c == '&gt;') {</span>
+<span class="nc" id="L151">                        indent -= 4;</span>
+<span class="nc" id="L152">                        out.write(c);</span>
+<span class="nc" id="L153">                        out.write('\n');</span>
+                    }
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                } else if (c == '&gt;') {</span>
+<span class="nc" id="L156">                    out.write(c);</span>
+<span class="nc" id="L157">                    out.write('\n');</span>
+<span class="nc bnc" id="L158" title="All 4 branches missed.">                } else if (c != '\n' &amp;&amp; c != '\r') {</span>
+<span class="nc" id="L159">                    out.write(c);</span>
+                }           
+<span class="nc" id="L161">            }</span>
+<span class="nc" id="L162">        }</span>
+<span class="nc" id="L163">        in.close();</span>
+<span class="nc" id="L164">    }</span>
+    
+    
+    /**
+     * Prints the usage of this program to standard out.
+     */
+    private static void printUsage() {
+<span class="nc" id="L171">        System.out.println(&quot;A program for converting FreeCol Savegames.&quot;);</span>
+<span class="nc" id="L172">        System.out.println();</span>
+<span class="nc" id="L173">        System.out.println(&quot;Usage: java -cp FreeCol.jar net.sf.freecol.tools.FSGConverter [-][-]output:xml FSG_FILE [OUTPUT_FILE]&quot;);</span>
+<span class="nc" id="L174">        System.out.println();</span>
+<span class="nc" id="L175">        System.out.println(&quot;output:xml \tThe output will be indented XML.&quot;);</span>
+<span class="nc" id="L176">        System.out.println();</span>
+<span class="nc" id="L177">        System.out.println(&quot;The output file will get the same name as FSG_FILE if not specified (with \&quot;.fsg\&quot; replaced with \&quot;.xml\&quot;).&quot;);</span>
+<span class="nc" id="L178">    }</span>
+    
+    /**
+     * An entry point for converting FreeCol Savegames.
+     * 
+     * @param args The command-line parameters.
+     */
+    public static void main(String[] args) {
+<span class="nc bnc" id="L186" title="All 4 branches missed.">        if (args.length &gt;= 2 &amp;&amp; args[0].endsWith(&quot;output:xml&quot;)) {</span>
+<span class="nc" id="L187">            File in = new File(args[1]);</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">            if (!in.exists()) {</span>
+<span class="nc" id="L189">                printUsage();</span>
+<span class="nc" id="L190">                System.exit(1);</span>
+            }
+            File out;
+<span class="nc bnc" id="L193" title="All 2 branches missed.">            if (args.length &gt;= 3) {</span>
+<span class="nc" id="L194">                out = new File(args[2]);</span>
+            } else {
+<span class="nc" id="L196">                String name = in.getName();</span>
+<span class="nc" id="L197">                String filename = name.replaceAll(&quot;.&quot; + FreeCol.FREECOL_SAVE_EXTENSION, &quot;.xml&quot;);</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">                if (filename.equals(name)) filename += &quot;.xml&quot;;</span>
+<span class="nc" id="L199">                out = new File(filename);</span>
+            }
+            try {
+<span class="nc" id="L202">                FSGConverter fsgc = FSGConverter.getFSGConverter();</span>
+<span class="nc" id="L203">                fsgc.convertToXML(in, out);</span>
+<span class="nc" id="L204">            } catch (IOException e) {</span>
+<span class="nc" id="L205">                FreeCol.fatal(null, &quot;An error occured while converting the file.&quot;);</span>
+<span class="nc" id="L206">            }</span>
+<span class="nc" id="L207">        } else {</span>
+<span class="nc" id="L208">            printUsage();</span>
+<span class="nc" id="L209">            System.exit(1);</span>
+        }
+<span class="nc" id="L211">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FAFile.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.resources</a> &gt; <span class="el_source">FAFile.java</span></div><h1>FAFile.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.resources;
+
+import java.awt.Dimension;
+import java.awt.Point;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.StringTokenizer;
+import java.util.logging.Logger;
+
+
+/**
+ * Represents the data within a Font Animation File.
+ * 
+ * @see net.sf.freecol.client.gui.panel.DeclarationPanel
+ */
+public class FAFile {
+
+<span class="fc" id="L43">    private static final Logger logger = Logger.getLogger(FAFile.class.getName());</span>
+    
+    // FIXME: Use two hashes, to be safer?
+<span class="fc" id="L46">    private final HashMap&lt;Object, Object&gt; letters = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L47">    private int maxHeight = 0;</span>
+
+
+    /**
+     * Reads data from the given {@code InputStream} and
+     * creates an object to represent this data.
+     * 
+     * @param is The {@code InputStream}
+     * @throws IOException gets thrown if the data is invalid. 
+     */
+<span class="fc" id="L57">    public FAFile(InputStream is) throws IOException {</span>
+<span class="fc" id="L58">        load(new CREatingInputStream(is));</span>
+<span class="fc" id="L59">    }</span>
+
+    /**
+     * Returns the input with invalid characters removed.
+     * @param text The input text.
+     * @return The input with invalid characters removed.
+     */
+    public String onlyValidCharacters(String text) {
+<span class="nc" id="L67">        final StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        for (int i=0; i&lt;text.length(); i++) {</span>
+<span class="nc" id="L69">            final char c = text.charAt(i);</span>
+<span class="nc" id="L70">            FALetter fl = getLetter(c);</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">            if (fl == null) {</span>
+<span class="nc" id="L72">                logger.warning(&quot;Missing character in FAF: &quot; + c);</span>
+<span class="nc" id="L73">                continue;</span>
+            }
+<span class="nc" id="L75">            sb.append(c);</span>
+        }
+<span class="nc" id="L77">        return sb.toString();</span>
+    }
+    
+    /**
+     * Gets the {@code Dimension} of the given
+     * {@code String} when rendered.
+     * 
+     * @param text The {@code String}.
+     * @return The {@code Dimension}.
+     */
+    public Dimension getDimension(String text) {
+<span class="nc" id="L88">        FAName fn = getFAName(text);</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (fn != null) {</span>
+<span class="nc" id="L90">            return new Dimension(fn.width, fn.height);</span>
+        }
+
+<span class="nc" id="L93">        int width = 0;</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        for (int i=0; i&lt;text.length(); i++) {</span>
+<span class="nc" id="L95">            FALetter fl = getLetter(text.charAt(i));</span>
+<span class="nc" id="L96">            width += fl.advance;</span>
+        }
+
+<span class="nc" id="L99">        int firstMinX = Integer.MAX_VALUE;</span>
+<span class="nc" id="L100">        FALetter letter = getLetter(text.charAt(0));</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        for (int i=0; i&lt;letter.points.length; i++) {</span>
+<span class="nc" id="L102">            Point p = letter.points[i];</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">            if (p.x &lt; firstMinX) {</span>
+<span class="nc" id="L104">                firstMinX = p.x;</span>
+            }
+        }  
+
+<span class="nc" id="L108">        width += firstMinX;</span>
+<span class="nc" id="L109">        int lastMaxX = 0;</span>
+<span class="nc" id="L110">        letter = getLetter(text.charAt(text.length()-1));</span>
+
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        for (int i=0; i&lt;letter.points.length; i++) {</span>
+<span class="nc" id="L113">            Point p = letter.points[i];</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">            if (p.x &gt; lastMaxX) {</span>
+<span class="nc" id="L115">                lastMaxX = p.x;</span>
+            }
+        }        
+
+<span class="nc" id="L119">        width += lastMaxX;        </span>
+
+<span class="nc" id="L121">        return new Dimension(width, maxHeight);</span>
+    }
+
+    /**
+     * Gets the points to display the given text as an
+     * animation.
+     * 
+     * @param text The text to get the points for.
+     * @return The points in the order in which they 
+     *      should be drawn.
+     */
+    public Point[] getPoints(String text) {
+<span class="nc" id="L133">        FAName fn = getFAName(text);</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (fn != null) {</span>
+<span class="nc" id="L135">            return fn.points;</span>
+        }
+<span class="nc" id="L137">        List&lt;Point&gt; points = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L138">        int x = 0;</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        for (int i=0; i&lt;text.length(); i++) {</span>
+<span class="nc" id="L140">            FALetter fl = getLetter(text.charAt(i));</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            for (int j=0; j&lt;fl.points.length; j++) {</span>
+<span class="nc" id="L142">                Point p = fl.points[j];</span>
+<span class="nc" id="L143">                points.add(new Point(p.x + x, p.y));</span>
+            }
+
+<span class="nc" id="L146">            x += fl.advance;</span>
+        }
+<span class="nc" id="L148">        return points.toArray(new Point[0]);</span>
+    }
+
+    private void load(InputStream is) throws IOException {
+<span class="fc" id="L152">        letters.clear();</span>
+
+<span class="fc" id="L154">        BufferedReader in = new BufferedReader(new InputStreamReader(is,</span>
+                StandardCharsets.UTF_8));
+<span class="fc" id="L156">        String line = in.readLine();</span>
+<span class="pc bpc" id="L157" title="2 of 4 branches missed.">        if (line == null || !line.startsWith(&quot;FontAnimationFile&quot;)) {</span>
+<span class="nc" id="L158">            throw new RuntimeException(&quot;Not a FAF: &quot; + this);</span>
+        }
+
+<span class="fc" id="L161">        line = in.readLine();</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        if (line == null) {</span>
+<span class="nc" id="L163">            throw new RuntimeException(&quot;Max height expected: &quot; + this);</span>
+        }
+<span class="fc" id="L165">        StringTokenizer st = new StringTokenizer(line);</span>
+<span class="fc" id="L166">        maxHeight = Integer.parseInt(st.nextToken());</span>
+
+<span class="fc" id="L168">        line = in.readLine();</span>
+<span class="pc bpc" id="L169" title="1 of 4 branches missed.">        while (line != null &amp;&amp; !line.startsWith(&quot;[Chars]&quot;)) {</span>
+<span class="fc" id="L170">            String name = line;</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">            if ((line = in.readLine()) == null) break;</span>
+<span class="fc" id="L172">            st = new StringTokenizer(line);</span>
+<span class="fc" id="L173">            int width = Integer.parseInt(st.nextToken());</span>
+<span class="fc" id="L174">            int height = Integer.parseInt(st.nextToken());</span>
+<span class="fc" id="L175">            int numberOfPoints = Integer.parseInt(st.nextToken());</span>
+<span class="fc" id="L176">            int[] xs = new int[numberOfPoints];</span>
+<span class="fc" id="L177">            int[] ys = new int[numberOfPoints];</span>
+
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">            if ((line = in.readLine()) == null) break;</span>
+<span class="fc" id="L180">            st = new StringTokenizer(line);</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            for (int i=0; i&lt;numberOfPoints; i++) {</span>
+<span class="fc" id="L182">                xs[i] = Integer.parseInt(st.nextToken());               </span>
+            }
+
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">            if ((line = in.readLine()) == null) break;</span>
+<span class="fc" id="L186">            st = new StringTokenizer(line);         </span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            for (int i=0; i&lt;numberOfPoints; i++) {</span>
+<span class="fc" id="L188">                ys[i] = Integer.parseInt(st.nextToken());               </span>
+            }   
+
+<span class="fc" id="L191">            FAName newLetter = new FAName();</span>
+<span class="fc" id="L192">            newLetter.width = width;</span>
+<span class="fc" id="L193">            newLetter.height = height;</span>
+<span class="fc" id="L194">            newLetter.points = new Point[numberOfPoints];</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            for (int i=0; i&lt;numberOfPoints; i++) {</span>
+<span class="fc" id="L196">                newLetter.points[i] = new Point(xs[i], ys[i]);                </span>
+            }                       
+<span class="fc" id="L198">            letters.put(name, newLetter);</span>
+<span class="fc" id="L199">            line = in.readLine();</span>
+<span class="fc" id="L200">        }</span>
+
+<span class="fc" id="L202">        line = in.readLine();</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        while (line != null) {</span>
+<span class="fc" id="L204">            st = new StringTokenizer(line.substring(1));</span>
+<span class="fc" id="L205">            char letter = line.charAt(0);</span>
+<span class="fc" id="L206">            int advance = Integer.parseInt(st.nextToken());</span>
+<span class="fc" id="L207">            int numberOfPoints = Integer.parseInt(st.nextToken());</span>
+<span class="fc" id="L208">            int[] xs = new int[numberOfPoints];</span>
+<span class="fc" id="L209">            int[] ys = new int[numberOfPoints];</span>
+
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">            if ((line = in.readLine()) == null) break;</span>
+<span class="fc" id="L212">            st = new StringTokenizer(line);</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">            for (int i = 0; i &lt; numberOfPoints; i++) {</span>
+<span class="fc" id="L214">                xs[i] = Integer.parseInt(st.nextToken());               </span>
+            }
+
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">            if ((line = in.readLine()) == null) break;</span>
+<span class="fc" id="L218">            st = new StringTokenizer(line);         </span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">            for (int i = 0; i &lt; numberOfPoints; i++) {</span>
+<span class="fc" id="L220">                ys[i] = Integer.parseInt(st.nextToken());               </span>
+            }   
+
+<span class="fc" id="L223">            FALetter newLetter = new FALetter();</span>
+<span class="fc" id="L224">            newLetter.advance = advance;</span>
+<span class="fc" id="L225">            newLetter.points = new Point[numberOfPoints];</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">            for (int i = 0; i &lt; numberOfPoints; i++) {</span>
+<span class="fc" id="L227">                newLetter.points[i] = new Point(xs[i], ys[i]);                </span>
+            }           
+<span class="fc" id="L229">            letters.put(letter, newLetter);</span>
+<span class="fc" id="L230">            line = in.readLine();</span>
+<span class="fc" id="L231">        }</span>
+<span class="fc" id="L232">    }</span>
+
+
+    private FALetter getLetter(char letter) {
+<span class="nc" id="L236">        return (FALetter) letters.get(letter);</span>
+    }
+
+    private FAName getFAName(String name) {
+<span class="nc" id="L240">        return (FAName) letters.get(name);</span>
+    }
+
+    private static class FALetter {
+        public Point[] points;
+        public int advance;
+    }
+
+    private static class FAName {
+        public Point[] points;
+        public int width;
+        public int height;
+    }
+
+    /**
+     * This utility class removes all CR:s from an {@link InputStream}.
+     * It is not particularly efficient and is intended as a temporary
+     * workaround.
+     */
+    private static class CREatingInputStream extends InputStream {
+        /**
+         * Constructor.
+         * 
+         * @param in The input stream to wrap.
+         */
+<span class="fc" id="L265">        CREatingInputStream(InputStream in) {</span>
+<span class="fc" id="L266">            this.in = in;</span>
+<span class="fc" id="L267">        }</span>
+        
+        /**
+         * Read a character, override to eat all CR:s.
+         * 
+         * @return next character or -1 on end of file.
+         * @throws IOException if wrapped stream throws it.
+         */
+        @Override
+        public int read() throws IOException {
+            int c;
+            do {
+<span class="fc" id="L279">                c = this.in.read();</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">            } while(c == '\r');</span>
+<span class="fc" id="L281">            return c;</span>
+        }
+        
+        private final InputStream in;
+    }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

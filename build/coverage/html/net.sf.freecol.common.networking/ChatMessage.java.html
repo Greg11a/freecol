@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChatMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">ChatMessage.java</span></div><h1>ChatMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import java.awt.Color;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message that contains a chat string.
+ */
+public class ChatMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;chat&quot;;
+    private static final String COLOR_TAG = &quot;color&quot;;
+    private static final String MESSAGE_TAG = &quot;message&quot;;
+    private static final String PRIVATE_TAG = &quot;private&quot;;
+    private static final String SENDER_TAG = &quot;sender&quot;;
+
+
+    /**
+     * Create a new {@code ChatMessage} with the
+     * supplied message.
+     *
+     * @param player The player that is sending the message.
+     * @param message The text of the message to send.
+     * @param privateChat Whether this message is private.
+     */
+    public ChatMessage(Player player, String message, boolean privateChat) {
+<span class="nc" id="L56">        super(TAG, COLOR_TAG, String.valueOf(player.getNationColor().getRGB()),</span>
+              MESSAGE_TAG, message,
+<span class="nc" id="L58">              PRIVATE_TAG, String.valueOf(privateChat),</span>
+<span class="nc" id="L59">              SENDER_TAG, player.getName());</span>
+<span class="nc" id="L60">    }</span>
+
+    /**
+     * Create a new {@code ChatMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public ChatMessage(@SuppressWarnings(&quot;unused&quot;) Game game,
+                       FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L72">        super(TAG, xr, COLOR_TAG, MESSAGE_TAG, SENDER_TAG, PRIVATE_TAG);</span>
+<span class="nc" id="L73">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L81">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+        // Ignored
+<span class="nc" id="L90">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L97">        final Color color = getColor();</span>
+<span class="nc" id="L98">        final String sender = getSender();</span>
+<span class="nc" id="L99">        final String text = getMessage();</span>
+<span class="nc" id="L100">        final boolean isPrivate = isPrivate();</span>
+<span class="nc bnc" id="L101" title="All 4 branches missed.">        if (sender == null || text == null) return;</span>
+
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (freeColClient.isInGame()) {</span>
+<span class="nc" id="L104">            igc(freeColClient).chatHandler(sender, text, color, isPrivate);</span>
+        } else {
+<span class="nc" id="L106">            pgc(freeColClient).chatHandler(sender, text, color, isPrivate);</span>
+        }
+<span class="nc" id="L108">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+        /* Do not trust the client-supplied sender name */
+<span class="nc" id="L117">        setStringAttribute(SENDER_TAG, serverPlayer.getId());</span>
+
+        // IGC routine the same as PGC
+<span class="nc" id="L120">        return igc(freeColServer)</span>
+<span class="nc" id="L121">            .chat(serverPlayer, getMessage(), isPrivate());</span>
+    }        
+
+
+    // Public interface
+
+    /**
+     * Get the color.
+     *
+     * @return The new {@code Color}.
+     */
+    public Color getColor() {
+<span class="nc" id="L133">        Color color = null;</span>
+        try {
+<span class="nc" id="L135">            int rgb = getIntegerAttribute(COLOR_TAG, 0);</span>
+<span class="nc" id="L136">            color = new Color(rgb);</span>
+<span class="nc" id="L137">        } catch (NumberFormatException nfe) {}</span>
+<span class="nc" id="L138">        return color;</span>
+    }
+
+    /**
+     * What is the text of this ChatMessage?
+     *
+     * @return The text of this ChatMessage.
+     */
+    public String getMessage() {
+<span class="nc" id="L147">        return getStringAttribute(MESSAGE_TAG);</span>
+    }
+
+    /**
+     * Is this ChatMessage private?
+     *
+     * @return True if this ChatMessage is private.
+     */
+    public boolean isPrivate() {
+<span class="nc" id="L156">        return getBooleanAttribute(PRIVATE_TAG, Boolean.FALSE);</span>
+    }
+
+    /**
+     * Who sent this ChatMessage?
+     *
+     * @return The sender tag for this ChatMessage.
+     */
+    public String getSender() {
+<span class="nc" id="L165">        return getStringAttribute(SENDER_TAG);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

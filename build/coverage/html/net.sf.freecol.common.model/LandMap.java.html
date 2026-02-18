@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LandMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">LandMap.java</span></div><h1>LandMap.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.List;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.logging.Logger;
+
+import net.sf.freecol.common.model.Map.Position;
+import net.sf.freecol.common.option.MapGeneratorOptions;
+import net.sf.freecol.common.option.OptionGroup;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import static net.sf.freecol.common.util.RandomUtils.*;
+
+
+/**
+ * A class to encapsulate a binary land map.
+ */
+public class LandMap {
+
+<span class="fc" id="L39">    private static final Logger logger = Logger.getLogger(LandMap.class.getName());</span>
+
+    /** The map width. */
+    private final int width;
+
+    /** The map height. */
+    private final int height;
+
+    /** A cached random integer source. */
+    private final RandomIntCache cache;
+
+    /** The land map.  True means land. */
+    private boolean[][] map;
+
+    /** Number of land tiles on the map. */
+    private int numberOfLandTiles;
+
+
+    /**
+     * Create a new land map with specified dimensions.
+     *
+     * @param width The map width.
+     * @param height The map height.
+     * @param cache A pseudo random number source.
+     */
+<span class="fc" id="L64">    public LandMap(int width, int height, RandomIntCache cache) {</span>
+<span class="fc" id="L65">        this.width = width;</span>
+<span class="fc" id="L66">        this.height = height;</span>
+<span class="fc" id="L67">        this.cache = cache;</span>
+<span class="fc" id="L68">        this.map = new boolean[this.width][this.height];</span>
+<span class="fc" id="L69">        this.numberOfLandTiles = 0;</span>
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * Create a land map by importing it from a given map.
+     *
+     * @param map The {@code Map} to get the land map from.
+     * @param cache A pseudo random number source.
+     */
+    public LandMap(Map map, RandomIntCache cache) {
+<span class="fc" id="L79">        this(map.getWidth(), map.getHeight(), cache);</span>
+
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        for (int y = 0; y &lt; this.height; y++) {</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            for (int x = 0; x &lt; this.width; x++) {</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                this.map[x][y] = (map.isValid(x, y))</span>
+<span class="fc" id="L84">                    ? map.getTile(x, y).isLand()</span>
+<span class="pc" id="L85">                    : false;</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                if (this.map[x][y]) this.numberOfLandTiles++;</span>
+            }
+        }
+<span class="fc" id="L89">    }</span>
+
+    /**
+     * Create a new land map using parameters from a supplied map
+     * generator options option group.
+     *
+     * @param mgo The map generator {@code OptionGroup} to use.
+     * @param cache A pseudo random number source.
+     */
+    public LandMap(OptionGroup mgo, RandomIntCache cache) {
+<span class="fc" id="L99">        this(mgo.getInteger(MapGeneratorOptions.MAP_WIDTH),</span>
+<span class="fc" id="L100">             mgo.getInteger(MapGeneratorOptions.MAP_HEIGHT),</span>
+             cache);
+
+<span class="fc" id="L103">        int distanceToEdge</span>
+<span class="fc" id="L104">            = mgo.getInteger(MapGeneratorOptions.PREFERRED_DISTANCE_TO_EDGE);</span>
+<span class="fc" id="L105">        int minNumberOfTiles = mgo.getInteger(MapGeneratorOptions.LAND_MASS)</span>
+<span class="fc" id="L106">            * getWidth() * getHeight() / 100;</span>
+<span class="fc" id="L107">        int gen = mgo.getSelection(MapGeneratorOptions.LAND_GENERATOR_TYPE);</span>
+<span class="fc" id="L108">        logger.info(&quot;Using land generator &quot;</span>
+<span class="fc" id="L109">            + mgo.getSelectionName(MapGeneratorOptions.LAND_GENERATOR_TYPE)</span>
+            + &quot; to make &quot; + width + &quot;x&quot; + height + &quot; map&quot;
+            + &quot; with distance-to-edge=&quot; + distanceToEdge
+            + &quot; and min-tile#=&quot; + minNumberOfTiles);
+<span class="fc" id="L113">        generate(gen, distanceToEdge, minNumberOfTiles);</span>
+<span class="fc" id="L114">    }</span>
+
+
+    /**
+     * Get the width of the land map.
+     *
+     * @return The map width.
+     */
+    public final int getWidth() {
+<span class="fc" id="L123">        return this.width;</span>
+    }
+
+    /**
+     * Get the height of the land map.
+     *
+     * @return The map height.
+     */
+    public final int getHeight() {
+<span class="fc" id="L132">        return this.height;</span>
+    }
+
+    /**
+     * Is an xy coordinate valid on this map?
+     *
+     * @param x The x coordinate.
+     * @param y The y coordinate.
+     * @return True if there coordinate is valid.
+     */
+    public boolean isValid(int x, int y) {
+<span class="pc bpc" id="L143" title="1 of 8 branches missed.">        return x &gt;= 0  &amp;&amp; y &gt;= 0 &amp;&amp; x &lt; getWidth() &amp;&amp; y &lt; getHeight();</span>
+    }
+
+    /**
+     * Is there land on this map at a given xy coordinate?
+     *
+     * @param x The x coordinate.
+     * @param y The y coordinate.
+     * @return True if there is land present.
+     */
+    public boolean isLand(int x, int y) {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        return (isValid(x, y)) ? this.map[x][y] : false;</span>
+    }
+
+    /**
+     * Is there any land in this land map?
+     *
+     * @return True if any land is present.
+     */
+    public boolean hasLand() {
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">        for (int y = 0; y &lt; this.height; y++) {</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">            for (int x = 0; x &lt; this.width; x++) {</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">                if (this.map[x][y]) return true;</span>
+            }
+        }
+<span class="nc" id="L168">        return false;</span>
+    }
+
+    /**
+     * Set a map position to land, and increase the land tile count.
+     *
+     * @param x The x coordinate of the new land.
+     * @param y The y coordinate of the new land.
+     * @return True if the land tile was set.
+     */
+    private boolean setLand(int x, int y) {
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        if (isLand(x, y)) return false;</span>
+<span class="fc" id="L180">        this.map[x][y] = true;</span>
+<span class="fc" id="L181">        this.numberOfLandTiles++;</span>
+<span class="fc" id="L182">        return true;</span>
+    }
+        
+    /**
+     * Sets a given map position to land and grow outward.
+     *
+     * Calls #growLand(int,int) for all valid adjacent map positions,
+     * which may recursively call setLand for these.
+     *
+     * @param x The x coordinate of the new land.
+     * @param y The y coordinate of the new land.
+     * @param distanceToEdge The preferred distance to the map edge.
+     */
+    private void setLand(int x, int y, int distanceToEdge) {
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">        if (!setLand(x, y)) return;</span>
+
+<span class="fc" id="L198">        Position p = new Position(x, y);</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        for (Direction direction : Direction.longSides) {</span>
+<span class="fc" id="L200">            Position n = new Position(p, direction);</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">            if (n.isValid(getWidth(), getHeight())) {</span>
+<span class="fc" id="L202">                growLand(n.getX(), n.getY(), distanceToEdge);</span>
+            }
+<span class="fc" id="L204">        }</span>
+<span class="fc" id="L205">    }</span>
+
+
+    // Internals
+
+    /**
+     * Generate the land map using the given generator type.
+     *
+     * @param type The generator type.
+     * @param minNumberOfTiles The minimum land tiles to generate.
+     * @param distanceToEdge The preferred distance to the map edge.
+     */
+    private final void generate(int type, int distanceToEdge,
+                                int minNumberOfTiles) {
+<span class="pc bpc" id="L219" title="4 of 5 branches missed.">        switch (type) {</span>
+        case MapGeneratorOptions.LAND_GENERATOR_CLASSIC:
+<span class="fc" id="L221">            createClassicLandMap(distanceToEdge, minNumberOfTiles);</span>
+<span class="fc" id="L222">            break;</span>
+        case MapGeneratorOptions.LAND_GENERATOR_CONTINENT:
+            // Create one landmass of 75%, start it somewhere near the
+            // center, then fill up with small islands.
+<span class="nc" id="L226">            addPolarRegions();</span>
+<span class="nc" id="L227">            int contsize = (minNumberOfTiles * 75) / 100;</span>
+<span class="nc" id="L228">            int height = getHeight()/4 + this.cache.nextInt(getHeight()/2);</span>
+<span class="nc" id="L229">            addLandMass(contsize, contsize, getWidth()/2, height,</span>
+                        distanceToEdge);
+<span class="nc bnc" id="L231" title="All 2 branches missed.">            while (this.numberOfLandTiles &lt; minNumberOfTiles) {</span>
+<span class="nc" id="L232">                addLandMass(15, 25, -1, -1, distanceToEdge);</span>
+            }
+            break;
+        case MapGeneratorOptions.LAND_GENERATOR_ARCHIPELAGO:
+            // Create 5 islands of 10% each, then delegate to the Islands
+            // generator.
+<span class="nc" id="L238">            addPolarRegions();</span>
+<span class="nc" id="L239">            int archsize = (minNumberOfTiles * 10) / 100;</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">            for (int i = 0; i &lt; 5; i++) {</span>
+<span class="nc" id="L241">                addLandMass(archsize - 5, archsize + 5, -1, -1,</span>
+                            distanceToEdge);
+            }
+            // Fall through
+        case MapGeneratorOptions.LAND_GENERATOR_ISLANDS:
+            // Create islands of 25..75 tiles.
+<span class="nc" id="L247">            addPolarRegions();</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">            while (this.numberOfLandTiles &lt; minNumberOfTiles) {</span>
+<span class="nc" id="L249">                addLandMass(25, 25 + this.cache.nextInt(50),</span>
+                            -1, -1, distanceToEdge);
+            }
+            break;
+        }
+<span class="fc" id="L254">        cleanMap();</span>
+<span class="fc" id="L255">    }</span>
+
+    /**
+     * Create the standard FreeCol land map.
+     *
+     * @param distanceToEdge The nominal edge clearance.
+     * @param minNumberOfTiles Lower bound for the tiles to create.
+     */
+    private void createClassicLandMap(int distanceToEdge, int minNumberOfTiles) {
+<span class="fc" id="L264">        final int edg = distanceToEdge * 2;</span>
+<span class="fc" id="L265">        final int wid = getWidth() - edg * 2;</span>
+<span class="fc" id="L266">        final int hgt = getHeight() - edg * 2;</span>
+        int x, y;
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        while (this.numberOfLandTiles &lt; minNumberOfTiles) {</span>
+<span class="fc" id="L269">            int failCounter = 0;</span>
+            do {
+<span class="fc" id="L271">                x = edg + this.cache.nextInt(wid);</span>
+<span class="fc" id="L272">                y = edg + this.cache.nextInt(hgt);</span>
+<span class="fc" id="L273">                failCounter++;</span>
+                // If landmass% is set too high, this loop may fail to
+                // find a free tile.  Decrease necessary minimum over
+                // time, so that this process will eventually succeed.
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">                if (failCounter &gt; 100) {</span>
+<span class="nc" id="L278">                    failCounter = 0;</span>
+<span class="nc" id="L279">                    minNumberOfTiles--;</span>
+<span class="nc" id="L280">                    break;</span>
+                }
+<span class="fc bfc" id="L282" title="All 2 branches covered.">            } while (isLand(x, y));</span>
+<span class="fc" id="L283">            setLand(x, y, distanceToEdge);</span>
+<span class="fc" id="L284">        }</span>
+<span class="fc" id="L285">        addPolarRegions();</span>
+<span class="fc" id="L286">    }</span>
+
+    /**
+     * Add land to the polar map rows at the top and bottom of the map,
+     * with height determined by Map.POLAR_HEIGHT.
+     *
+     * FIXME: Make POLAR_HEIGHT an option.
+     */
+    private void addPolarRegions() {
+<span class="fc bfc" id="L295" title="All 2 branches covered.">        for (int x = 0; x &lt; this.width; x++) {</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">            for (int y = 0; y &lt; Map.POLAR_HEIGHT; y++) setLand(x, y);</span>
+<span class="fc" id="L297">            int limit = this.height - 1 - Map.POLAR_HEIGHT;</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">            for (int y = limit; y &lt; this.height; y++) setLand(x, y);</span>
+        }
+<span class="fc" id="L300">    }</span>
+
+    /**
+     * Remove any 1x1 islands on the map.
+     */
+    private void cleanMap() {
+<span class="fc bfc" id="L306" title="All 2 branches covered.">        for (int y = 0; y &lt; this.height; y++) {</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">            for (int x = 0; x &lt; this.width; x++) {</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">                if (!hasAdjacentLand(x, y)) this.map[x][y] = false;</span>
+            }
+        }
+<span class="fc" id="L311">    }</span>
+
+    /**
+     * Do the given coordinates correspond to a location in the land map
+     * with adjacent land?
+     *
+     * Note: does not check the tile at the coordinates itself.
+     *
+     * @param x The x coordinate to check.
+     * @param y The y coordinate to check.
+     * @return True if this tile has adjacent land.
+     */
+    private boolean hasAdjacentLand(int x, int y) {
+<span class="fc" id="L324">        final Position p = new Position(x, y);</span>
+<span class="fc" id="L325">        final Predicate&lt;Direction&gt; landPred = d -&gt; {</span>
+<span class="fc" id="L326">            Position n = new Position(p, d);</span>
+<span class="fc" id="L327">            return isLand(n.getX(), n.getY());</span>
+        };
+<span class="fc" id="L329">        return any(Direction.values(), landPred);</span>
+    }
+
+    /**
+     * Get the positions surrounding a central position that are potential
+     * valid land positions.
+     *
+     * @param position The central {@code Position} to work from.
+     * @param distanceToEdge The preferred distance to the map edge.
+     * @return A list of suitable {@code Position}s.
+     */
+    private List&lt;Position&gt; newPositions(Position position,
+                                        int distanceToEdge) {
+<span class="nc" id="L342">        final Predicate&lt;Position&gt; landPred = p -&gt;</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">            (p.isValid(getWidth(), getHeight())</span>
+<span class="nc bnc" id="L344" title="All 2 branches missed.">                &amp;&amp; !hasAdjacentLand(p.getX(), p.getY())</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">                &amp;&amp; p.getX() &gt; distanceToEdge</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">                &amp;&amp; p.getX() &lt; getWidth() - distanceToEdge);</span>
+<span class="nc" id="L347">        final Function&lt;Direction, Position&gt; positionMapper = d -&gt;</span>
+<span class="nc" id="L348">            new Position(position, d);</span>
+<span class="nc" id="L349">        return transform(map(Direction.longSides, positionMapper), landPred);</span>
+    }
+
+    /**
+     * Determines, based on position, number of adjacent land tiles
+     * and some random factor, whether a given map position should be
+     * set to land.  This is called for all valid map positions
+     * adjacent to a position that has been set to land by
+     * #setLand(int,int), and may recursively call setLand for the
+     * current position.
+     *
+     * @param x The x coordinate to grow land at.
+     * @param y The y coordinate to grow land at.
+     * @param distanceToEdge The preferred distance to the map edge.
+     */
+    private void growLand(int x, int y, int distanceToEdge) {
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        if (isLand(x, y)) return; // Already land</span>
+
+        // Generate a comparison value:
+        // Only if the number of adjacent land tiles is bigger than this value,
+        // this tile will be set to land.
+        // This value is part random, part based on position, that is:
+        // -1 in the center of the map, and growing to
+        // distanceToEdge (*2 for pole ends) at the maps edges.
+<span class="fc" id="L373">        int r = this.cache.nextInt(8) + Math.max(-1,</span>
+<span class="fc" id="L374">            (1 + Math.max(distanceToEdge - Math.min(x, getWidth()-x),</span>
+<span class="fc" id="L375">                2 * distanceToEdge - Math.min(y, getHeight()-y))));</span>
+
+<span class="fc" id="L377">        final Position p = new Position(x, y);</span>
+<span class="fc" id="L378">        final Predicate&lt;Direction&gt; landPred = d -&gt; {</span>
+<span class="fc" id="L379">            Position n = new Position(p, d);</span>
+<span class="fc" id="L380">            return isLand(n.getX(), n.getY());</span>
+        };
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        if (count(Direction.values(), landPred) &gt; r) {</span>
+<span class="fc" id="L383">            setLand(x, y, distanceToEdge);</span>
+        }
+<span class="fc" id="L385">    }</span>
+
+    /**
+     * Create a new land mass (unconnected to existing land masses) of
+     * size up to maxSize, and adds it to the current map if it is at
+     * least minSize.
+     *
+     * @param minSize Minimum number of tiles in the land mass.
+     * @param maxSize Maximum number of tiles in the land mass.
+     * @param x Optional starting x coordinate (chosen randomly if negative).
+     * @param y Optional starting y coordinate (chosen randomly if negative).
+     * @param distanceToEdge The preferred distance to the map edge.
+     * @return The number of tiles added.
+     */
+    private int addLandMass(int minSize, int maxSize, int x, int y,
+                            int distanceToEdge) {
+<span class="nc" id="L401">        int size = 0;</span>
+<span class="nc" id="L402">        boolean[][] newLand = new boolean[getWidth()][getHeight()];</span>
+
+        // Pick a starting position that is sea without neighbouring land.
+<span class="nc bnc" id="L405" title="All 4 branches missed.">        if (x &lt; 0 || y &lt; 0) {</span>
+<span class="nc" id="L406">            final int wid = getWidth() - distanceToEdge * 2;</span>
+<span class="nc" id="L407">            final int hgt = getHeight() - distanceToEdge * 2;</span>
+            do {
+<span class="nc" id="L409">                x = distanceToEdge + this.cache.nextInt(wid);</span>
+<span class="nc" id="L410">                y = distanceToEdge + this.cache.nextInt(hgt);</span>
+<span class="nc bnc" id="L411" title="All 4 branches missed.">            } while (isLand(x, y) || hasAdjacentLand(x, y));</span>
+        }
+
+<span class="nc" id="L414">        newLand[x][y] = true;</span>
+<span class="nc" id="L415">        size++;</span>
+
+        // Add all valid neighbour positions to list
+<span class="nc" id="L418">        Position p = new Position(x, y);</span>
+<span class="nc" id="L419">        List&lt;Position&gt; l = newPositions(p, distanceToEdge);</span>
+
+        // Get a random position from the list,
+        // set it to land,
+        // add its valid neighbours to the list
+<span class="nc" id="L424">        int enough = minSize + this.cache.nextInt(maxSize - minSize + 1);</span>
+<span class="nc bnc" id="L425" title="All 4 branches missed.">        while (size &lt; enough &amp;&amp; !l.isEmpty()) {</span>
+<span class="nc" id="L426">            int i = this.cache.nextInt(l.size());</span>
+<span class="nc" id="L427">            p = l.remove(i);</span>
+
+<span class="nc bnc" id="L429" title="All 2 branches missed.">            if (!newLand[p.getX()][p.getY()]) {</span>
+<span class="nc" id="L430">                newLand[p.getX()][p.getY()] = true;</span>
+<span class="nc" id="L431">                size++;</span>
+<span class="nc" id="L432">                l.addAll(newPositions(p, distanceToEdge));</span>
+            }
+<span class="nc" id="L434">        }</span>
+
+        // Add generated land to map if sufficiently large
+<span class="nc bnc" id="L437" title="All 2 branches missed.">        if (size &gt;= minSize) {</span>
+<span class="nc bnc" id="L438" title="All 2 branches missed.">            for (x = 0; x &lt; this.width; x++) {</span>
+<span class="nc bnc" id="L439" title="All 2 branches missed.">                for (y = 0; y &lt; this.height; y++) {</span>
+<span class="nc bnc" id="L440" title="All 2 branches missed.">                    if (newLand[x][y]) setLand(x, y);</span>
+                }
+            }
+        }
+<span class="nc bnc" id="L444" title="All 2 branches missed.">        return (size &gt;= minSize) ? size : 0;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

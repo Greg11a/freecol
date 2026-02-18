@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkerWish.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai</a> &gt; <span class="el_source">WorkerWish.java</span></div><h1>WorkerWish.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai;
+
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import static net.sf.freecol.common.model.Constants.*;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.common.util.Utils;
+
+
+/**
+ * Represents the need for a worker within a {@code Colony}.
+ */
+public final class WorkerWish extends Wish {
+
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="fc" id="L44">    private static final Logger logger = Logger.getLogger(WorkerWish.class.getName());</span>
+
+    public static final String TAG = &quot;workerWish&quot;;
+
+    /** The type of unit required. */
+    private UnitType unitType;
+
+    /** Whether the exact type is needed. */
+    private boolean expertNeeded;
+
+
+    /**
+     * Creates a new uninitialized {@code WorkerWish} from the given
+     * XML-representation.
+     *
+     * @param aiMain The main AI-object.
+     * @param id The object identifier.
+     */
+    public WorkerWish(AIMain aiMain, String id) {
+<span class="fc" id="L63">        super(aiMain, id);</span>
+
+<span class="fc" id="L65">        this.unitType = null;</span>
+<span class="fc" id="L66">        this.expertNeeded = false;</span>
+<span class="fc" id="L67">        this.initialized = false;</span>
+<span class="fc" id="L68">    }</span>
+
+    /**
+     * Creates a new {@code WorkerWish}.
+     *
+     * @param aiMain The main AI-object.
+     * @param destination The {@code Location} in which the
+     *       {@link Wish#getTransportable transportable} assigned to
+     *       this {@code WorkerWish} will have to reach.
+     * @param value The value identifying the importance of
+     *       this {@code Wish}.
+     * @param unitType The type of unit needed for releasing this wish
+     *       completely.
+     * @param expertNeeded Determines wether the {@code unitType} is
+     *       required or not.
+     */
+    public WorkerWish(AIMain aiMain, Location destination, int value,
+                      UnitType unitType, boolean expertNeeded) {
+<span class="fc" id="L86">        this(aiMain, TAG + &quot;:&quot; + aiMain.getNextId());</span>
+
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (destination == null) {</span>
+<span class="nc" id="L89">            throw new NullPointerException(&quot;destination == null: &quot; + this);</span>
+        }
+
+<span class="fc" id="L92">        this.destination = destination;</span>
+<span class="fc" id="L93">        setValue(value);</span>
+<span class="fc" id="L94">        this.unitType = unitType;</span>
+<span class="fc" id="L95">        this.expertNeeded = expertNeeded;</span>
+<span class="fc" id="L96">        setInitialized();</span>
+<span class="fc" id="L97">    }</span>
+
+    /**
+     * Creates a new {@code WorkerWish} from the given
+     * XML-representation.
+     *
+     * @param aiMain The main AI-object.
+     * @param xr The input stream containing the XML.
+     * @throws XMLStreamException if a problem was encountered
+     *      during parsing.
+     */
+    public WorkerWish(AIMain aiMain,
+                      FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L110">        super(aiMain, xr);</span>
+
+<span class="nc" id="L112">        setInitialized();</span>
+<span class="nc" id="L113">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    public void setInitialized() {
+<span class="pc bpc" id="L119" title="2 of 4 branches missed.">        this.initialized = this.destination != null &amp;&amp; this.unitType != null;</span>
+<span class="fc" id="L120">    }</span>
+
+    /**
+     * Updates this {@code WorkerWish} with the given attributes.
+     *
+     * @param unitType The {@code UnitType} to wish for.
+     * @param expertNeeded Is an expert unit required?
+     * @param value The urgency of the wish.
+     */
+    public void update(UnitType unitType, boolean expertNeeded, int value) {
+<span class="nc" id="L130">        setValue(value);</span>
+<span class="nc" id="L131">        this.unitType = unitType;</span>
+<span class="nc" id="L132">        this.expertNeeded = expertNeeded;</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (transportable != null) transportable.setTransportPriority(value);</span>
+<span class="nc" id="L134">    }</span>
+
+    /**
+     * Gets the type of unit needed for releasing this wish.
+     *
+     * @return The type of unit.
+     */
+    public UnitType getUnitType() {
+<span class="fc" id="L142">        return unitType;</span>
+    }
+
+    /**
+     * Does a specified unit satisfy this wish?
+     *
+     * @param unit The {@code Unit} to test.
+     * @return True if the unit either matches exactly if expertRequired,
+     *     or at least matches in a land/naval sense if not.
+     */
+    public boolean satisfiedBy(Unit unit) {
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        return (expertNeeded) </span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">            ? unit.getType() == unitType</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            : unit.getType().isNaval() == unitType.isNaval();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public &lt;T extends AbstractGoods&gt; boolean satisfiedBy(T goods) {
+<span class="nc" id="L162">        return false;</span>
+    }
+
+
+    // Override AIObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IntegrityType checkIntegrity(boolean fix, LogBuilder lb) {
+<span class="nc" id="L173">        IntegrityType result = super.checkIntegrity(fix, lb);</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (unitType == null) {</span>
+<span class="nc" id="L175">            lb.add(&quot;\n  Wish unit without type: &quot;, getId());</span>
+<span class="nc" id="L176">            result = result.fail();</span>
+        }
+<span class="nc" id="L178">        return result;</span>
+    }
+
+
+    // Serialization
+
+    private static final String EXPERT_NEEDED_TAG = &quot;expertNeeded&quot;;
+    private static final String TRANSPORTABLE_TAG = &quot;transportable&quot;;
+    private static final String UNIT_TYPE_TAG = &quot;unitType&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L194">        super.writeAttributes(xw);</span>
+
+<span class="nc" id="L196">        xw.writeAttribute(UNIT_TYPE_TAG, unitType);</span>
+
+<span class="nc" id="L198">        xw.writeAttribute(EXPERT_NEEDED_TAG, expertNeeded);</span>
+<span class="nc" id="L199">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L206">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L208">        final AIMain aiMain = getAIMain();</span>
+<span class="nc" id="L209">        final Specification spec = getSpecification();</span>
+
+        // Delegated from Wish
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        transportable = (xr.hasAttribute(TRANSPORTABLE_TAG))</span>
+<span class="nc" id="L213">            ? xr.makeAIObject(aiMain, TRANSPORTABLE_TAG,</span>
+                              AIUnit.class, (AIUnit)null, true)
+<span class="nc" id="L215">            : null;</span>
+
+<span class="nc" id="L217">        unitType = xr.getType(spec, UNIT_TYPE_TAG,</span>
+                              UnitType.class, (UnitType)null);
+        
+<span class="nc" id="L220">        expertNeeded = xr.getAttribute(EXPERT_NEEDED_TAG, false);</span>
+<span class="nc" id="L221">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L227">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">        if (!(o instanceof WorkerWish)) return false;</span>
+<span class="fc" id="L238">        WorkerWish other = (WorkerWish)o;</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">        return this.expertNeeded == other.expertNeeded</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">            &amp;&amp; Utils.equals(this.unitType, other.unitType)</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">            &amp;&amp; super.equals(other);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L249">        int hash = super.hashCode();</span>
+<span class="fc" id="L250">        hash = 37 * hash + Utils.hashCode(this.unitType);</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">        return 37 * hash + ((this.expertNeeded) ? 1 : 0);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L259">        LogBuilder lb = new LogBuilder(64);</span>
+<span class="fc" id="L260">        lb.add(&quot;[&quot;, getId(),</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">            &quot; &quot;, ((unitType == null) ? &quot;null&quot; : unitType.getSuffix()),</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">            ((expertNeeded) ? &quot;/expert&quot; : &quot;&quot;),</span>
+<span class="fc" id="L263">            &quot; -&gt; &quot;, destination, &quot; (&quot;, getValue(), &quot;)]&quot;);</span>
+<span class="fc" id="L264">        return lb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

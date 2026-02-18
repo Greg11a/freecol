@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GameEndedMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">GameEndedMessage.java</span></div><h1>GameEndedMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.debug.FreeColDebugger;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+
+
+/**
+ * The message to signal the end of the game.
+ */
+public class GameEndedMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;gameEnded&quot;;
+    private static final String HIGH_SCORE_TAG = &quot;highScore&quot;;
+    private static final String WINNER_TAG = &quot;winner&quot;;
+
+
+    /**
+     * Create a new {@code GameEndedMessage} with the supplied winner.
+     *
+     * @param winner The {@code Player} that has won.
+     * @param highScore True if a new high score was reached.
+     */
+    public GameEndedMessage(Player winner, boolean highScore) {
+<span class="nc" id="L50">        super(TAG, WINNER_TAG, winner.getId(),</span>
+<span class="nc" id="L51">              HIGH_SCORE_TAG, String.valueOf(highScore));</span>
+<span class="nc" id="L52">    }</span>
+
+    /**
+     * Create a new {@code GameEndedMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public GameEndedMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L63">        super(TAG, xr, WINNER_TAG, HIGH_SCORE_TAG);</span>
+<span class="nc" id="L64">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L72">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+        // Ignored
+<span class="nc" id="L81">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L88">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L89">        final Player winner = getWinner(game);</span>
+<span class="nc" id="L90">        final String highScore = getScore();</span>
+
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        if (winner == null) {</span>
+<span class="nc" id="L93">            logger.warning(&quot;Invalid player for gameEnded&quot;);</span>
+<span class="nc" id="L94">            return;</span>
+        }
+<span class="nc" id="L96">        FreeColDebugger.finishDebugRun(freeColClient, true);</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        if (winner != freeColClient.getMyPlayer()) return;</span>
+        
+<span class="nc" id="L99">        igc(freeColClient).gameEndedHandler(highScore);</span>
+<span class="nc" id="L100">    }</span>
+
+    
+    // Public interface
+
+    /**
+     * Who won?
+     *
+     * @param game The {@code Game} the winner is in.
+     * @return The {@code Player} that won.
+     */
+    public Player getWinner(Game game) {
+<span class="nc" id="L112">        return game.getFreeColGameObject(getStringAttribute(WINNER_TAG), Player.class);</span>
+    }
+
+    /**
+     * Get the high score attribute.
+     *
+     * Note: *not* a boolean, due to a kludge in client.IGIH.
+     *
+     * @return The score attribute.
+     */
+    public String getScore() {
+<span class="nc" id="L123">        return getStringAttribute(HIGH_SCORE_TAG);</span>
+    }
+
+    // No server handler method required.
+    // This message is only sent to clients.
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

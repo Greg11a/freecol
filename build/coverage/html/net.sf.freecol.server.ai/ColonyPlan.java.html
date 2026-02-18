@@ -1,0 +1,1524 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColonyPlan.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai</a> &gt; <span class="el_source">ColonyPlan.java</span></div><h1>ColonyPlan.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
+import java.util.logging.Logger;
+
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.BuildableType;
+import net.sf.freecol.common.model.BuildingType;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.FreeColObject;
+import net.sf.freecol.common.model.GoodsContainer;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Market;
+import net.sf.freecol.common.model.Modifier;
+import net.sf.freecol.common.model.NationType;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Role;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitChangeType;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.model.WorkLocation;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import net.sf.freecol.common.util.LogBuilder;
+
+
+/**
+ * Objects of this class describes the plan the AI has for a
+ * {@code Colony}.
+ *
+ * A {@code ColonyPlan} contains a list of
+ * {@link WorkLocationPlan}s which suggests the food and non-food
+ * production of each {@link WorkLocation}, and a list of
+ * {@link BuildableType}s to build.  It takes account of the available
+ * tiles and building production, but does not make decisions to claim
+ * tiles or change the current buildable.  It does takes account of
+ * goods present in the colony, and overall colony size but not the
+ * exact composition of the units involved.  However there is
+ * extensive structure for making a trial assignment of workers in
+ * {@link #assignWorkers}.
+ *
+ * {@link AIColony} is responsible for making
+ * the real decisions.
+ *
+ * @see Colony
+ */
+public class ColonyPlan {
+
+<span class="fc" id="L82">    private static final Logger logger = Logger.getLogger(ColonyPlan.class.getName());</span>
+
+    /** The things to build, and their priority. */
+    private static class BuildPlan {
+
+        public final BuildableType type;
+        public double weight;
+        public double support;
+        public double difficulty;
+
+<span class="fc" id="L92">        public BuildPlan(BuildableType type, double weight, double support) {</span>
+<span class="fc" id="L93">            this.type = type;</span>
+<span class="fc" id="L94">            this.weight = weight;</span>
+<span class="fc" id="L95">            this.support = support;</span>
+<span class="fc" id="L96">            this.difficulty = 1.0f;</span>
+<span class="fc" id="L97">        }</span>
+
+        public double getValue() {
+<span class="fc" id="L100">            return weight * support / difficulty;</span>
+        }
+
+
+        // Override Object
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public String toString() {
+<span class="nc" id="L111">            return String.format(&quot;%s (%1.3f * %1.3f / %1.3f = %1.3f)&quot;,</span>
+<span class="nc" id="L112">                                 type.getSuffix(), weight, support,</span>
+<span class="nc" id="L113">                                 difficulty, getValue());</span>
+        }
+    };
+
+    /** Comparator to sort buildable by descending value. */
+<span class="fc" id="L118">    private static final Comparator&lt;BuildPlan&gt; buildPlanComparator</span>
+<span class="fc" id="L119">        = Comparator.comparingDouble(BuildPlan::getValue).reversed();</span>
+
+    /** Require production plans to always produce an amount exceeding this. */
+    private static final int LOW_PRODUCTION_THRESHOLD = 1;
+
+    /**
+     * Number of turns to require production of without exhausting the
+     * input goods.
+     */
+    private static final int PRODUCTION_TURNOVER_TURNS = 5;
+
+    /** The profile of the colony (a sort of general flavour). */
+<span class="fc" id="L131">    private static enum ProfileType {</span>
+<span class="fc" id="L132">        OUTPOST,</span>
+<span class="fc" id="L133">        SMALL,</span>
+<span class="fc" id="L134">        MEDIUM,</span>
+<span class="fc" id="L135">        LARGE,</span>
+<span class="fc" id="L136">        CAPITAL;</span>
+
+        /**
+         * Chooses a suitable profile type given a size of colony.
+         *
+         * @param size A proposed colony size.
+         * @return The colony profile type.
+         */
+        public static ProfileType getProfileTypeFromSize(int size) {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            return (size &lt;= 1) ? ProfileType.OUTPOST</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">                : (size &lt;= 2) ? ProfileType.SMALL</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">                : (size &lt;= 4) ? ProfileType.MEDIUM</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">                : (size &lt;= 8) ? ProfileType.LARGE</span>
+<span class="nc" id="L149">                : ProfileType.CAPITAL;</span>
+        }
+    };
+    private ProfileType profileType;
+
+    /** Private copy of the AIMain. */
+    private final AIMain aiMain;
+
+    /** The colony this AIColony manages. */
+    private final Colony colony;
+
+ 
+<span class="fc" id="L161">   private final List&lt;BuildPlan&gt; buildPlans = new ArrayList&lt;&gt;();</span>
+
+    /** Plans for work locations available to this colony. */
+<span class="fc" id="L164">    private final List&lt;WorkLocationPlan&gt; workPlans = new ArrayList&lt;&gt;();</span>
+
+    /** The goods types to produce. */
+<span class="fc" id="L167">    private final List&lt;GoodsType&gt; produce = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * Sets of goods types to be produced in this colony.
+     * Temporary variables that do not need to be serialized.
+     * Note: food and luxury groups disabled as not currently used, but
+     * will probably be needed in due course.  Raw building goods types
+     * need to be sorted so they are a list.
+     */
+    //private final Set&lt;GoodsType&gt; foodGoodsTypes = new HashSet&lt;&gt;();
+<span class="fc" id="L177">    private final Set&lt;GoodsType&gt; libertyGoodsTypes = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L178">    private final Set&lt;GoodsType&gt; immigrationGoodsTypes = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L179">    private final Set&lt;GoodsType&gt; militaryGoodsTypes = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L180">    private final List&lt;GoodsType&gt; rawBuildingGoodsTypes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L181">    private final Set&lt;GoodsType&gt; buildingGoodsTypes = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L182">    private final Set&lt;GoodsType&gt; rawLuxuryGoodsTypes = new HashSet&lt;&gt;();</span>
+    //private final Set&lt;GoodsType&gt; luxuryGoodsTypes = new HashSet&lt;&gt;();
+<span class="fc" id="L184">    private final Set&lt;GoodsType&gt; otherRawGoodsTypes = new HashSet&lt;&gt;();</span>
+
+
+    /**
+     * Creates a new {@code ColonyPlan}.
+     *
+     * @param aiMain The main AI-object.
+     * @param colony The colony to make a {@code ColonyPlan} for.
+     */
+<span class="fc" id="L193">    public ColonyPlan(AIMain aiMain, Colony colony) {</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">        if (aiMain == null) throw new RuntimeException(&quot;Null AIMain: &quot; + this);</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">        if (colony == null) throw new RuntimeException(&quot;Null colony: &quot; + this);</span>
+
+<span class="fc" id="L197">        this.aiMain = aiMain;</span>
+<span class="fc" id="L198">        this.colony = colony;</span>
+<span class="fc" id="L199">        this.profileType = ProfileType</span>
+<span class="fc" id="L200">            .getProfileTypeFromSize(colony.getUnitCount());</span>
+<span class="fc" id="L201">    }</span>
+
+
+    /**
+     * Gets the main AI-object.
+     *
+     * @return The main AI-object.
+     */
+    private AIMain getAIMain() {
+<span class="fc" id="L210">        return aiMain;</span>
+    }
+
+    /**
+     * Gets the specification.
+     *
+     * @return The specification.
+     */
+    private Specification spec() {
+<span class="fc" id="L219">        return aiMain.getGame().getSpecification();</span>
+    }
+
+
+    // Public functionality.
+
+    /**
+     * Gets the preferred goods to produce.
+     *
+     * @return A copy of the preferred goods production list in this plan.
+     */
+    public List&lt;GoodsType&gt; getPreferredProduction() {
+<span class="fc" id="L231">        return new ArrayList&lt;&gt;(produce);</span>
+    }
+
+    /**
+     * Gets a copy of the current list of buildable types associated
+     * with this {@code ColonyPlan}.
+     *
+     * @return A copy of the of {@code BuildableType}s list.
+     */
+    public List&lt;BuildableType&gt; getBuildableTypes() {
+<span class="fc" id="L241">        return transform(buildPlans, alwaysTrue(), bp -&gt; bp.type);</span>
+    }
+
+    /**
+     * Gets the best buildable type from this plan that can currently
+     * be built by the colony.
+     *
+     * @return The best current {@code BuildableType}.
+     */
+    public BuildableType getBestBuildableType() {
+<span class="fc" id="L251">        BuildPlan bp = find(buildPlans, p -&gt; colony.canBuild(p.type));</span>
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">        return (bp == null) ? null : bp.type;</span>
+    }
+
+    /**
+     * Get a report on the build plans.
+     *
+     * @return A build plan report.
+     */
+    public String getBuildableReport() {
+<span class="nc" id="L261">        LogBuilder lb = new LogBuilder(64);</span>
+<span class="nc" id="L262">        lb.add(&quot;Buildables:\n&quot;);</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        for (BuildPlan b : buildPlans) lb.add(b, &quot;\n&quot;);</span>
+<span class="nc" id="L264">        return lb.toString();</span>
+    }
+
+    /**
+     * Gets the food-producing and non-autoproducing work location
+     * plans associated with this {@code ColonyPlan}.
+     *
+     * @return A list of food producing plans.
+     */
+    public List&lt;WorkLocationPlan&gt; getFoodPlans() {
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        return transform(workPlans, wp -&gt; wp.isFoodPlan()</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">            &amp;&amp; !wp.getWorkLocation().canAutoProduce());</span>
+    }
+
+    /**
+     * Gets the non-food-producing/non-autoproducing work location
+     * plans associated with this {@code ColonyPlan}.
+     *
+     * @return A list of non-food producing plans.
+     */
+    public List&lt;WorkLocationPlan&gt; getWorkPlans() {
+<span class="fc bfc" id="L285" title="All 2 branches covered.">        return transform(workPlans, wp -&gt; !wp.isFoodPlan()</span>
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">            &amp;&amp; !wp.getWorkLocation().canAutoProduce());</span>
+    }
+
+    /**
+     * Refines this plan given the colony choice of what to build.
+     *
+     * @param build The {@code BuildableType} to be built (may be null).
+     * @param lb A {@code LogBuilder} to log to.
+     */
+    public void refine(BuildableType build, LogBuilder lb) {
+<span class="fc" id="L296">        List&lt;GoodsType&gt; required</span>
+<span class="fc" id="L297">            = transform(colony.getFullRequiredGoods(build), alwaysTrue(),</span>
+                        AbstractGoods::getType);
+<span class="fc" id="L299">        Map&lt;GoodsType, List&lt;WorkLocationPlan&gt;&gt; suppressed = new HashMap&lt;&gt;();</span>
+
+        // Examine a copy of the work plans, but operate on the
+        // original list.  Maintain a offset between the index in the
+        // copied list and the original to aid reinsertion.
+        //
+        // Remove any work plans to make raw/building goods that are
+        // not required to complete the current buildable, but take
+        // care to put such plans back again if a plan is encountered
+        // that makes goods that are made from a type that was removed
+        // and there is less than CARGO_SIZE/2 of that type in stock.
+        // Note though in such cases the position of the
+        // building-goods plans in the work plans list will have moved
+        // from their usual high priority to immediately before the
+        // position of the manufactured goods.
+        //
+        // So, for example, we should suppress tool building when a
+        // colony is building a warehouse, unless we find a plan to
+        // make muskets and the tool stock is low.
+        //
+        // FIXME: generalize this further to make tools for pioneers.
+        //
+<span class="fc" id="L321">        List&lt;WorkLocationPlan&gt; plans = new ArrayList&lt;&gt;(workPlans);</span>
+<span class="fc" id="L322">        int offset = 0;</span>
+<span class="fc bfc" id="L323" title="All 2 branches covered.">        for (int i = 0; i &lt; plans.size(); i++) {</span>
+            List&lt;WorkLocationPlan&gt; wls;
+<span class="fc" id="L325">            WorkLocationPlan wlp = plans.get(i);</span>
+<span class="fc" id="L326">            GoodsType g = wlp.getGoodsType();</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">            if ((rawBuildingGoodsTypes.contains(g)</span>
+<span class="fc bfc" id="L328" title="All 2 branches covered.">                    &amp;&amp; !required.contains(g.getOutputType()))</span>
+<span class="fc bfc" id="L329" title="All 2 branches covered.">                || (buildingGoodsTypes.contains(g)</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">                    &amp;&amp; !required.contains(g))) {</span>
+<span class="fc" id="L331">                workPlans.remove(i - offset);</span>
+<span class="fc" id="L332">                offset++;</span>
+<span class="fc" id="L333">                wls = suppressed.get(g);</span>
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">                if (wls == null) wls = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L335">                wls.add(0, wlp); // reverses list</span>
+<span class="fc" id="L336">                suppressed.put(g, wls);</span>
+<span class="fc" id="L337">                produce.remove(g);</span>
+<span class="fc" id="L338">                lb.add(&quot;, suppress production of &quot;, g);</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">            } else if (g.isRefined()</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">                &amp;&amp; (rawBuildingGoodsTypes.contains(g.getInputType())</span>
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">                    || buildingGoodsTypes.contains(g.getInputType()))) {</span>
+<span class="fc" id="L342">                int n = 0, idx = produce.indexOf(g);</span>
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">                for (GoodsType type = g.getInputType(); type != null;</span>
+<span class="nc" id="L344">                     type = type.getInputType()) {</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">                    if ((wls = suppressed.get(type)) == null) break;</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">                    if (colony.getGoodsCount(type)</span>
+<span class="nc" id="L347">                        &gt;= GoodsContainer.CARGO_SIZE/2) break;</span>
+<span class="nc" id="L348">                    n += wls.size();</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">                    while (!wls.isEmpty()) {</span>
+                        // reverses again when adding, cancelling reversal above
+<span class="nc" id="L351">                        workPlans.add(i - offset, wls.remove(0));</span>
+                    }
+<span class="nc" id="L353">                    produce.add(idx, type);</span>
+<span class="nc" id="L354">                    lb.add(&quot;, restore production of &quot;, type);</span>
+                }
+<span class="fc" id="L356">                offset -= n;</span>
+            }
+        }
+<span class="fc" id="L359">    }</span>
+
+    /**
+     * Recreates the buildables and work location plans for this
+     * colony.
+     */
+    public void update() {
+        // Update the profile type.
+<span class="fc" id="L367">        profileType = ProfileType.getProfileTypeFromSize(colony.getUnitCount());</span>
+
+        // Build the total map of all possible production with standard units.
+<span class="fc" id="L370">        Map&lt;GoodsType, Map&lt;WorkLocation, Integer&gt;&gt; production</span>
+<span class="fc" id="L371">            = createProductionMap();</span>
+
+        // Set the goods type lists, and prune production of manufactured
+        // goods that are missing raw materials and other non-interesting.
+<span class="fc" id="L375">        updateGoodsTypeLists(production);</span>
+
+        // Set the preferred raw materials.  Prune production and
+        // goods lists further removing the non-preferred new world
+        // raw and refined materials.
+<span class="fc" id="L380">        updateRawMaterials(production);</span>
+
+        // The buildables depend on the profile type, the goods type lists
+        // and/or goods-to-produce list.
+<span class="fc" id="L384">        updateBuildableTypes();</span>
+
+        // Make plans for each valid &lt;goods, location&gt; production and
+        // complete the list of goods to produce.
+<span class="fc" id="L388">        updatePlans(production);</span>
+<span class="fc" id="L389">    }</span>
+
+
+    // Internals
+
+    /**
+     * Creates a map of potential production of all goods types
+     * from all available work locations using the default unit type.
+     * Includes non-workable locations (e.g. chapel, colony-center-tile)
+     * as their production can influence the choice of goods to produce.
+     *
+     * @return The map of potential production.
+     */
+    private Map&lt;GoodsType, Map&lt;WorkLocation, Integer&gt;&gt; createProductionMap() {
+<span class="fc" id="L403">        Map&lt;GoodsType, Map&lt;WorkLocation, Integer&gt;&gt; production = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">        for (WorkLocation wl : colony.getAvailableWorkLocationsList()) {</span>
+<span class="fc bfc" id="L405" title="All 2 branches covered.">            for (GoodsType g : spec().getGoodsTypeList()) {</span>
+<span class="fc" id="L406">                int p = wl.getGenericPotential(g);</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">                if (p &gt; 0) {</span>
+<span class="fc" id="L408">                    Map&lt;WorkLocation, Integer&gt; m = production.get(g);</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">                    if (m == null) {</span>
+<span class="fc" id="L410">                        m = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L411">                        production.put(g, m);</span>
+                    }
+<span class="fc" id="L413">                    m.put(wl, p);</span>
+                }
+<span class="fc" id="L415">            }</span>
+<span class="fc" id="L416">        }</span>
+<span class="fc" id="L417">        return production;</span>
+    }
+
+    /**
+     * Updates the goods type lists.  The categories are:&lt;UL&gt;
+     * &lt;LI&gt;food&lt;/LI&gt;
+     * &lt;LI&gt;liberty&lt;/LI&gt;
+     * &lt;LI&gt;immigration&lt;/LI&gt;
+     * &lt;LI&gt;military&lt;/LI&gt;
+     * &lt;LI&gt;raw building&lt;/LI&gt;
+     * &lt;LI&gt;building&lt;/LI&gt;
+     * &lt;LI&gt;raw luxury&lt;/LI&gt;
+     * &lt;LI&gt;luxury&lt;/LI&gt;
+     * &lt;LI&gt;raw other&lt;/LI&gt;
+     * &lt;/UL&gt;
+     *
+     * Ignore raw materials which can not be refined and refined goods
+     * that have no raw materials available.  Also ignore other goods
+     * that do not fit these categories (e.g. trade goods).
+     *
+     * @param production The production map.
+     */
+    private void updateGoodsTypeLists(Map&lt;GoodsType, Map&lt;WorkLocation, Integer&gt;&gt; production) {
+        //foodGoodsTypes.clear();
+<span class="fc" id="L441">        libertyGoodsTypes.clear();</span>
+<span class="fc" id="L442">        immigrationGoodsTypes.clear();</span>
+<span class="fc" id="L443">        militaryGoodsTypes.clear();</span>
+<span class="fc" id="L444">        rawBuildingGoodsTypes.clear();</span>
+<span class="fc" id="L445">        buildingGoodsTypes.clear();</span>
+<span class="fc" id="L446">        rawLuxuryGoodsTypes.clear();</span>
+        //luxuryGoodsTypes.clear();
+<span class="fc" id="L448">        otherRawGoodsTypes.clear();</span>
+<span class="fc bfc" id="L449" title="All 2 branches covered.">        for (GoodsType g : new ArrayList&lt;&gt;(production.keySet())) {</span>
+<span class="fc bfc" id="L450" title="All 2 branches covered.">            if (g.isFoodType()) {</span>
+                ;//foodGoodsTypes.add(g);
+<span class="fc bfc" id="L452" title="All 2 branches covered.">            } else if (g.isLibertyType()) {</span>
+<span class="fc" id="L453">                libertyGoodsTypes.add(g);</span>
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">            } else if (g.isImmigrationType()) {</span>
+<span class="nc" id="L455">                immigrationGoodsTypes.add(g);</span>
+<span class="fc bfc" id="L456" title="All 2 branches covered.">            } else if (g.getMilitary()) {</span>
+<span class="fc" id="L457">                militaryGoodsTypes.add(g);</span>
+<span class="fc bfc" id="L458" title="All 2 branches covered.">            } else if (g.isRawBuildingMaterial()) {</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">                if (g.isRawMaterialForUnstorableBuildingMaterial()) {</span>
+<span class="fc" id="L460">                    rawBuildingGoodsTypes.add(g);</span>
+                }
+<span class="fc bfc" id="L462" title="All 2 branches covered.">            } else if (g.isBuildingMaterial()</span>
+<span class="pc bpc" id="L463" title="1 of 2 branches missed.">                    &amp;&amp; g.getInputType().isRawBuildingMaterial()) {</span>
+<span class="fc bfc" id="L464" title="All 2 branches covered.">                if (!g.isStorable()) {</span>
+<span class="fc" id="L465">                    buildingGoodsTypes.add(g);</span>
+                }
+<span class="fc bfc" id="L467" title="All 2 branches covered.">            } else if (g.isNewWorldGoodsType()) {</span>
+<span class="fc" id="L468">                rawLuxuryGoodsTypes.add(g);</span>
+<span class="fc bfc" id="L469" title="All 2 branches covered.">            } else if (g.isRefined()</span>
+<span class="pc bpc" id="L470" title="1 of 2 branches missed.">                &amp;&amp; g.getInputType().isNewWorldGoodsType()) {</span>
+                ;//luxuryGoodsTypes.add(g);
+<span class="pc bpc" id="L472" title="1 of 2 branches missed.">            } else if (g.isFarmed()) {</span>
+<span class="fc" id="L473">                otherRawGoodsTypes.add(g);</span>
+            } else { // Not interested in this goods type.  Should not happen.
+<span class="nc" id="L475">                logger.warning(&quot;Ignoring goods type &quot; + g</span>
+<span class="nc" id="L476">                    + &quot; at &quot; + colony.getName());</span>
+<span class="nc" id="L477">                production.remove(g);</span>
+            }
+<span class="fc" id="L479">        }</span>
+<span class="fc" id="L480">    }</span>
+
+    /**
+     * Chooses the two best raw materials, updating the production
+     * map and lists.
+     *
+     * FIXME: scale with colony size.
+     *
+     * @param production The production map.
+     */
+    private void updateRawMaterials(Map&lt;GoodsType, Map&lt;WorkLocation, Integer&gt;&gt; production) {
+<span class="fc" id="L491">        Player player = colony.getOwner();</span>
+<span class="fc" id="L492">        Market market = player.getMarket();</span>
+<span class="fc" id="L493">        NationType nationType = player.getNationType();</span>
+<span class="fc" id="L494">        GoodsType primaryRawMaterial = null;</span>
+<span class="fc" id="L495">        GoodsType secondaryRawMaterial = null;</span>
+<span class="fc" id="L496">        int primaryValue = -1;</span>
+<span class="fc" id="L497">        int secondaryValue = -1;</span>
+
+<span class="fc" id="L499">        produce.clear();</span>
+<span class="fc" id="L500">        List&lt;GoodsType&gt; rawMaterials = new ArrayList&lt;&gt;(rawLuxuryGoodsTypes);</span>
+<span class="fc" id="L501">        rawMaterials.addAll(otherRawGoodsTypes);</span>
+<span class="fc bfc" id="L502" title="All 2 branches covered.">        for (GoodsType g : rawMaterials) {</span>
+<span class="fc" id="L503">            int value = sum(production.get(g).entrySet(), Entry::getValue);</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">            if (value &lt;= LOW_PRODUCTION_THRESHOLD) {</span>
+<span class="fc" id="L505">                production.remove(g);</span>
+<span class="fc" id="L506">                continue;</span>
+            }
+<span class="pc bpc" id="L508" title="1 of 2 branches missed.">            if (market != null) {</span>
+                // If the market is available, weight by sale price of
+                // the material, or if it is the raw material for a
+                // refined goods type, the average of the raw and
+                // refined goods prices.
+<span class="pc bpc" id="L513" title="1 of 2 branches missed.">                if (g.getOutputType() == null) {</span>
+<span class="nc" id="L514">                    value *= market.getSalePrice(g, 1);</span>
+<span class="pc bpc" id="L515" title="1 of 2 branches missed.">                } else if (production.containsKey(g.getOutputType())) {</span>
+<span class="fc" id="L516">                    value *= (market.getSalePrice(g, 1)</span>
+<span class="fc" id="L517">                        + market.getSalePrice(g.getOutputType(), 1)) / 2;</span>
+                }
+            }
+<span class="pc bpc" id="L520" title="1 of 2 branches missed.">            if (nationType.hasModifier(g.getId())) {</span>
+<span class="nc" id="L521">                value = (value * 12) / 10; // Bonus for national advantages</span>
+            }
+<span class="pc bpc" id="L523" title="2 of 4 branches missed.">            if (value &gt; secondaryValue &amp;&amp; secondaryRawMaterial != null) {</span>
+<span class="nc" id="L524">                production.remove(secondaryRawMaterial);</span>
+<span class="nc" id="L525">                production.remove(secondaryRawMaterial.getOutputType());</span>
+<span class="nc bnc" id="L526" title="All 2 branches missed.">                if (rawLuxuryGoodsTypes.remove(secondaryRawMaterial)) {</span>
+                    ;//luxuryGoodsTypes.remove(secondaryRawMaterial.getOutputType());
+                } else {
+<span class="nc" id="L529">                    otherRawGoodsTypes.remove(secondaryRawMaterial);</span>
+                }
+            }
+<span class="fc bfc" id="L532" title="All 2 branches covered.">            if (value &gt; primaryValue) {</span>
+<span class="fc" id="L533">                secondaryRawMaterial = primaryRawMaterial;</span>
+<span class="fc" id="L534">                secondaryValue = primaryValue;</span>
+<span class="fc" id="L535">                primaryRawMaterial = g;</span>
+<span class="fc" id="L536">                primaryValue = value;</span>
+<span class="pc bpc" id="L537" title="1 of 2 branches missed.">            } else if (value &gt; secondaryValue) {</span>
+<span class="fc" id="L538">                secondaryRawMaterial = g;</span>
+<span class="fc" id="L539">                secondaryValue = value;</span>
+            }
+<span class="fc" id="L541">        }</span>
+<span class="pc bpc" id="L542" title="1 of 2 branches missed.">        if (primaryRawMaterial != null) {</span>
+<span class="fc" id="L543">            produce.add(primaryRawMaterial);</span>
+<span class="pc bpc" id="L544" title="1 of 2 branches missed.">            if (primaryRawMaterial.getOutputType() != null) {</span>
+<span class="fc" id="L545">                produce.add(primaryRawMaterial.getOutputType());</span>
+            }
+<span class="fc bfc" id="L547" title="All 2 branches covered.">            if (secondaryRawMaterial != null) {</span>
+<span class="fc" id="L548">                produce.add(secondaryRawMaterial);</span>
+<span class="pc bpc" id="L549" title="1 of 2 branches missed.">                if (secondaryRawMaterial.getOutputType() != null) {</span>
+<span class="fc" id="L550">                    produce.add(secondaryRawMaterial.getOutputType());</span>
+                }
+            }
+        }
+<span class="fc" id="L554">    }</span>
+
+
+    // Relative weights of the various building categories.
+    // FIXME: split out/parameterize into a &quot;building strategy&quot;
+    //
+    // BuildableTypes that improve breeding.
+    private static final double BREEDING_WEIGHT    = 0.1;
+    // BuildableTypes that improve building production.
+    private static final double BUILDING_WEIGHT    = 0.9;
+    // BuildableTypes that produce defensive units.
+    private static final double DEFENCE_WEIGHT     = 0.1;
+    // BuildableTypes that provide export ability.
+    private static final double EXPORT_WEIGHT      = 0.6;
+    // BuildableTypes that allow water to be used.
+    private static final double FISH_WEIGHT        = 0.25;
+    // BuildableTypes that improve the colony fortifications.
+    private static final double FORTIFY_WEIGHT     = 0.3;
+    // BuildableTypes that improve immigration production.
+    private static final double IMMIGRATION_WEIGHT = 0.05;
+    // BuildableTypes that improve liberty production.
+    private static final double LIBERTY_WEIGHT     = 0.75;
+    // BuildableTypes that improve military goods production.
+    private static final double MILITARY_WEIGHT    = 0.4;
+    // BuildableTypes that improve luxury goods production.
+    private static final double PRODUCTION_WEIGHT  = 0.25;
+    // BuildableTypes that improve colony storage.
+    private static final double REPAIR_WEIGHT      = 0.1;
+    // BuildableTypes that improve colony storage.
+    private static final double STORAGE_WEIGHT     = 0.85;
+    // BuildableTypes that improve education.
+    private static final double TEACH_WEIGHT       = 0.2;
+    // BuildableTypes that improve transport.
+    private static final double TRANSPORT_WEIGHT   = 0.15;
+
+    /**
+     * Finds a build plan for this type.
+     *
+     * @param type The {@code BuildableType} to search for.
+     * @return A {@code BuildPlan} with this type, or null if not found.
+     */
+    private BuildPlan findBuildPlan(BuildableType type) {
+<span class="fc bfc" id="L596" title="All 2 branches covered.">        return find(buildPlans, bp -&gt; bp.type == type);</span>
+    }
+
+    /**
+     * Adds or improves the priority of a buildable in a list.
+     *
+     * @param type The {@code BuildableType} to use.
+     * @param weight The relative weight of this class of buildable with
+     *     respect to other buildable classes.
+     * @param support The support for this buildable within its class.
+     * @return True if this type was prioritized.
+     */
+    private boolean prioritize(BuildableType type,
+                               double weight, double support) {
+<span class="fc" id="L610">        BuildPlan bp = findBuildPlan(type);</span>
+<span class="fc bfc" id="L611" title="All 2 branches covered.">        if (bp == null) {</span>
+<span class="fc" id="L612">            buildPlans.add(new BuildPlan(type, weight, support));</span>
+<span class="fc" id="L613">            return true;</span>
+        }
+<span class="pc bpc" id="L615" title="1 of 2 branches missed.">        if (bp.weight * bp.support &lt; weight * support) {</span>
+<span class="fc" id="L616">            bp.weight = weight;</span>
+<span class="fc" id="L617">            bp.support = support;</span>
+<span class="fc" id="L618">            return true;</span>
+        }
+<span class="nc" id="L620">        return false;</span>
+    }
+
+    /**
+     * Given a buildable that improves production of a goods type,
+     * prioritize it.
+     *
+     * @param type The {@code BuildableType} to consider.
+     * @param goodsType The {@code GoodsType} improved by the buildable.
+     * @return True if this type was prioritized.
+     */
+    private boolean prioritizeProduction(BuildableType type,
+                                         GoodsType goodsType) {
+<span class="fc" id="L633">        Player player = colony.getOwner();</span>
+<span class="fc" id="L634">        NationType nationType = player.getNationType();</span>
+<span class="fc" id="L635">        String advantage = getAIMain().getAIPlayer(player).getAIAdvantage();</span>
+<span class="fc" id="L636">        boolean ret = false;</span>
+<span class="fc" id="L637">        double factor = 1.0;</span>
+<span class="pc bpc" id="L638" title="1 of 2 branches missed.">        if (nationType.hasModifier(goodsType.getId())) {</span>
+            // Handles building, agriculture, furTrapping advantages
+<span class="nc" id="L640">            factor *= 1.2;</span>
+        }
+<span class="fc bfc" id="L642" title="All 2 branches covered.">        if (goodsType.getMilitary()) {</span>
+<span class="pc bpc" id="L643" title="1 of 2 branches missed.">            if (&quot;conquest&quot;.equals(advantage)) factor = 1.2;</span>
+<span class="fc" id="L644">            ret = prioritize(type, MILITARY_WEIGHT * factor,</span>
+                1.0/*FIXME: amount present wrt amount to equip*/);
+<span class="fc bfc" id="L646" title="All 4 branches covered.">        } else if (goodsType.isBuildingMaterial() &amp;&amp; !goodsType.isStorable()) {</span>
+<span class="fc" id="L647">            ret = prioritize(type, BUILDING_WEIGHT * factor,</span>
+                1.0/*FIXME: need for this type*/);
+<span class="fc bfc" id="L649" title="All 2 branches covered.">        } else if (goodsType.isLibertyType()) {</span>
+<span class="pc bpc" id="L650" title="1 of 2 branches missed.">            if (player.isREF()) return false; // no bells for REF colonies</span>
+<span class="fc" id="L651">            ret = prioritize(type, LIBERTY_WEIGHT,</span>
+<span class="pc bpc" id="L652" title="1 of 2 branches missed.">                (colony.getSonsOfLiberty() &gt;= 100) ? 0.01 : 1.0);</span>
+<span class="fc bfc" id="L653" title="All 2 branches covered.">        } else if (goodsType.isImmigrationType()) {</span>
+<span class="pc bpc" id="L654" title="1 of 2 branches missed.">            if (&quot;immigration&quot;.equals(advantage)) factor = 1.2;</span>
+<span class="fc" id="L655">            ret = prioritize(type, IMMIGRATION_WEIGHT * factor,</span>
+                1.0/*FIXME: Brewster?*/);
+<span class="fc bfc" id="L657" title="All 2 branches covered.">        } else if (produce.contains(goodsType)) {</span>
+<span class="pc bpc" id="L658" title="1 of 2 branches missed.">            if (&quot;trade&quot;.equals(advantage)) factor = 1.2;</span>
+<span class="fc" id="L659">            double f = 0.1 * colony.getTotalProductionOf(goodsType.getInputType());</span>
+<span class="fc" id="L660">            ret = prioritize(type, PRODUCTION_WEIGHT * factor,</span>
+                f/*FIXME: improvement?*/);
+        }
+<span class="fc" id="L663">        return ret;</span>
+    }
+
+    /**
+     * Updates the build plans for this colony.
+     */
+    private void updateBuildableTypes() {
+<span class="fc" id="L670">        final EuropeanAIPlayer euaip = (EuropeanAIPlayer) getAIMain()</span>
+<span class="fc" id="L671">            .getAIPlayer(colony.getOwner());</span>
+<span class="fc" id="L672">        String advantage = euaip.getAIAdvantage();</span>
+<span class="fc" id="L673">        buildPlans.clear();</span>
+
+        int maxLevel;
+<span class="pc bpc" id="L676" title="2 of 5 branches missed.">        switch (profileType) {</span>
+        case OUTPOST:
+<span class="fc" id="L678">        case SMALL:   maxLevel = 1; break;</span>
+<span class="fc" id="L679">        case MEDIUM:  maxLevel = 2; break;</span>
+<span class="fc" id="L680">        case LARGE:   maxLevel = 3; break;</span>
+<span class="nc" id="L681">        case CAPITAL: maxLevel = 4; break;</span>
+        default:
+<span class="nc" id="L683">            throw new IllegalStateException(&quot;Bogus profile type: &quot;</span>
+                + profileType);
+        }
+
+<span class="fc" id="L687">        Player player = colony.getOwner();</span>
+<span class="fc bfc" id="L688" title="All 2 branches covered.">        for (BuildingType type : transform(spec().getBuildingTypeList(),</span>
+<span class="fc" id="L689">                                           bt -&gt; colony.canBuild(bt))) {</span>
+<span class="fc" id="L690">            boolean expectFail = false;</span>
+
+            // Exempt defence and export from the level check.
+<span class="fc bfc" id="L693" title="All 2 branches covered.">            if (type.hasModifier(Modifier.DEFENCE)) {</span>
+<span class="fc" id="L694">                double factor = 1.0;</span>
+<span class="pc bpc" id="L695" title="1 of 2 branches missed.">                if (&quot;conquest&quot;.equals(advantage)) factor = 1.1;</span>
+<span class="fc" id="L696">                prioritize(type, FORTIFY_WEIGHT * factor,</span>
+                    1.0/*FIXME: 0 if FF underway*/);
+            }
+<span class="pc bpc" id="L699" title="1 of 2 branches missed.">            if (type.hasAbility(Ability.EXPORT)) {</span>
+<span class="nc" id="L700">                double factor = 1.0;</span>
+<span class="nc bnc" id="L701" title="All 2 branches missed.">                if (&quot;trade&quot;.equals(advantage)) factor = 1.1;</span>
+<span class="nc" id="L702">                prioritize(type, EXPORT_WEIGHT * factor,</span>
+                    1.0/*FIXME: weigh production v transport*/);
+            }
+
+            // Skip later stage buildings for smaller settlements.
+<span class="fc bfc" id="L707" title="All 2 branches covered.">            if (type.getLevel() &gt; maxLevel) continue;</span>
+
+            // Scale docks by the improvement available to the food supply.
+<span class="fc bfc" id="L710" title="All 2 branches covered.">            if (type.hasAbility(Ability.PRODUCE_IN_WATER)) {</span>
+<span class="fc" id="L711">                double factor = 0.0;</span>
+<span class="pc bpc" id="L712" title="1 of 2 branches missed.">                if (!colony.hasAbility(Ability.PRODUCE_IN_WATER)</span>
+<span class="pc bpc" id="L713" title="1 of 2 branches missed.">                    &amp;&amp; colony.getTile().isShore()) {</span>
+<span class="fc" id="L714">                    int landFood = 0, seaFood = 0;</span>
+<span class="fc bfc" id="L715" title="All 2 branches covered.">                    for (Tile t : transform(colony.getTile().getSurroundingTiles(1,1),</span>
+<span class="pc bpc" id="L716" title="3 of 4 branches missed.">                            t2 -&gt; (t2.getOwningSettlement() == colony || player.canClaimForSettlement(t2)))) {</span>
+<span class="fc bfc" id="L717" title="All 2 branches covered.">                        for (AbstractGoods ag : t.getSortedPotential()) {</span>
+<span class="fc bfc" id="L718" title="All 2 branches covered.">                            if (ag.isFoodType()) {</span>
+<span class="fc bfc" id="L719" title="All 2 branches covered.">                                if (t.isLand()) {</span>
+<span class="fc" id="L720">                                    landFood += ag.getAmount();</span>
+                                } else {
+<span class="fc" id="L722">                                    seaFood += ag.getAmount();</span>
+                                }
+                            }
+<span class="fc" id="L725">                        }</span>
+<span class="fc" id="L726">                    }</span>
+<span class="pc bpc" id="L727" title="1 of 2 branches missed.">                    factor = (seaFood + landFood == 0) ? 0.0</span>
+<span class="fc" id="L728">                        : seaFood / (double)(seaFood + landFood);</span>
+                }
+<span class="fc" id="L730">                prioritize(type, FISH_WEIGHT, factor);</span>
+            }
+
+<span class="fc bfc" id="L733" title="All 2 branches covered.">            if (type.hasAbility(Ability.BUILD)) {</span>
+<span class="pc bpc" id="L734" title="1 of 2 branches missed.">                double factor = (&quot;building&quot;.equals(advantage)) ? 1.1 : 1.0;</span>
+<span class="pc bpc" id="L735" title="1 of 2 branches missed.">                double support = (any(type.getAbilities(Ability.BUILD),</span>
+<span class="pc" id="L736">                                      Ability::hasScope)) ? 0.1 : 1.0;</span>
+<span class="fc" id="L737">                prioritize(type, BUILDING_WEIGHT * factor,</span>
+                    support/*FIXME: need for the thing now buildable*/);
+            }
+
+<span class="fc bfc" id="L741" title="All 2 branches covered.">            if (type.hasAbility(Ability.TEACH)) {</span>
+<span class="fc" id="L742">                prioritize(type, TEACH_WEIGHT,</span>
+                    1.0/*FIXME: #students, #specialists here, #wanted*/);
+            }
+
+<span class="pc bpc" id="L746" title="1 of 2 branches missed.">            if (type.hasAbility(Ability.REPAIR_UNITS)) {</span>
+<span class="nc" id="L747">                double factor = 1.0;</span>
+<span class="nc bnc" id="L748" title="All 2 branches missed.">                if (&quot;naval&quot;.equals(advantage)) factor = 1.1;</span>
+<span class="nc" id="L749">                prioritize(type, REPAIR_WEIGHT * factor,</span>
+                    1.0/*FIXME: #units-to-repair, has-Europe etc*/);
+            }
+
+<span class="fc" id="L753">            GoodsType output = type.getProducedGoodsType();</span>
+<span class="fc bfc" id="L754" title="All 2 branches covered.">            if (output != null) {</span>
+<span class="fc bfc" id="L755" title="All 2 branches covered.">                if (!prioritizeProduction(type, output)) {</span>
+                    // Allow failure if this building can not build.
+<span class="fc" id="L757">                    expectFail = true;</span>
+                }
+            } else {
+<span class="fc bfc" id="L760" title="All 2 branches covered.">                for (GoodsType g : spec().getGoodsTypeList()) {</span>
+<span class="fc bfc" id="L761" title="All 2 branches covered.">                    if (type.hasModifier(g.getId())) {</span>
+<span class="pc bpc" id="L762" title="1 of 2 branches missed.">                        if (!prioritizeProduction(type, g)) {</span>
+<span class="nc" id="L763">                            expectFail = true;</span>
+                        }
+                    }
+<span class="fc" id="L766">                }</span>
+                // Hacks.  No good way to make this really generic.
+<span class="fc bfc" id="L768" title="All 2 branches covered.">                if (type.hasModifier(Modifier.WAREHOUSE_STORAGE)) {</span>
+<span class="fc" id="L769">                    double factor = 1.0;</span>
+<span class="pc bpc" id="L770" title="1 of 2 branches missed.">                    if (&quot;trade&quot;.equals(advantage)) factor = 1.1;</span>
+<span class="fc" id="L771">                    prioritize(type, STORAGE_WEIGHT * factor,</span>
+                        1.0/*FIXME: amount of goods*/);
+                }
+<span class="pc bpc" id="L774" title="1 of 2 branches missed.">                if (type.hasModifier(Modifier.BREEDING_DIVISOR)) {</span>
+<span class="nc" id="L775">                    prioritize(type, BREEDING_WEIGHT,</span>
+                        1.0/*FIXME: horses present?*/);
+                }
+            }
+
+<span class="pc bpc" id="L780" title="1 of 4 branches missed.">            if (!expectFail &amp;&amp; findBuildPlan(type) == null) {</span>
+<span class="nc" id="L781">                logger.warning(&quot;No building priority found for: &quot; + type);</span>
+            }
+<span class="fc" id="L783">        }</span>
+
+<span class="fc" id="L785">        double wagonNeed = 0.0;</span>
+<span class="fc bfc" id="L786" title="All 2 branches covered.">        if (!colony.isConnectedPort()) { // Inland colonies need transportation</span>
+<span class="fc" id="L787">            int wagons = euaip.getNeededWagons(colony.getTile());</span>
+<span class="pc bpc" id="L788" title="3 of 4 branches missed.">            wagonNeed = (wagons &lt;= 0) ? 0.0 : (wagons &gt; 3) ? 1.0</span>
+<span class="pc" id="L789">                : wagons / 3.0;</span>
+        }
+<span class="fc bfc" id="L791" title="All 2 branches covered.">        for (UnitType unitType : transform(spec().getUnitTypeList(),</span>
+<span class="fc" id="L792">                                           ut -&gt; colony.canBuild(ut))) {</span>
+<span class="pc bpc" id="L793" title="1 of 2 branches missed.">            if (unitType.hasAbility(Ability.NAVAL_UNIT)) {</span>
+                ; // FIXME: decide to build a ship
+<span class="fc bfc" id="L795" title="All 2 branches covered.">            } else if (unitType.isDefensive()) {</span>
+<span class="pc bpc" id="L796" title="1 of 2 branches missed.">                if (euaip.needsMoreArtillery()) {</span>
+<span class="fc" id="L797">                    prioritize(unitType, DEFENCE_WEIGHT,</span>
+                        1.0/*FIXME: how badly defended?*/);
+                }
+<span class="pc bpc" id="L800" title="1 of 2 branches missed.">            } else if (wagonNeed &gt; 0.0</span>
+<span class="nc bnc" id="L801" title="All 2 branches missed.">                &amp;&amp; unitType.hasAbility(Ability.CARRY_GOODS)) {</span>
+<span class="nc" id="L802">                double factor = 1.0;</span>
+<span class="nc bnc" id="L803" title="All 2 branches missed.">                if (&quot;trade&quot;.equals(advantage)) factor = 1.1;</span>
+<span class="nc" id="L804">                prioritize(unitType, TRANSPORT_WEIGHT * factor,</span>
+                    wagonNeed/*FIXME: type.getSpace()*/);
+            }
+<span class="fc" id="L807">        }</span>
+
+        // Weight by lower required goods.
+<span class="fc bfc" id="L810" title="All 2 branches covered.">        for (BuildPlan bp : buildPlans) {</span>
+<span class="fc" id="L811">            int difficulty = sum(bp.type.getRequiredGoods(),</span>
+<span class="fc bfc" id="L812" title="All 2 branches covered.">                ag -&gt; ag.getAmount() &gt; colony.getGoodsCount(ag.getType()),</span>
+                ag -&gt; {
+<span class="fc" id="L814">                    final GoodsType type = ag.getType();</span>
+<span class="fc" id="L815">                    return (ag.getAmount() - colony.getGoodsCount(type))</span>
+                    // Penalize building with type that can not be
+                    // made locally.
+<span class="pc bpc" id="L818" title="1 of 2 branches missed.">                        * ((produce.contains(type.getInputType())) ? 1 : 5);</span>
+                });
+<span class="fc" id="L820">            bp.difficulty = Math.max(1.0f, Math.sqrt((double)difficulty));</span>
+<span class="fc" id="L821">        }</span>
+
+<span class="fc" id="L823">        buildPlans.sort(buildPlanComparator);</span>
+<span class="fc" id="L824">    }</span>
+
+    /**
+     * Makes a plan for each type of possible production, that is
+     * those work locations that can use a unit or can auto-produce.
+     * Note that this will almost certainly include clashes over work
+     * locations.  That gets sorted out elsewhere as ColonyPlans do
+     * not examine the units present.
+     *
+     * With the complete list of work plans, finish creating the list
+     * of goods to produce.
+     *
+     * Then filter out the auto-production plans as they are not
+     * going to be helpful for unit allocation.
+     *
+     * Finally sort by desirability.
+     *
+     * @param production A map of the goods type and production.
+     */
+    private void updatePlans(Map&lt;GoodsType, Map&lt;WorkLocation, Integer&gt;&gt; production) {
+<span class="fc" id="L844">        workPlans.clear();</span>
+        // Do not make plans to produce into a full warehouse.
+<span class="fc" id="L846">        final Predicate&lt;Entry&lt;GoodsType, Map&lt;WorkLocation, Integer&gt;&gt;&gt; fullPred = (e) -&gt; {</span>
+<span class="fc" id="L847">            GoodsType g = e.getKey();</span>
+<span class="pc bpc" id="L848" title="1 of 4 branches missed.">            return !g.isStorable() || g.limitIgnored()</span>
+<span class="fc bfc" id="L849" title="All 2 branches covered.">                || colony.getGoodsCount(g) &lt; colony.getWarehouseCapacity();</span>
+        };            
+<span class="fc" id="L851">        forEachMapEntry(production, fullPred, e -&gt; {</span>
+<span class="fc bfc" id="L852" title="All 2 branches covered.">                for (WorkLocation wl : transform(e.getValue().keySet(),</span>
+<span class="pc bpc" id="L853" title="3 of 4 branches missed.">                        w -&gt; (w.canBeWorked() || w.canAutoProduce()))) {</span>
+<span class="fc" id="L854">                    workPlans.add(new WorkLocationPlan(getAIMain(), wl, e.getKey()));</span>
+<span class="fc" id="L855">                }</span>
+<span class="fc" id="L856">            });</span>
+
+        // Now we have lots of plans, determine what goods to produce.
+<span class="fc" id="L859">        updateProductionList(production);</span>
+
+        // Filter out plans that can not use a unit.
+<span class="fc" id="L862">        List&lt;WorkLocationPlan&gt; oldPlans = new ArrayList&lt;&gt;(workPlans);</span>
+<span class="fc" id="L863">        workPlans.clear();</span>
+<span class="fc" id="L864">        workPlans.addAll(transform(oldPlans,</span>
+<span class="fc" id="L865">                                   w -&gt; w.getWorkLocation().canBeWorked()));</span>
+
+        // Sort the work plans by earliest presence in the produce
+        // list, and then by amount.  If the type of goods produced is
+        // not on the produce list, then make sure such plans sort to
+        // the end, except for food plans.
+<span class="fc" id="L871">        final Comparator&lt;WorkLocationPlan&gt; comp</span>
+<span class="fc" id="L872">            = cachingIntComparator((WorkLocationPlan wp) -&gt; {</span>
+<span class="fc" id="L873">                    final GoodsType gt = wp.getGoodsType();</span>
+<span class="fc" id="L874">                    int i = produce.indexOf(gt);</span>
+<span class="fc bfc" id="L875" title="All 4 branches covered.">                    return (i &lt; 0 &amp;&amp; !gt.isFoodType()) ? 99999 : i;</span>
+                })
+            // Should be in reverse order (highest value first)
+<span class="fc" id="L878">            .thenComparingInt((WorkLocationPlan wp) -&gt; {</span>
+<span class="fc" id="L879">                return wp.getWorkLocation().getGenericPotential(wp.getGoodsType()) * -1;</span>
+                })
+
+<span class="fc" id="L882">            .thenComparing(WorkLocationPlan::getGoodsType,</span>
+                           GoodsType.goodsTypeComparator);
+<span class="fc" id="L884">        workPlans.sort(comp);</span>
+<span class="fc" id="L885">    }</span>
+
+    /**
+     * Add the other goods types to the production list.  When this is
+     * called the new world goods production is already present on the
+     * produce list.  Ignores food which is treated separately.
+     *
+     * @param production A map of the production.
+     */
+    private void updateProductionList(final Map&lt;GoodsType, Map&lt;WorkLocation, Integer&gt;&gt; production) {
+<span class="fc" id="L895">        final Comparator&lt;GoodsType&gt; productionComparator</span>
+<span class="fc" id="L896">            = cachingIntComparator((GoodsType gt) -&gt;</span>
+<span class="nc" id="L897">                sum(production.get(gt).values(), Integer::intValue))</span>
+<span class="fc" id="L898">                .reversed();</span>
+
+        // If we need liberty put it before the new world production.
+<span class="pc bpc" id="L901" title="1 of 2 branches missed.">        if (colony.getSonsOfLiberty() &lt; 100) {</span>
+<span class="fc" id="L902">            produce.addAll(0, transform(libertyGoodsTypes,</span>
+<span class="fc" id="L903">                    gt -&gt; production.containsKey(gt),</span>
+<span class="fc" id="L904">                    Function.&lt;GoodsType&gt;identity(), productionComparator));</span>
+        }
+
+        // Always add raw/building materials first.
+<span class="fc" id="L908">        rawBuildingGoodsTypes.sort(productionComparator);</span>
+<span class="fc" id="L909">        final ToIntFunction&lt;GoodsType&gt; indexer = gt -&gt;</span>
+<span class="nc" id="L910">            rawBuildingGoodsTypes.indexOf(gt.getInputType());</span>
+<span class="fc" id="L911">        List&lt;GoodsType&gt; toAdd = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L912">        toAdd.addAll(transform(buildingGoodsTypes,</span>
+<span class="pc bpc" id="L913" title="1 of 2 branches missed.">                gt -&gt; production.containsKey(gt)</span>
+<span class="fc bfc" id="L914" title="All 2 branches covered.">                    &amp;&amp; (colony.getGoodsCount(gt.getInputType())</span>
+                        &gt;= GoodsContainer.CARGO_SIZE/2
+<span class="fc bfc" id="L916" title="All 2 branches covered.">                        || production.containsKey(gt.getInputType())),</span>
+<span class="fc" id="L917">                Function.&lt;GoodsType&gt;identity(),</span>
+<span class="fc" id="L918">                Comparator.comparingInt(indexer).reversed()));</span>
+
+<span class="fc bfc" id="L920" title="All 2 branches covered.">        for (int i = toAdd.size()-1; i &gt;= 0; i--) {</span>
+<span class="fc" id="L921">            GoodsType make = toAdd.get(i);</span>
+<span class="fc" id="L922">            GoodsType raw = make.getInputType();</span>
+<span class="fc bfc" id="L923" title="All 2 branches covered.">            if (production.containsKey(raw)) {</span>
+<span class="fc bfc" id="L924" title="All 2 branches covered.">                if (colony.getGoodsCount(raw) &gt;= GoodsContainer.CARGO_SIZE/2) {</span>
+<span class="fc" id="L925">                    produce.add(raw); // Add at the end, enough in stock</span>
+<span class="fc" id="L926">                    produce.add(0, make);</span>
+                } else {
+<span class="fc" id="L928">                    produce.add(0, make);</span>
+<span class="fc" id="L929">                    produce.add(0, raw);</span>
+                }
+            } else {
+<span class="fc" id="L932">                produce.add(0, make);</span>
+            }
+        }
+
+        // Military goods after lucrative production.
+<span class="fc" id="L937">        produce.addAll(transform(militaryGoodsTypes,</span>
+<span class="fc" id="L938">                                 gt -&gt; production.containsKey(gt),</span>
+<span class="fc" id="L939">                                 Function.&lt;GoodsType&gt;identity(),</span>
+                                 productionComparator));
+
+        // Immigration last.
+<span class="pc bpc" id="L943" title="1 of 2 branches missed.">        if (colony.getOwner().getEurope() != null) {</span>
+<span class="fc" id="L944">            produce.addAll(transform(immigrationGoodsTypes,</span>
+<span class="nc" id="L945">                                     gt -&gt; production.containsKey(gt),</span>
+<span class="fc" id="L946">                                     Function.&lt;GoodsType&gt;identity(),</span>
+                                     productionComparator));
+        }
+<span class="fc" id="L949">    }</span>
+
+    /**
+     * Finds a plan on a list that produces a given goods type.
+     *
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param plans The list of {@code WorkLocationPlan}s to check.
+     * @return The first plan found that produces the goods type, or null
+     *     if none found.
+     */
+    private WorkLocationPlan findPlan(GoodsType goodsType,
+                                      List&lt;WorkLocationPlan&gt; plans) {
+<span class="fc bfc" id="L961" title="All 2 branches covered.">        return find(plans, wlp -&gt; wlp.getGoodsType() == goodsType);</span>
+    }
+
+    /**
+     * Gets the best worker to execute a work location plan.
+     * - The most productive one wins (which will automatically pick a
+     *   relevant expert).
+     * - If they are all relevant experts, pick any.
+     * - Pick the unit that can upgrade to the required expert with the most
+     *     relevant experience or least irrelevant expertise.
+     * - Pick a unit that can not upgrade at all.
+     * - Pick an otherwise upgradeable unit with the most relevant experience
+     *     or least irrelevant experience.
+     * - Pick the least skillful unit.
+     *
+     * Public for the benefit of the test suite.
+     *
+     * @param wl The {@code WorkLocation} to work at.
+     * @param goodsType The {@code GoodsType} to make.
+     * @param workers A list of potential {@code Unit}s to try.
+     * @return The best worker for the job.
+     */
+    protected static Unit getBestWorker(WorkLocation wl, GoodsType goodsType,
+                                        List&lt;Unit&gt; workers) {
+<span class="fc bfc" id="L985" title="All 4 branches covered.">        if (workers == null || workers.isEmpty()) return null;</span>
+<span class="fc" id="L986">        final Colony colony = wl.getColony();</span>
+<span class="fc bfc" id="L987" title="All 2 branches covered.">        final GoodsType outputType = (goodsType.isStoredAs())</span>
+<span class="fc" id="L988">            ? goodsType.getStoredAs() : goodsType;</span>
+
+        // Avoid some nasty autodestructions by accepting singleton
+        // workers that do *something*.
+<span class="fc bfc" id="L992" title="All 2 branches covered.">        if (workers.size() == 1) {</span>
+<span class="fc" id="L993">            Unit u = workers.get(0);</span>
+<span class="pc bpc" id="L994" title="1 of 2 branches missed.">            if (!wl.canAdd(u)) return null;</span>
+<span class="fc" id="L995">            Location oldLoc = u.getLocation();</span>
+<span class="fc" id="L996">            GoodsType oldWork = u.getWorkType();</span>
+<span class="fc" id="L997">            u.setLocation(wl);</span>
+<span class="fc" id="L998">            u.changeWorkType(goodsType);</span>
+<span class="fc" id="L999">            int production = wl.getProductionOf(u, goodsType);</span>
+<span class="fc" id="L1000">            u.setLocation(oldLoc);</span>
+<span class="fc" id="L1001">            u.changeWorkType(oldWork);</span>
+<span class="fc bfc" id="L1002" title="All 2 branches covered.">            return (production &gt; 0) ? u : null;</span>
+        }
+
+        // Do not mutate the workers list!
+<span class="fc" id="L1006">        List&lt;Unit&gt; todo = new ArrayList&lt;&gt;(workers);</span>
+<span class="fc" id="L1007">        List&lt;Unit&gt; best = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L1008">        int bestValue = colony.getAdjustedNetProductionOf(outputType);</span>
+<span class="fc" id="L1009">        Unit special = null;</span>
+<span class="fc" id="L1010">        best.clear();</span>
+<span class="fc bfc" id="L1011" title="All 2 branches covered.">        for (Unit u : transform(todo, u2 -&gt; wl.canAdd(u2))) {</span>
+<span class="fc" id="L1012">            Location oldLoc = u.getLocation();</span>
+<span class="fc" id="L1013">            GoodsType oldWork = u.getWorkType();</span>
+<span class="fc" id="L1014">            u.setLocation(wl);</span>
+<span class="fc" id="L1015">            u.changeWorkType(goodsType);</span>
+
+<span class="fc" id="L1017">            int value = colony.getAdjustedNetProductionOf(outputType);</span>
+<span class="fc bfc" id="L1018" title="All 2 branches covered.">            if (value &gt; bestValue) {</span>
+<span class="fc" id="L1019">                bestValue = value;</span>
+<span class="fc" id="L1020">                best.clear();</span>
+<span class="fc" id="L1021">                best.add(u);</span>
+<span class="fc bfc" id="L1022" title="All 2 branches covered.">                if (u.getType().getExpertProduction() == goodsType) {</span>
+<span class="fc" id="L1023">                    special = u;</span>
+                }
+<span class="fc bfc" id="L1025" title="All 4 branches covered.">            } else if (value == bestValue &amp;&amp; !best.isEmpty()) {</span>
+<span class="fc" id="L1026">                best.add(u);</span>
+<span class="pc bpc" id="L1027" title="1 of 2 branches missed.">                if (u.getType().getExpertProduction() == goodsType) {</span>
+<span class="nc" id="L1028">                    special = u;</span>
+                }
+            }
+
+<span class="fc" id="L1032">            u.setLocation(oldLoc);</span>
+<span class="fc" id="L1033">            u.changeWorkType(oldWork);</span>
+<span class="fc" id="L1034">        }</span>
+
+<span class="fc bfc" id="L1036" title="All 3 branches covered.">        switch (best.size()) {</span>
+<span class="fc" id="L1037">        case 0: return null; // Not good.  No unit improves production.</span>
+<span class="fc" id="L1038">        case 1: return best.get(0);</span>
+<span class="fc" id="L1039">        default:todo.clear(); todo.addAll(best); break;</span>
+        }
+        // Several winners including an expert implies they are all experts.
+<span class="pc bpc" id="L1042" title="1 of 2 branches missed.">        if (special != null) return special;</span>
+
+        // Partition units into those that can upgrade-by-experience
+        // to the relevant expert (which we favour), those that can
+        // upgrade-by-experience in some way but not to the expert
+        // (which we avoid), and the rest.  Within the groups, favour
+        // those with the most relevant experience and the least irrelevant
+        // experience.
+<span class="fc" id="L1050">        Specification spec = colony.getSpecification();</span>
+<span class="fc" id="L1051">        UnitType expert = spec.getExpertForProducing(goodsType);</span>
+<span class="fc" id="L1052">        best.clear();</span>
+<span class="fc" id="L1053">        bestValue = Integer.MIN_VALUE;</span>
+<span class="fc bfc" id="L1054" title="All 2 branches covered.">        for (Unit u : todo) {</span>
+<span class="fc bfc" id="L1055" title="All 2 branches covered.">            boolean relevant = u.getWorkType() == goodsType;</span>
+<span class="fc bfc" id="L1056" title="All 2 branches covered.">            int score = (relevant) ? u.getExperience() : -u.getExperience();</span>
+<span class="pc bpc" id="L1057" title="1 of 2 branches missed.">            if (expert != null</span>
+<span class="fc bfc" id="L1058" title="All 2 branches covered.">                &amp;&amp; u.getUnitChange(UnitChangeType.EXPERIENCE, expert) != null) {</span>
+<span class="fc" id="L1059">                score += 10000;</span>
+<span class="pc bpc" id="L1060" title="1 of 2 branches missed.">            } else if (expert != null</span>
+<span class="fc bfc" id="L1061" title="All 2 branches covered.">                &amp;&amp; u.getUnitChange(UnitChangeType.EXPERIENCE) != null) {</span>
+<span class="fc" id="L1062">                score -= 10000;</span>
+            }
+<span class="fc bfc" id="L1064" title="All 2 branches covered.">            if (score &gt; bestValue) {</span>
+<span class="fc" id="L1065">                best.clear();</span>
+<span class="fc" id="L1066">                best.add(u);</span>
+<span class="fc" id="L1067">                bestValue = score;</span>
+<span class="fc bfc" id="L1068" title="All 2 branches covered.">            } else if (score == bestValue) {</span>
+<span class="fc" id="L1069">                best.add(u);</span>
+            }
+<span class="fc" id="L1071">        }</span>
+<span class="pc bpc" id="L1072" title="1 of 3 branches missed.">        switch (best.size()) {</span>
+<span class="nc" id="L1073">        case 0: break;</span>
+<span class="fc" id="L1074">        case 1: return best.get(0);</span>
+<span class="fc" id="L1075">        default:todo.clear(); todo.addAll(best); break;</span>
+        }
+
+        // Use the unit with the least skill, in the hope that
+        // remaining experts will be called upon in due course.
+<span class="fc" id="L1080">        int worstSkill = Integer.MAX_VALUE;</span>
+<span class="fc" id="L1081">        special = null;</span>
+<span class="fc bfc" id="L1082" title="All 2 branches covered.">        for (Unit u : todo) {</span>
+<span class="fc bfc" id="L1083" title="All 2 branches covered.">            if (u.getType().getSkill() &lt; worstSkill) {</span>
+<span class="fc" id="L1084">                special = u;</span>
+<span class="fc" id="L1085">                worstSkill = u.getType().getSkill();</span>
+            }
+<span class="fc" id="L1087">        }</span>
+<span class="fc" id="L1088">        return special;</span>
+    }
+
+    /**
+     * Equips a unit for a role, trying all possibilities if a military role
+     * was called for.
+     *
+     * @param spec The {@code Specification} defining the roles.
+     * @param unit The {@code Unit} to equip if possible.
+     * @param role The {@code Role} for the unit to take.
+     * @param colony The {@code Colony} storing the equipment.
+     * @return True if the unit was equipped.
+     */
+    private static boolean fullEquipUnit(Specification spec, Unit unit, Role role, Colony colony) {
+<span class="nc" id="L1102">        return colony.equipForRole(unit, role, role.getMaximumCount());</span>
+    }
+
+    /**
+     * Tries to apply a colony plan given a list of workers.
+     *
+     * @param workers A list of {@code Unit}s to assign.
+     * @param preferScout Prefer to make scouts rather than soldiers.
+     * @param lb A {@code LogBuilder} to log to.
+     * @return A scratch colony with the workers in place.
+     */
+    public Colony assignWorkers(List&lt;Unit&gt; workers, boolean preferScout,
+                                LogBuilder lb) {
+<span class="fc" id="L1115">        final GoodsType foodType = spec().getPrimaryFoodType();</span>
+
+        // Collect the work location plans.  Note that the plans are
+        // pre-sorted in order of desirability.
+<span class="fc" id="L1119">        final List&lt;GoodsType&gt; produce = getPreferredProduction();</span>
+<span class="fc" id="L1120">        List&lt;WorkLocationPlan&gt; foodPlans = getFoodPlans();</span>
+<span class="fc" id="L1121">        List&lt;WorkLocationPlan&gt; workPlans = getWorkPlans();</span>
+
+        // Make a scratch colony to work on.
+<span class="fc" id="L1124">        Colony col = colony.copyColony();</span>
+<span class="fc" id="L1125">        Tile tile = col.getTile();</span>
+
+        // Replace the given workers with those in the scratch colony.
+<span class="fc" id="L1128">        List&lt;Unit&gt; otherWorkers = new ArrayList&lt;&gt;(workers);</span>
+<span class="fc" id="L1129">        workers.clear();</span>
+<span class="fc bfc" id="L1130" title="All 2 branches covered.">        for (Unit u : otherWorkers) workers.add(col.getCorresponding(u));</span>
+
+        // Move all workers to the tile.
+        // Also remove equipment, which is safe because no missionaries
+        // or active pioneers should be on the worker list.
+<span class="fc bfc" id="L1135" title="All 2 branches covered.">        for (Unit u : workers) {</span>
+<span class="fc" id="L1136">            u.setLocation(tile);</span>
+<span class="fc" id="L1137">            col.equipForRole(u, spec().getDefaultRole(), 0);</span>
+<span class="fc" id="L1138">        }</span>
+
+        // Move outdoor experts outside if possible.
+        // Prefer scouts in early game if there are very few.
+<span class="fc" id="L1142">        Role[] outdoorRoles = {</span>
+<span class="fc" id="L1143">            spec().getRoleWithAbility(Ability.IMPROVE_TERRAIN, null),</span>
+            null,
+<span class="fc" id="L1145">            spec().getRoleWithAbility(Ability.SPEAK_WITH_CHIEF, null)</span>
+        };
+<span class="pc bpc" id="L1147" title="1 of 2 branches missed.">        if (preferScout) {</span>
+<span class="fc" id="L1148">            Role tmp = outdoorRoles[1];</span>
+<span class="fc" id="L1149">            outdoorRoles[1] = outdoorRoles[2];</span>
+<span class="fc" id="L1150">            outdoorRoles[2] = tmp;</span>
+        }
+<span class="fc bfc" id="L1152" title="All 2 branches covered.">        for (Role outdoorRole : outdoorRoles) {</span>
+<span class="fc bfc" id="L1153" title="All 2 branches covered.">            for (Unit u : new ArrayList&lt;&gt;(workers)) {</span>
+<span class="fc bfc" id="L1154" title="All 2 branches covered.">                if (workers.size() &lt;= 1) break;</span>
+<span class="fc" id="L1155">                Role role = outdoorRole;</span>
+<span class="fc bfc" id="L1156" title="All 2 branches covered.">                if (role == null) {</span>
+<span class="fc bfc" id="L1157" title="All 2 branches covered.">                    for (Role r : u.getSortedMilitaryRoles()) {</span>
+<span class="pc bpc" id="L1158" title="3 of 4 branches missed.">                        if (u.getType() == r.getExpertUnit() &amp;&amp; fullEquipUnit(spec(), u, r, col)) {</span>
+<span class="nc" id="L1159">                            workers.remove(u);</span>
+<span class="nc" id="L1160">                            lb.add(u.getId(), &quot;(&quot;, u.getType().getSuffix(),</span>
+<span class="nc" id="L1161">                                &quot;) -&gt; &quot;, r.getSuffix(), &quot;\n&quot;);</span>
+<span class="nc" id="L1162">                            break;</span>
+                        }
+<span class="fc" id="L1164">                    }</span>
+<span class="pc bpc" id="L1165" title="3 of 4 branches missed.">                } else if (u.getType() == role.getExpertUnit() &amp;&amp; fullEquipUnit(spec(), u, role, col)) {</span>
+<span class="nc" id="L1166">                    workers.remove(u);</span>
+<span class="nc" id="L1167">                    lb.add(u.getId(), &quot;(&quot;, u.getType().getSuffix(),</span>
+<span class="nc" id="L1168">                        &quot;) -&gt; &quot;, role.getSuffix(), &quot;\n&quot;);</span>
+                }
+<span class="fc" id="L1170">            }</span>
+        }
+
+        // Consider the defence situation.
+        // FIXME: scan for neighbouring hostiles
+        // Favour low-skill units for defenders, then order experts
+        // in reverse order of their production on the produce-list,
+        // and finally by least experience.
+<span class="fc" id="L1178">        final Comparator&lt;Unit&gt; soldierComparator</span>
+<span class="fc" id="L1179">            = Comparator.&lt;Unit&gt;comparingInt(Unit::getSkillLevel)</span>
+<span class="fc" id="L1180">                .thenComparingInt(u -&gt;</span>
+<span class="nc bnc" id="L1181" title="All 2 branches missed.">                    (u.getType().getExpertProduction() == null) ? 1 : 0)</span>
+<span class="fc" id="L1182">                .thenComparingInt(u -&gt;</span>
+<span class="nc" id="L1183">                    produce.indexOf(u.getType().getExpertProduction()))</span>
+<span class="fc" id="L1184">                .reversed()</span>
+<span class="fc" id="L1185">                .thenComparingInt(Unit::getExperience);</span>
+        /* 
+         * Defence is now handled by the military coordinator.
+         * 
+        for (Unit u : sort(workers, soldierComparator)) {
+            if (workers.size() &lt;= 1) break;
+            if (!col.isBadlyDefended()) break;
+            if (u.getSkillLevel() &gt; 0) {
+                // Stops experts from being used as soldiers
+                continue;
+            }
+            for (Role role : u.getSortedMilitaryRoles()) {
+                if (role != null &amp;&amp; fullEquipUnit(spec(), u, role, col)) { 
+                    workers.remove(u);
+                    lb.add(u.getId(), &quot;(&quot;, u.getType().getSuffix(), &quot;) -&gt; &quot;,
+                            u.getRoleSuffix(), &quot;\n&quot;);
+                    break;
+                }
+            }
+        }
+        */
+
+        // Greedy assignment of other workers to plans.
+<span class="fc" id="L1208">        List&lt;AbstractGoods&gt; buildGoods = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L1209">        BuildableType build = col.getCurrentlyBuilding();</span>
+<span class="pc bpc" id="L1210" title="1 of 2 branches missed.">        if (build != null) buildGoods.addAll(build.getRequiredGoodsList());</span>
+        List&lt;WorkLocationPlan&gt; wlps;
+        WorkLocationPlan wlp;
+<span class="fc" id="L1213">        boolean done = false;</span>
+<span class="pc bpc" id="L1214" title="1 of 4 branches missed.">        while (!done &amp;&amp; !workers.isEmpty()) {</span>
+            // Decide what to produce: set the work location plan to
+            // try (wlp), and the list the plan came from so it can
+            // be recycled if successful (wlps).
+<span class="fc" id="L1218">            wlps = null;</span>
+<span class="fc" id="L1219">            wlp = null;</span>
+<span class="fc bfc" id="L1220" title="All 2 branches covered.">            if (col.getAdjustedNetProductionOf(foodType) &gt; 0) {</span>
+                // Try to produce something.
+<span class="fc" id="L1222">                wlps = workPlans;</span>
+<span class="pc bpc" id="L1223" title="1 of 2 branches missed.">                while (!produce.isEmpty()) {</span>
+<span class="fc bfc" id="L1224" title="All 2 branches covered.">                    if ((wlp = findPlan(produce.get(0), workPlans)) != null) {</span>
+<span class="fc" id="L1225">                        break; // Found a plan to try.</span>
+                    }
+<span class="fc" id="L1227">                    produce.remove(0); // Can not produce this goods type</span>
+                }
+            }
+
+            // See if a plan can be satisfied.
+            Unit best;
+            WorkLocation wl;
+            GoodsType goodsType;
+            for (;;) {
+<span class="fc bfc" id="L1236" title="All 2 branches covered.">                if (wlp == null) { // Time to use a food plan.</span>
+<span class="pc bpc" id="L1237" title="1 of 2 branches missed.">                    if (foodPlans.isEmpty()) {</span>
+<span class="nc" id="L1238">                        lb.add(&quot;    Food plans exhausted\n&quot;);</span>
+<span class="nc" id="L1239">                        done = true;</span>
+<span class="nc" id="L1240">                        break;</span>
+                    }
+<span class="fc" id="L1242">                    wlps = foodPlans;</span>
+<span class="fc" id="L1243">                    wlp = wlps.get(0);</span>
+                }
+
+<span class="fc" id="L1246">                String err = null;</span>
+<span class="fc" id="L1247">                goodsType = wlp.getGoodsType();</span>
+<span class="fc" id="L1248">                wl = col.getCorresponding(wlp.getWorkLocation());</span>
+<span class="fc" id="L1249">                best = null;</span>
+<span class="fc" id="L1250">                lb.add(&quot;    &quot;, LogBuilder.wide(2, col.getUnitCount()),</span>
+<span class="fc" id="L1251">                       &quot;: &quot;, LogBuilder.wide(-15, goodsType.getSuffix()),</span>
+<span class="fc" id="L1252">                       &quot;@&quot;, LogBuilder.wide(25, locationDescription(wl)),</span>
+                       &quot; =&gt; &quot;);
+
+<span class="pc bpc" id="L1255" title="1 of 2 branches missed.">                if (!wl.canBeWorked()) {</span>
+<span class="nc" id="L1256">                    err = &quot;can not be worked&quot;;</span>
+<span class="fc bfc" id="L1257" title="All 2 branches covered.">                } else if (wl.isFull()) {</span>
+<span class="fc" id="L1258">                    err = &quot;full&quot;;</span>
+<span class="pc bpc" id="L1259" title="1 of 2 branches missed.">                } else if ((best = ColonyPlan.getBestWorker(wl, goodsType,</span>
+                                                            workers)) == null) {
+<span class="nc" id="L1261">                    err = &quot;no worker found&quot;;</span>
+                }
+<span class="fc bfc" id="L1263" title="All 2 branches covered.">                if (err != null) {</span>
+<span class="fc" id="L1264">                    wlps.remove(wlp); // The plan can not be worked, dump it.</span>
+<span class="fc" id="L1265">                    lb.add(err, &quot;\n&quot;);</span>
+<span class="fc" id="L1266">                    break;</span>
+                }
+
+                // Found a suitable worker, place it.
+<span class="fc" id="L1270">                best.setLocation(wl);</span>
+
+                // Did the placement break the production bonus?
+<span class="pc bpc" id="L1273" title="1 of 2 branches missed.">                if (col.getProductionBonus() &lt; 0) {</span>
+<span class="nc" id="L1274">                    best.setLocation(tile);</span>
+<span class="nc" id="L1275">                    done = true;</span>
+<span class="nc" id="L1276">                    lb.add(&quot;    broke production bonus\n&quot;);</span>
+<span class="nc" id="L1277">                    break;</span>
+                }
+
+                // Is the colony going to starve because of this placement?
+<span class="fc bfc" id="L1281" title="All 2 branches covered.">                if (col.getAdjustedNetProductionOf(foodType) &lt; 0) {</span>
+<span class="fc" id="L1282">                    int net = col.getAdjustedNetProductionOf(foodType);</span>
+<span class="fc" id="L1283">                    int count = col.getGoodsCount(foodType);</span>
+<span class="pc bpc" id="L1284" title="1 of 2 branches missed.">                    if (count / -net &lt; PRODUCTION_TURNOVER_TURNS) {</span>
+                        // Too close for comfort.  Back out the
+                        // placement and try a food plan, unless this
+                        // was already a food plan.
+<span class="nc" id="L1288">                        best.setLocation(tile);</span>
+<span class="nc" id="L1289">                        wlp = null;</span>
+<span class="nc bnc" id="L1290" title="All 2 branches missed.">                        if (goodsType.isFoodType()) {</span>
+<span class="nc" id="L1291">                            lb.add(&quot;    starvation (&quot;, count, &quot;/&quot;, net, &quot;)\n&quot;);</span>
+<span class="nc" id="L1292">                            done = true;</span>
+<span class="nc" id="L1293">                            break;</span>
+                        }
+<span class="nc" id="L1295">                        lb.add(&quot;    would starve (&quot;, count, &quot;/&quot;, net, &quot;)\n&quot;);</span>
+<span class="nc" id="L1296">                        continue;</span>
+                    }
+                    // Otherwise tolerate the food stock running down.
+                    // Rely on the warehouse-exhaustion code to fire
+                    // another rearrangement before units starve.
+                }
+
+                // Check if placing the worker will soon exhaust the
+                // raw material.  Do not reduce raw materials below
+                // what is needed for a building--- e.g. prevent
+                // musket production from hogging the tools.
+<span class="fc" id="L1307">                GoodsType raw = goodsType.getInputType();</span>
+<span class="fc bfc" id="L1308" title="All 2 branches covered.">                int rawNeeded = sum(buildGoods, ag -&gt; ag.getType() == raw,</span>
+                                    AbstractGoods::getAmount);
+<span class="fc bfc" id="L1310" title="All 2 branches covered.">                if (raw == null</span>
+<span class="fc bfc" id="L1311" title="All 2 branches covered.">                    || col.getAdjustedNetProductionOf(raw) &gt;= 0</span>
+<span class="fc" id="L1312">                    || (((col.getGoodsCount(raw) - rawNeeded)</span>
+<span class="pc bpc" id="L1313" title="1 of 2 branches missed.">                            / -col.getAdjustedNetProductionOf(raw))</span>
+                        &gt;= PRODUCTION_TURNOVER_TURNS)) {
+                    // No raw material problems, the placement
+                    // succeeded.  Set the work type, move the
+                    // successful goods type to the end of the produce
+                    // list for later reuse, remove the worker from
+                    // the workers pool, but leave the successful plan
+                    // on its list.
+<span class="fc" id="L1321">                    best.changeWorkType(goodsType);</span>
+<span class="fc" id="L1322">                    workers.remove(best);</span>
+<span class="fc" id="L1323">                    lb.add(&quot;    &quot;, best.getId(), &quot;(&quot;,</span>
+<span class="fc" id="L1324">                           best.getType().getSuffix(),&quot;)\n&quot;);</span>
+<span class="pc bpc" id="L1325" title="1 of 4 branches missed.">                    if (!goodsType.isFoodType() &amp;&amp; produce.remove(goodsType)) {</span>
+<span class="fc" id="L1326">                        produce.add(goodsType);</span>
+                    }
+                    break;
+                }
+
+                // Yes, we need more of the raw material.  Pull the
+                // unit out again and see if we can make more.
+<span class="nc" id="L1333">                best.setLocation(tile);</span>
+
+<span class="nc" id="L1335">                WorkLocationPlan rawWlp = findPlan(raw, workPlans);</span>
+<span class="nc bnc" id="L1336" title="All 2 branches missed.">                if (rawWlp != null) {</span>
+                    // OK, we have an alternate plan.  Put the raw
+                    // material at the start of the produce list and
+                    // loop trying to satisfy the alternate plan.
+<span class="nc bnc" id="L1340" title="All 2 branches missed.">                    if (produce.remove(raw)) produce.add(0, raw);</span>
+<span class="nc" id="L1341">                    wlp = rawWlp;</span>
+<span class="nc" id="L1342">                    lb.add(&quot;    retry with &quot;, raw.getSuffix(), &quot;\n&quot;);</span>
+<span class="nc" id="L1343">                    continue;</span>
+                }
+
+                // No raw material available, so we have to give up on
+                // both the plan and the type of production.
+                // Hopefully the raw production is positive again and
+                // we will succeed next time.
+<span class="nc" id="L1350">                wlps.remove(wlp);</span>
+<span class="nc" id="L1351">                produce.remove(goodsType);</span>
+<span class="nc" id="L1352">                lb.add(&quot;    needs more &quot;, raw.getSuffix(), &quot;\n&quot;);</span>
+<span class="nc" id="L1353">                break;</span>
+            }
+<span class="fc" id="L1355">        }</span>
+
+        // Put the rest of the workers on the tile.
+<span class="pc bpc" id="L1358" title="1 of 2 branches missed.">        for (Unit u : workers) {</span>
+<span class="nc bnc" id="L1359" title="All 2 branches missed.">            if (u.getLocation() != tile) u.setLocation(tile);</span>
+<span class="nc" id="L1360">        }</span>
+
+        // Check for failure to assign any workers.  This happens when:
+        // - there are no useful food plans
+        //   - in which case look for a `harmless' place and add one worker
+        // - food is low, and perhaps partly eaten by horses, and no
+        //   unit can *improve* production by being added.
+        //   - find a place to produce food that at least avoids
+        //     starvation and add one worker.
+<span class="pc bpc" id="L1369" title="1 of 2 branches missed.">        if (col.getUnitCount() == 0) {</span>
+<span class="nc bnc" id="L1370" title="All 2 branches missed.">            if (getFoodPlans().isEmpty()) {</span>
+<span class="nc bnc" id="L1371" title="All 2 branches missed.">locations:      for (WorkLocation wl : col.getAvailableWorkLocationsList()) {</span>
+<span class="nc bnc" id="L1372" title="All 2 branches missed.">                    for (Unit u : new ArrayList&lt;&gt;(workers)) {</span>
+<span class="nc bnc" id="L1373" title="All 2 branches missed.">                        for (GoodsType type : libertyGoodsTypes) {</span>
+<span class="nc bnc" id="L1374" title="All 2 branches missed.">                            if (wl.canAdd(u)</span>
+<span class="nc bnc" id="L1375" title="All 2 branches missed.">                                &amp;&amp; wl.getPotentialProduction(type,</span>
+<span class="nc" id="L1376">                                    u.getType()) &gt; 0) {</span>
+<span class="nc" id="L1377">                                u.setLocation(wl);</span>
+<span class="nc" id="L1378">                                u.changeWorkType(type);</span>
+<span class="nc" id="L1379">                                workers.remove(u);</span>
+<span class="nc" id="L1380">                                break locations;</span>
+                            }
+<span class="nc" id="L1382">                        }</span>
+<span class="nc" id="L1383">                    }</span>
+<span class="nc" id="L1384">                }</span>
+            } else {
+<span class="nc bnc" id="L1386" title="All 2 branches missed.">plans:          for (WorkLocationPlan w : getFoodPlans()) {</span>
+<span class="nc" id="L1387">                    GoodsType goodsType = w.getGoodsType();</span>
+<span class="nc" id="L1388">                    WorkLocation wl = col.getCorresponding(w.getWorkLocation());</span>
+<span class="nc bnc" id="L1389" title="All 2 branches missed.">                    for (Unit u : new ArrayList&lt;&gt;(workers)) {</span>
+<span class="nc" id="L1390">                        GoodsType oldWork = u.getWorkType();</span>
+<span class="nc" id="L1391">                        u.setLocation(wl);</span>
+<span class="nc" id="L1392">                        u.changeWorkType(goodsType);</span>
+<span class="nc bnc" id="L1393" title="All 2 branches missed.">                        if (col.getAdjustedNetProductionOf(foodType) &gt;= 0) {</span>
+<span class="nc" id="L1394">                            lb.add(&quot;    Subsist with &quot;, u, &quot;\n&quot;);</span>
+<span class="nc" id="L1395">                            workers.remove(u);</span>
+<span class="nc" id="L1396">                            break plans;</span>
+                        }
+<span class="nc" id="L1398">                        u.setLocation(tile);</span>
+<span class="nc" id="L1399">                        u.changeWorkType(oldWork);</span>
+<span class="nc" id="L1400">                    }</span>
+<span class="nc" id="L1401">                }</span>
+            }
+        }
+
+        // The greedy algorithm works reasonably well, but will
+        // misplace experts when they are more productive at the
+        // immediately required task than a lesser unit, not knowing
+        // that a requirement for their speciality will subsequently
+        // follow.  Do a cleanup pass to sort these out.
+<span class="fc" id="L1410">        List&lt;Unit&gt; experts = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L1411">        List&lt;Unit&gt; nonExperts = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L1412" title="All 2 branches covered.">        for (Unit u : col.getUnitList()) {</span>
+<span class="fc bfc" id="L1413" title="All 2 branches covered.">            if (u.getType().getExpertProduction() != null) {</span>
+<span class="fc bfc" id="L1414" title="All 2 branches covered.">                if (u.getType().getExpertProduction() != u.getWorkType()) {</span>
+<span class="fc" id="L1415">                    experts.add(u);</span>
+                }
+            } else {
+<span class="fc" id="L1418">                nonExperts.add(u);</span>
+            }
+<span class="fc" id="L1420">        }</span>
+
+<span class="fc" id="L1422">        Iterator&lt;Unit&gt; expertIterator = experts.iterator();</span>
+<span class="fc bfc" id="L1423" title="All 2 branches covered.">        while (expertIterator.hasNext()) {</span>
+<span class="fc" id="L1424">            Unit u1 = expertIterator.next();</span>
+<span class="fc" id="L1425">            Unit other = u1.trySwapExpert(experts);</span>
+<span class="pc bpc" id="L1426" title="1 of 2 branches missed.">            if (other != null) {</span>
+<span class="nc" id="L1427">                lb.add(&quot;    Swapped &quot;, u1.getId(), &quot;(&quot;,</span>
+<span class="nc" id="L1428">                    u1.getType().getSuffix(), &quot;) for &quot;, other, &quot;\n&quot;);</span>
+<span class="nc" id="L1429">                expertIterator.remove();</span>
+<span class="pc bpc" id="L1430" title="1 of 2 branches missed.">            } else if ((other = u1.trySwapExpert(nonExperts)) != null) {</span>
+<span class="nc" id="L1431">                lb.add(&quot;    Swapped &quot;, u1.getId(), &quot;(&quot;,</span>
+<span class="nc" id="L1432">                    u1.getType().getSuffix(), &quot;) for &quot;, other, &quot;\n&quot;);</span>
+<span class="nc" id="L1433">                expertIterator.remove();</span>
+            }
+<span class="fc" id="L1435">        }</span>
+<span class="pc bpc" id="L1436" title="1 of 2 branches missed.">        for (Unit u : new ArrayList&lt;&gt;(workers)) {</span>
+<span class="nc" id="L1437">            GoodsType work = u.getType().getExpertProduction();</span>
+<span class="nc bnc" id="L1438" title="All 2 branches missed.">            if (work != null) {</span>
+<span class="nc" id="L1439">                Unit other = u.trySwapExpert(col.getUnitList());</span>
+<span class="nc bnc" id="L1440" title="All 2 branches missed.">                if (other != null) {</span>
+<span class="nc" id="L1441">                    lb.add(&quot;    Swapped &quot;, u.getId(), &quot;(&quot;,</span>
+<span class="nc" id="L1442">                        u.getType().getSuffix(), &quot;) for &quot;, other, &quot;\n&quot;);</span>
+<span class="nc" id="L1443">                    workers.remove(u);</span>
+<span class="nc" id="L1444">                    workers.add(other);</span>
+                }
+            }
+<span class="nc" id="L1447">        }</span>
+
+        // Rearm what remains as far as possible.
+<span class="pc bpc" id="L1450" title="1 of 2 branches missed.">        for (Unit u : sort(workers, soldierComparator)) {</span>
+<span class="nc bnc" id="L1451" title="All 2 branches missed.">            if (u.getSkillLevel() &gt; 0) continue;</span>
+<span class="nc bnc" id="L1452" title="All 2 branches missed.">            for (Role role : u.getSortedMilitaryRoles()) {</span>
+<span class="nc bnc" id="L1453" title="All 2 branches missed.">                if (fullEquipUnit(spec(), u, role, col)) {</span>
+<span class="nc" id="L1454">                    lb.add(&quot;    &quot;, u.getId(), &quot;(&quot;, u.getType().getSuffix(),</span>
+<span class="nc" id="L1455">                           &quot;) -&gt; &quot;, u.getRoleSuffix(), &quot;\n&quot;);</span>
+<span class="nc" id="L1456">                    workers.remove(u);</span>
+<span class="nc" id="L1457">                    break;</span>
+                }
+<span class="nc" id="L1459">            }</span>
+<span class="nc" id="L1460">        }</span>
+<span class="pc bpc" id="L1461" title="2 of 4 branches missed.">        for (Unit u : transform(col.getUnits(), u -&gt; !u.hasDefaultRole())) {</span>
+<span class="nc" id="L1462">            logger.warning(&quot;assignWorkers bogus role for &quot; + u);</span>
+<span class="nc" id="L1463">            u.changeRole(spec().getDefaultRole(), 0);</span>
+<span class="nc" id="L1464">        }</span>
+
+        // Log and return the scratch colony on success.
+        // Otherwise abandon this rearrangement, disposing of the
+        // scratch colony and returning null.
+<span class="pc bpc" id="L1469" title="1 of 2 branches missed.">        for (Unit u : workers) {</span>
+<span class="nc" id="L1470">            lb.add(&quot;    &quot;, u.getId(), &quot;(&quot;, u.getType().getSuffix(),</span>
+                   &quot;) -&gt; UNUSED\n&quot;);
+<span class="nc" id="L1472">        }</span>
+<span class="pc bpc" id="L1473" title="1 of 2 branches missed.">        if (col.getUnitCount() &lt;= 0) col = null;</span>
+<span class="fc" id="L1474">        return col;</span>
+    }
+
+    /**
+     * Gets a concise textual description of a location associated with
+     * the colony.  No i18n here, this is for debugging purposes.
+     *
+     * @param loc The {@code Location} to describe.
+     * @return The text description.
+     */
+    private String locationDescription(Location loc) {
+<span class="fc" id="L1485">        String name = colony.getName() + &quot;-&quot;;</span>
+<span class="fc" id="L1486">        String desc = loc.toShortString();</span>
+<span class="pc bpc" id="L1487" title="1 of 2 branches missed.">        if (desc.startsWith(name)) {</span>
+<span class="fc" id="L1488">            desc = desc.substring(name.length(), desc.length());</span>
+        }
+<span class="fc" id="L1490">        return desc;</span>
+    }
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L1501">        LogBuilder lb = new LogBuilder(256);</span>
+<span class="nc" id="L1502">        lb.add(&quot;ColonyPlan: &quot;, colony,</span>
+<span class="nc" id="L1503">            &quot; &quot;, colony.getTile(),</span>
+            &quot;\nProfile: &quot;, profileType, &quot;\nPreferred production:&quot;);
+<span class="nc" id="L1505">        FreeColObject.logFreeColObjects(getPreferredProduction(), lb);</span>
+<span class="nc" id="L1506">        lb.add(&quot;\n&quot;);</span>
+<span class="nc" id="L1507">        lb.add(getBuildableReport(), &quot;Food Plans:\n&quot;);</span>
+<span class="nc bnc" id="L1508" title="All 2 branches missed.">        for (WorkLocationPlan wlp : getFoodPlans()) {</span>
+<span class="nc" id="L1509">            WorkLocation wl = wlp.getWorkLocation();</span>
+<span class="nc" id="L1510">            lb.add(locationDescription(wl),</span>
+<span class="nc" id="L1511">                &quot;: &quot;, wl.getGenericPotential(wlp.getGoodsType()), </span>
+<span class="nc" id="L1512">                &quot; &quot;, wlp.getGoodsType().getSuffix(), &quot;\n&quot;);</span>
+<span class="nc" id="L1513">        }</span>
+<span class="nc" id="L1514">        lb.add(&quot;Work Plans:\n&quot;);</span>
+<span class="nc bnc" id="L1515" title="All 2 branches missed.">        for (WorkLocationPlan wlp : getWorkPlans()) {</span>
+<span class="nc" id="L1516">            WorkLocation wl = wlp.getWorkLocation();</span>
+<span class="nc" id="L1517">            lb.add(locationDescription(wl),</span>
+<span class="nc" id="L1518">                &quot;: &quot;, wl.getGenericPotential(wlp.getGoodsType()),</span>
+<span class="nc" id="L1519">                &quot; &quot;, wlp.getGoodsType().getSuffix(), &quot;\n&quot;);</span>
+<span class="nc" id="L1520">        }</span>
+<span class="nc" id="L1521">        return lb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

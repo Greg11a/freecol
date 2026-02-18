@@ -1,0 +1,629 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NewPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">NewPanel.java</span></div><h1>NewPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.event.ActionEvent;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
+import java.net.InetAddress;
+import java.util.List;
+import java.util.logging.Logger;
+
+import javax.swing.AbstractAction;
+import javax.swing.ButtonGroup;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JRadioButton;
+import javax.swing.JSeparator;
+import javax.swing.JTextField;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.control.ConnectController;
+import net.sf.freecol.client.gui.GUI;
+import net.sf.freecol.client.gui.plaf.FreeColComboBoxRenderer;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColModFile;
+import net.sf.freecol.common.io.FreeColRules;
+import net.sf.freecol.common.metaserver.MetaServerUtils;
+import net.sf.freecol.common.metaserver.ServerInfo;
+import net.sf.freecol.common.model.NationOptions.Advantages;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.option.OptionGroup;
+
+
+/**
+ * This dialog allows the user to start a single player or multiplayer
+ * game, to join a running game, and to fetch a list of games from the
+ * meta-server.
+ */
+public final class NewPanel extends FreeColPanel implements ItemListener {
+
+<span class="nc" id="L66">    private static final Logger logger = Logger.getLogger(NewPanel.class.getName());</span>
+
+    /** The actions for this panel. */
+<span class="nc" id="L69">    private static enum NewPanelAction {</span>
+<span class="nc" id="L70">        OK,</span>
+<span class="nc" id="L71">        CANCEL,</span>
+<span class="nc" id="L72">        SINGLE,</span>
+<span class="nc" id="L73">        JOIN,</span>
+<span class="nc" id="L74">        START,</span>
+<span class="nc" id="L75">        META_SERVER,</span>
+<span class="nc" id="L76">        SHOW_DIFFICULTY</span>
+    };
+
+    /**
+     * A particular specification to use for the new game.  If not
+     * null, the specification box just contains this spec, but if
+     * null the user chooses from available specs using the
+     * specification box.
+     */
+    private final Specification fixedSpecification;
+
+    /**
+     * The current specification, driven by the contents of the TC box.
+     */
+<span class="nc" id="L90">    private Specification specification = null;</span>
+
+    /**
+     * A current difficulty level, driven by the contents of the
+     * difficulty box..  Difficulty levels are relative to the rules,
+     * so this can be invalidated by a change to the current
+     * specification.
+     */
+<span class="nc" id="L98">    private OptionGroup difficulty = null;</span>
+
+    /** Field to input the player name. */
+    private final JTextField nameBox;
+
+    /** A button group for the main choices. */
+    private final ButtonGroup buttonGroup;
+
+    /** The label for the national advantages. */
+    private final JLabel advantagesLabel;
+
+    /** A box to choose the national advantages setting. */
+    private final JComboBox&lt;Advantages&gt; advantagesBox;
+
+    /** Start server name label. */
+    private final JLabel serverPortLabel;
+
+    /** Start server port number label and field to input through. */
+    private final JTextField serverPortField;
+    
+    private final JComboBox&lt;InetAddress&gt; serverAddressBox;
+
+    /** The label for the rules selection. */
+    private final JLabel rulesLabel;
+
+    /** A box to choose the rules from. */
+    private final JComboBox&lt;FreeColModFile&gt; rulesBox;
+
+    /** The check box to select a public server with. */
+    private final JCheckBox publicServer;
+
+    /** A label for the difficulty level selection. */
+    private final JLabel difficultyLabel;
+
+    /** A box to choose the difficulty from. */
+    private final JComboBox&lt;OptionGroup&gt; difficultyBox;
+
+    /** A button to show/edit difficulty level. */
+    private final JButton difficultyButton;
+
+    /** Join multiplayer server name label. */
+    private final JLabel joinNameLabel;
+
+    /** Join multiplayer server name selection. */
+    private final JTextField joinNameField;
+
+    /** Join multiplayer server port label. */
+    private final JLabel joinPortLabel;
+
+    /** Join multiplayer server port selection. */
+    private final JTextField joinPortField;
+
+    /** Container for the components to enable when Join is selected. */
+    private final Component[] joinComponents;
+
+    /** Container for components to enable if server parameters can be set. */
+    private final Component[] serverComponents;
+
+    /** Container for components to enable when choosing game parameters. */
+    private final Component[] gameComponents;
+
+
+    /**
+     * Creates a new game panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public NewPanel(FreeColClient freeColClient) {
+<span class="nc" id="L166">        this(freeColClient, null);</span>
+<span class="nc" id="L167">    }</span>
+
+    /**
+     * Creates a new game panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param specification An optional {@code Specification} value for
+     *     the new game.
+     */
+    public NewPanel(FreeColClient freeColClient, Specification specification) {
+<span class="nc" id="L177">        super(freeColClient, null, new MigLayout(&quot;wrap 6&quot;, &quot;[15]&quot;, &quot;&quot;));</span>
+
+<span class="nc" id="L179">        this.fixedSpecification = specification;</span>
+
+        // Create the components
+<span class="nc" id="L182">        this.buttonGroup = new ButtonGroup();</span>
+        JRadioButton
+<span class="nc" id="L184">            single = new JRadioButton(Messages.message(&quot;newPanel.singlePlayerGame&quot;),</span>
+                                      true),
+<span class="nc" id="L186">            join = new JRadioButton(Messages.message(&quot;newPanel.joinMultiPlayerGame&quot;),</span>
+                                    false),
+<span class="nc" id="L188">            start = new JRadioButton(Messages.message(&quot;newPanel.startMultiplayerGame&quot;),</span>
+                                     false),
+<span class="nc" id="L190">            meta = new JRadioButton(Messages.message(&quot;newPanel.getServerList&quot;)</span>
+<span class="nc" id="L191">                + &quot; (&quot; + FreeCol.getMetaServerAddress() + &quot;)&quot;, false);</span>
+<span class="nc" id="L192">        this.buttonGroup.add(single);</span>
+<span class="nc" id="L193">        single.setActionCommand(String.valueOf(NewPanelAction.SINGLE));</span>
+<span class="nc" id="L194">        single.addActionListener(ae -&gt; enableComponents());</span>
+<span class="nc" id="L195">        this.buttonGroup.add(start);</span>
+<span class="nc" id="L196">        start.setActionCommand(String.valueOf(NewPanelAction.START));</span>
+<span class="nc" id="L197">        start.addActionListener(ae -&gt; enableComponents());</span>
+<span class="nc" id="L198">        this.buttonGroup.add(meta);</span>
+<span class="nc" id="L199">        meta.setActionCommand(String.valueOf(NewPanelAction.META_SERVER));</span>
+<span class="nc" id="L200">        meta.addActionListener(ae -&gt; enableComponents());</span>
+<span class="nc" id="L201">        this.buttonGroup.add(join);</span>
+<span class="nc" id="L202">        join.setActionCommand(String.valueOf(NewPanelAction.JOIN));</span>
+<span class="nc" id="L203">        join.addActionListener(ae -&gt; enableComponents());</span>
+<span class="nc" id="L204">        single.setSelected(true);</span>
+
+<span class="nc" id="L206">        String name = getClientOptions().getText(ClientOptions.NAME);</span>
+<span class="nc bnc" id="L207" title="All 4 branches missed.">        if (name == null || name.isEmpty()) name = FreeCol.getName();</span>
+<span class="nc" id="L208">        this.nameBox = new JTextField(name, 20);</span>
+
+<span class="nc" id="L210">        this.advantagesLabel</span>
+<span class="nc" id="L211">            = Utility.localizedLabel(&quot;newPanel.nationalAdvantages&quot;);</span>
+<span class="nc" id="L212">        this.advantagesBox = new JComboBox&lt;&gt;(new Advantages[] {</span>
+                Advantages.SELECTABLE,
+                Advantages.FIXED,
+                Advantages.NONE
+            });
+<span class="nc" id="L217">        this.advantagesBox</span>
+<span class="nc" id="L218">            .setRenderer(new FreeColComboBoxRenderer&lt;Advantages&gt;());</span>
+
+<span class="nc" id="L220">        this.serverPortLabel = Utility.localizedLabel(&quot;newPanel.startServerOnPort&quot;);</span>
+<span class="nc" id="L221">        this.serverPortField</span>
+<span class="nc" id="L222">            = new JTextField(Integer.toString(FreeCol.getServerPort()));</span>
+<span class="nc" id="L223">        this.serverPortField.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L224">                getSelectedPort(NewPanel.this.serverPortField);</span>
+<span class="nc" id="L225">            });</span>
+        
+<span class="nc" id="L227">        this.serverAddressBox = Utility.createServerInetAddressBox();</span>
+
+<span class="nc" id="L229">        this.rulesLabel = Utility.localizedLabel(&quot;rules&quot;);</span>
+<span class="nc" id="L230">        this.rulesBox = new JComboBox&lt;&gt;();</span>
+        String selectRules;
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        if (this.fixedSpecification == null) { // Allow TC selection</span>
+<span class="nc" id="L233">            selectRules = FreeCol.getRules();</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">            for (FreeColModFile tc : FreeColRules.getRulesList()) {</span>
+<span class="nc" id="L235">                this.rulesBox.addItem(tc);</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">                if (selectRules.equals(tc.getId())) {</span>
+<span class="nc" id="L237">                    this.rulesBox.setSelectedItem(tc);</span>
+                }
+<span class="nc" id="L239">            }</span>
+        } else { // Force the use of the TC that contains the given spec
+<span class="nc" id="L241">            selectRules = this.fixedSpecification.getId();</span>
+<span class="nc bnc" id="L242" title="All 2 branches missed.">            for (FreeColModFile tc : FreeColRules.getRulesList()) {</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">                if (selectRules.equals(tc.getId())) {</span>
+<span class="nc" id="L244">                    this.rulesBox.addItem(tc);</span>
+<span class="nc" id="L245">                    this.rulesBox.setSelectedItem(tc);</span>
+                }
+<span class="nc" id="L247">            }</span>
+        }
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        if (this.rulesBox.getSelectedItem() == null) {</span>
+<span class="nc" id="L250">            this.rulesBox.setSelectedItem(this.rulesBox.getItemCount()-1);</span>
+<span class="nc" id="L251">            logger.warning(&quot;No TC found for: &quot; + selectRules</span>
+<span class="nc" id="L252">                + &quot;, failling back to &quot; + this.rulesBox.getSelectedItem());</span>
+        }
+<span class="nc" id="L254">        this.rulesBox</span>
+<span class="nc" id="L255">            .setRenderer(new FreeColComboBoxRenderer&lt;FreeColModFile&gt;(&quot;mod.&quot;));</span>
+<span class="nc" id="L256">        this.rulesBox.addItemListener(this);</span>
+
+<span class="nc" id="L258">        this.publicServer</span>
+<span class="nc" id="L259">            = new JCheckBox(Messages.message(&quot;newPanel.publicServer&quot;));</span>
+        
+<span class="nc" id="L261">        serverAddressBox.addActionListener(event -&gt; {</span>
+<span class="nc" id="L262">            final InetAddress address = (InetAddress) serverAddressBox.getSelectedItem();</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">            publicServer.setEnabled(!address.isLoopbackAddress());</span>
+<span class="nc" id="L264">        });</span>
+<span class="nc" id="L265">        final InetAddress address = (InetAddress) serverAddressBox.getSelectedItem();</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">        publicServer.setEnabled(!address.isLoopbackAddress());</span>
+
+<span class="nc" id="L268">        this.difficultyLabel = Utility.localizedLabel(&quot;difficulty&quot;);</span>
+<span class="nc" id="L269">        this.difficultyBox = new JComboBox&lt;&gt;();</span>
+<span class="nc" id="L270">        this.difficultyBox</span>
+<span class="nc" id="L271">            .setRenderer(new FreeColComboBoxRenderer&lt;OptionGroup&gt;());</span>
+<span class="nc" id="L272">        this.difficultyBox.addItemListener(this);</span>
+<span class="nc" id="L273">        this.difficultyButton = Utility.localizedButton(&quot;newPanel.showDifficulty&quot;);</span>
+<span class="nc" id="L274">        this.difficultyButton.addActionListener(ae -&gt; {</span>
+<span class="nc" id="L275">            getGUI().showDifficultyDialog(this.specification, this.difficulty, this.difficulty.isEditable(), (group) -&gt; {</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">                if (group != null) {</span>
+<span class="nc" id="L277">                    update(true);</span>
+                }
+<span class="nc" id="L279">            });</span>
+<span class="nc" id="L280">        });</span>
+
+<span class="nc" id="L282">        this.joinNameLabel = Utility.localizedLabel(&quot;host&quot;);</span>
+<span class="nc" id="L283">        this.joinNameField = new JTextField(FreeCol.getDefaultServerHost());</span>
+<span class="nc" id="L284">        this.joinPortLabel = Utility.localizedLabel(&quot;port&quot;);</span>
+<span class="nc" id="L285">        this.joinPortField</span>
+<span class="nc" id="L286">            = new JTextField(Integer.toString(FreeCol.getServerPort()));</span>
+<span class="nc" id="L287">        this.joinPortField.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L288">                getSelectedPort(NewPanel.this.joinPortField);</span>
+<span class="nc" id="L289">            });</span>
+
+<span class="nc" id="L291">        okButton.setActionCommand(String.valueOf(NewPanelAction.OK));</span>
+
+<span class="nc" id="L293">        JButton cancel = Utility.localizedButton(&quot;cancel&quot;);</span>
+<span class="nc" id="L294">        cancel.setActionCommand(String.valueOf(NewPanelAction.CANCEL));</span>
+<span class="nc" id="L295">        cancel.addActionListener(ae -&gt; {</span>
+<span class="nc" id="L296">                final GUI gui = getGUI();</span>
+<span class="nc" id="L297">                gui.removeComponent(this);</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">                if (getFreeColClient().isMapEditor()) {</span>
+<span class="nc" id="L299">                    gui.startMapEditorGUI();</span>
+                } else {
+<span class="nc" id="L301">                    gui.showMainPanel(null);</span>
+                }
+<span class="nc" id="L303">            });</span>
+<span class="nc" id="L304">        setEscapeAction(new AbstractAction() {</span>
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L307">                cancel.doClick();</span>
+<span class="nc" id="L308">            }</span>
+        });
+
+        // Add all the components
+<span class="nc" id="L312">        add(Utility.localizedHeader(&quot;newPanel.newGamePanel&quot;,</span>
+                                    Utility.FONTSPEC_TITLE),
+            &quot;span 6, center&quot;);
+<span class="nc" id="L315">        add(single, &quot;newline, span 3&quot;);</span>
+<span class="nc" id="L316">        add(new JSeparator(JSeparator.VERTICAL), &quot;spany 7, grow&quot;);</span>
+<span class="nc" id="L317">        add(Utility.localizedLabel(&quot;name&quot;), SPAN_SPLIT_2);</span>
+<span class="nc" id="L318">        add(this.nameBox, &quot;growx&quot;);</span>
+<span class="nc" id="L319">        add(start, &quot;newline, span 3&quot;);</span>
+<span class="nc" id="L320">        add(this.advantagesLabel);</span>
+<span class="nc" id="L321">        add(this.advantagesBox, &quot;growx&quot;);</span>
+<span class="nc" id="L322">        add(this.serverAddressBox, &quot;newline, skip&quot;);</span>
+<span class="nc" id="L323">        add(this.serverPortLabel, &quot;newline, skip&quot;);</span>
+<span class="nc" id="L324">        add(this.serverPortField, &quot;width 60:&quot;);</span>
+<span class="nc" id="L325">        add(this.rulesLabel);</span>
+<span class="nc" id="L326">        add(this.rulesBox, &quot;growx&quot;);</span>
+<span class="nc" id="L327">        add(this.publicServer, &quot;newline, skip, span 2&quot;);</span>
+<span class="nc" id="L328">        add(this.difficultyLabel);</span>
+<span class="nc" id="L329">        add(this.difficultyBox, &quot;growx&quot;);</span>
+<span class="nc" id="L330">        add(meta, &quot;newline, span 3&quot;);</span>
+<span class="nc" id="L331">        add(this.difficultyButton, &quot;skip 2, growx&quot;);</span>
+<span class="nc" id="L332">        add(join, &quot;newline, span 3&quot;);</span>
+<span class="nc" id="L333">        add(this.joinNameLabel, &quot;newline, skip, split 2&quot;);</span>
+<span class="nc" id="L334">        add(this.joinNameField, &quot;width 80:&quot;);</span>
+<span class="nc" id="L335">        add(this.joinPortLabel, &quot;split 2&quot;);</span>
+<span class="nc" id="L336">        add(this.joinPortField, &quot;width 60:&quot;);</span>
+<span class="nc" id="L337">        add(okButton, &quot;newline, span, split 2, tag ok&quot;);</span>
+<span class="nc" id="L338">        add(cancel, &quot;tag cancel&quot;);</span>
+<span class="nc" id="L339">        joinComponents = new Component[] {</span>
+            this.joinNameLabel, this.joinNameField,
+            this.joinPortLabel, this.joinPortField
+        };
+<span class="nc" id="L343">        serverComponents = new Component[] {</span>
+            this.serverAddressBox, this.serverPortLabel, this.serverPortField, this.publicServer
+        };
+<span class="nc" id="L346">        gameComponents = new Component[] {</span>
+            this.advantagesLabel, this.advantagesBox,
+            this.rulesLabel, this.rulesBox,
+            this.difficultyLabel, this.difficultyBox, this.difficultyButton
+        };
+
+<span class="nc" id="L352">        this.specification = getSpecification();</span>
+<span class="nc bnc" id="L353" title="All 2 branches missed.">        if (this.specification == null) {</span>
+<span class="nc" id="L354">            throw new RuntimeException(&quot;No specification found for: &quot; + this);</span>
+        }
+<span class="nc" id="L356">        this.difficulty = this.specification</span>
+<span class="nc" id="L357">            .getDifficultyOptionGroup(FreeCol.getDifficulty());</span>
+<span class="nc" id="L358">        updateDifficultyBox();</span>
+<span class="nc bnc" id="L359" title="All 2 branches missed.">        if (this.difficulty == null) {</span>
+<span class="nc" id="L360">            int index = this.difficultyBox.getItemCount() / 2;</span>
+<span class="nc" id="L361">            this.difficultyBox.setSelectedItem(index);</span>
+<span class="nc" id="L362">            this.difficulty = getSelectedDifficulty();</span>
+        }
+<span class="nc bnc" id="L364" title="All 2 branches missed.">        if (this.difficulty == null) {</span>
+<span class="nc" id="L365">            throw new RuntimeException(&quot;No difficulty found for: &quot; + this);</span>
+        }
+<span class="nc" id="L367">        logger.info(&quot;NewPanel initialized with &quot; + this.specification.getId()</span>
+<span class="nc" id="L368">            + &quot;/&quot; + this.difficulty.getId());</span>
+<span class="nc" id="L369">        enableComponents();</span>
+<span class="nc" id="L370">        setSize(getPreferredSize());</span>
+<span class="nc" id="L371">    }</span>
+
+        
+    /**
+     * Update specification and difficulty as needed.
+     *
+     * @param changed If true force an update.
+     */
+    private void update(boolean changed) {
+<span class="nc bnc" id="L380" title="All 2 branches missed.">        if (!changed) return;</span>
+        // If using a custom difficulty, update it within the
+        // spec, otherwise read the difficulty from the new spec.
+<span class="nc bnc" id="L383" title="All 2 branches missed.">        if (this.difficulty.isEditable()) {</span>
+<span class="nc" id="L384">            this.specification.prepare(null, this.difficulty);</span>
+        } else {
+<span class="nc" id="L386">            String oldId = this.difficulty.getId();</span>
+<span class="nc" id="L387">            this.difficulty = this.specification</span>
+<span class="nc" id="L388">                .getDifficultyOptionGroup(oldId);</span>
+        }
+<span class="nc" id="L390">        updateDifficultyBox();</span>
+<span class="nc" id="L391">    }</span>
+
+    /**
+     * Check if the TC changed.
+     *
+     * @return True if the TC changed.
+     */
+    private boolean checkTC() {
+<span class="nc" id="L399">        if (this.specification.getId()</span>
+<span class="nc bnc" id="L400" title="All 2 branches missed.">            .equals(getSelectedRules().getId())) return false;</span>
+<span class="nc" id="L401">        this.specification = getSpecification();</span>
+<span class="nc" id="L402">        return true;</span>
+    }
+        
+    /**
+     * Check if the difficulty box changed.
+     *
+     * @return True if the difficulty changed.
+     */
+    private boolean checkDifficulty() {
+<span class="nc" id="L411">        OptionGroup difficulty = getSelectedDifficulty();</span>
+<span class="nc bnc" id="L412" title="All 2 branches missed.">        if (this.difficulty.getId().equals(difficulty.getId())) return false;</span>
+<span class="nc" id="L413">        this.difficulty = difficulty;</span>
+<span class="nc" id="L414">        return true;</span>
+    }
+    
+    /**
+     * Update just the difficulty box state.
+     */
+    private void updateDifficultyBox() {
+        // Update the contents of the difficulty level box depending on
+        // the specification currently selected.
+<span class="nc" id="L423">        this.difficultyBox.removeItemListener(this);</span>
+<span class="nc" id="L424">        this.difficultyBox.removeAllItems();</span>
+<span class="nc bnc" id="L425" title="All 2 branches missed.">        for (OptionGroup og : this.specification.getDifficultyLevels()) {</span>
+<span class="nc" id="L426">            this.difficultyBox.addItem(og);</span>
+<span class="nc" id="L427">        }</span>
+<span class="nc bnc" id="L428" title="All 2 branches missed.">        if (this.difficulty != null) {</span>
+<span class="nc" id="L429">            this.difficultyBox.setSelectedItem(this.difficulty);</span>
+        }
+<span class="nc bnc" id="L431" title="All 2 branches missed.">        this.difficultyButton.setEnabled(this.difficulty != null);</span>
+<span class="nc bnc" id="L432" title="All 4 branches missed.">        String text = (this.difficulty != null &amp;&amp; this.difficulty.isEditable())</span>
+<span class="nc" id="L433">            ? &quot;newPanel.editDifficulty&quot;</span>
+<span class="nc" id="L434">            : &quot;newPanel.showDifficulty&quot;;</span>
+<span class="nc" id="L435">        this.difficultyButton.setText(Messages.message(text));</span>
+<span class="nc" id="L436">        this.difficultyBox.addItemListener(this);</span>
+<span class="nc" id="L437">    }</span>
+
+    /**
+     * Get the selected player name from the nameBox.
+     *
+     * @return The selected player name.
+     */
+    private String getSelectedName() {
+<span class="nc" id="L445">        return this.nameBox.getText();</span>
+    }
+
+    /**
+     * Gets the currently selected Advantages type from the nationalAdvantages
+     * box.
+     *
+     * @return The selected advantages type.
+     */
+    private Advantages getSelectedAdvantages() {
+<span class="nc" id="L455">        return (Advantages)this.advantagesBox.getSelectedItem();</span>
+    }
+
+    /**
+     * Gets the currently selected total-conversion from the rulesBox.
+     *
+     * @return The selected TC.
+     */
+    private FreeColModFile getSelectedRules() {
+<span class="nc" id="L464">        return (FreeColModFile)this.rulesBox.getSelectedItem();</span>
+    }
+
+    /**
+     * Gets the currently selected difficulty from the difficultyBox.
+     *
+     * @return The difficulty {@code OptionGroup}.
+     */
+    private OptionGroup getSelectedDifficulty() {
+<span class="nc" id="L473">        return (OptionGroup)this.difficultyBox.getSelectedItem();</span>
+    }
+
+    /**
+     * Get the value of a port field.
+     *
+     * @param field The field to read.
+     * @return The port number in the field, or negative on error.
+     */
+    private int getSelectedPort(JTextField field) {
+        int port;
+        try {
+<span class="nc" id="L485">            port = Integer.parseInt(field.getText());</span>
+<span class="nc" id="L486">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L487">            port = -1;</span>
+<span class="nc" id="L488">        }</span>
+<span class="nc bnc" id="L489" title="All 4 branches missed.">        if (0 &lt; port &amp;&amp; port &lt; 0x10000) return port;</span>
+<span class="nc" id="L490">        field.setForeground(Color.red);</span>
+<span class="nc" id="L491">        return -1;</span>
+    }
+
+    /**
+     * Enable components according to the selected button.
+     */
+    private void enableComponents() {
+<span class="nc" id="L498">        NewPanelAction action = Enum.valueOf(NewPanelAction.class,</span>
+<span class="nc" id="L499">            this.buttonGroup.getSelection().getActionCommand());</span>
+<span class="nc bnc" id="L500" title="All 5 branches missed.">        switch (action) {</span>
+        case SINGLE:
+<span class="nc" id="L502">            enableComponents(this.joinComponents, false);</span>
+<span class="nc" id="L503">            enableComponents(this.serverComponents, false);</span>
+<span class="nc" id="L504">            enableComponents(this.gameComponents, true);</span>
+<span class="nc" id="L505">            this.rulesBox.setEnabled(true);</span>
+<span class="nc" id="L506">            break;</span>
+        case JOIN:
+<span class="nc" id="L508">            enableComponents(this.joinComponents, true);</span>
+<span class="nc" id="L509">            enableComponents(this.serverComponents, false);</span>
+<span class="nc" id="L510">            enableComponents(this.gameComponents, false);</span>
+<span class="nc" id="L511">            this.rulesBox.setEnabled(false);</span>
+<span class="nc" id="L512">            break;</span>
+        case START:
+<span class="nc" id="L514">            enableComponents(this.joinComponents, false);</span>
+<span class="nc" id="L515">            enableComponents(this.serverComponents, true);</span>
+<span class="nc" id="L516">            enableComponents(this.gameComponents, true);</span>
+<span class="nc" id="L517">            this.rulesBox.setEnabled(true);</span>
+<span class="nc" id="L518">            break;</span>
+        case META_SERVER:
+<span class="nc" id="L520">            enableComponents(this.joinComponents, false);</span>
+<span class="nc" id="L521">            enableComponents(this.serverComponents, false);</span>
+<span class="nc" id="L522">            enableComponents(this.gameComponents, false);</span>
+<span class="nc" id="L523">            this.rulesBox.setEnabled(false);</span>
+<span class="nc" id="L524">            break;</span>
+        default:
+            break;
+        }
+<span class="nc" id="L528">    }</span>
+
+    /**
+     * Dis/Enable a group of components.
+     *
+     * @param components The {@code Component}s to set.
+     * @param enable Enable if true.
+     */
+    private void enableComponents(Component[] components, boolean enable) {
+<span class="nc bnc" id="L537" title="All 2 branches missed.">        for (Component c : components) {</span>
+<span class="nc" id="L538">            c.setEnabled(enable);</span>
+        }
+<span class="nc" id="L540">    }</span>
+
+
+    // Override FreeColPanel
+
+    /**
+     * Get the specification.  Either the one set for this panel, or the
+     * one implied by the currently selected TC.
+     *
+     * @return The current {@code Specification}.
+     */
+    @Override
+    public Specification getSpecification() {
+<span class="nc bnc" id="L553" title="All 2 branches missed.">        if (this.fixedSpecification != null) return this.fixedSpecification;</span>
+<span class="nc" id="L554">        return FreeCol.loadSpecification(getSelectedRules(), null, null);</span>
+    }
+
+
+    // Interface ActionListener
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L565">        final ConnectController cc = getFreeColClient().getConnectController();</span>
+<span class="nc" id="L566">        final GUI gui = getGUI();</span>
+<span class="nc" id="L567">        final String command = ae.getActionCommand();</span>
+
+        try {
+<span class="nc bnc" id="L570" title="All 2 branches missed.">            switch (Enum.valueOf(NewPanelAction.class, command)) {</span>
+            case OK:
+<span class="nc" id="L572">                FreeCol.setName(getSelectedName());</span>
+<span class="nc" id="L573">                FreeCol.setAdvantages(getSelectedAdvantages());</span>
+<span class="nc" id="L574">                FreeCol.setRules(getSelectedRules().getId());</span>
+    
+<span class="nc" id="L576">                NewPanelAction action = Enum.valueOf(NewPanelAction.class,</span>
+<span class="nc" id="L577">                    buttonGroup.getSelection().getActionCommand());</span>
+<span class="nc bnc" id="L578" title="All 5 branches missed.">                switch (action) {</span>
+                case SINGLE:
+<span class="nc" id="L580">                    this.specification.prepare(getSelectedAdvantages(),</span>
+                                               this.difficulty);
+<span class="nc bnc" id="L582" title="All 2 branches missed.">                    if (cc.startSinglePlayerGame(this.specification)) return;</span>
+                    break;
+                case JOIN:
+<span class="nc" id="L585">                    int joinPort = getSelectedPort(this.joinPortField);</span>
+<span class="nc bnc" id="L586" title="All 2 branches missed.">                    if (joinPort &lt; 0) break;</span>
+<span class="nc bnc" id="L587" title="All 2 branches missed.">                    if (cc.joinMultiplayerGame(this.joinNameField.getText(),</span>
+<span class="nc" id="L588">                                               joinPort)) return;</span>
+                    break;
+                case START:
+<span class="nc" id="L591">                    int serverPort = getSelectedPort(this.serverPortField);</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">                    if (serverPort &lt; 0) break;</span>
+<span class="nc" id="L593">                    this.specification.prepare(getSelectedAdvantages(),</span>
+                                               this.difficulty);
+<span class="nc" id="L595">                    final InetAddress serverAddress = (InetAddress) this.serverAddressBox.getSelectedItem();</span>
+<span class="nc bnc" id="L596" title="All 2 branches missed.">                    final boolean publicServerValue = this.publicServer.isSelected()</span>
+<span class="nc bnc" id="L597" title="All 2 branches missed.">                            &amp;&amp; !serverAddress.isLoopbackAddress();</span>
+<span class="nc bnc" id="L598" title="All 2 branches missed.">                    if (cc.startMultiplayerGame(this.specification,</span>
+<span class="nc" id="L599">                            publicServerValue, serverAddress, serverPort)) return;</span>
+                    break;
+                case META_SERVER:
+<span class="nc" id="L602">                    List&lt;ServerInfo&gt; servers = MetaServerUtils.getServerList();</span>
+<span class="nc bnc" id="L603" title="All 2 branches missed.">                    if (servers != null) gui.showServerListPanel(servers);</span>
+                    break;
+                default:
+<span class="nc" id="L606">                    break;</span>
+                }
+                break;
+            default:
+<span class="nc" id="L610">                super.actionPerformed(ae);</span>
+                break;
+            }
+<span class="nc" id="L613">        } catch (RuntimeException e) {</span>
+<span class="nc" id="L614">            gui.showErrorPanel(e, StringTemplate.key(&quot;error.unspecified&quot;));</span>
+<span class="nc" id="L615">        }</span>
+<span class="nc" id="L616">    }</span>
+
+
+    // Interface ItemListener
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void itemStateChanged(ItemEvent e) {
+<span class="nc bnc" id="L626" title="All 4 branches missed.">        update(checkTC() || checkDifficulty());</span>
+<span class="nc" id="L627">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

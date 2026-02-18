@@ -1,0 +1,535 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MiniMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">MiniMap.java</span></div><h1>MiniMap.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.RenderingHints;
+import java.awt.Transparency;
+import java.awt.event.MouseEvent;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.GeneralPath;
+import java.awt.image.BufferedImage;
+import java.util.List;
+import java.util.concurrent.locks.LockSupport;
+import java.util.logging.Logger;
+
+import javax.swing.JPanel;
+import javax.swing.event.MouseInputListener;
+
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.GUI;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Map;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.util.Utils;
+
+
+/**
+ * This component draws a small version of the map.  It allows us to
+ * see a larger part of the map and to relocate the viewport by
+ * clicking on it.  Pity its not a FreeColClientHolder.
+ */
+public final class MiniMap extends JPanel implements MouseInputListener {
+
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L60">    private static final Logger logger = Logger.getLogger(MiniMap.class.getName());</span>
+
+    public static final int MAX_TILE_SIZE = 24;
+    public static final int MIN_TILE_SIZE = 4;
+    public static final int SCALE_STEP = 4;
+
+    private final FreeColClient freeColClient;
+
+    /**
+     * tileSize is the size (in pixels) that each tile will take up on
+     * the mini map
+     */
+    private int tileSize;
+
+    /**
+     * An image to contain the painted minimap. This is necessary in order to
+     * reduce rendering time when scrolling or animating.
+     */
+<span class="nc" id="L78">    private PrerenderedMinimap prerenderedMinimap = null;</span>
+    
+<span class="nc" id="L80">    private volatile boolean dirty = true;</span>
+    
+<span class="nc" id="L82">    private MinimapPainterThread minimapPainterThread = new MinimapPainterThread();</span>
+    
+
+    /**
+     * The constructor that will initialize this component.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+<span class="nc" id="L90">    public MiniMap(FreeColClient freeColClient) {</span>
+<span class="nc" id="L91">        this.freeColClient = freeColClient;</span>
+
+<span class="nc" id="L93">        setLayout(null);</span>
+
+<span class="nc" id="L95">        tileSize = 4 * freeColClient.getClientOptions()</span>
+<span class="nc" id="L96">            .getInteger(ClientOptions.DEFAULT_ZOOM_LEVEL);</span>
+        
+<span class="nc" id="L98">        addMouseListener(this);</span>
+<span class="nc" id="L99">        addMouseMotionListener(this);</span>
+<span class="nc" id="L100">        minimapPainterThread.start();</span>
+<span class="nc" id="L101">        minimapPainterThread.setPriority(Thread.NORM_PRIORITY - 1);</span>
+<span class="nc" id="L102">        setOpaque(false);</span>
+<span class="nc" id="L103">    }</span>
+
+    /**
+     * Internal GUI accessor.
+     *
+     * @return The {@code GUI}.
+     */
+    private GUI getGUI() {
+<span class="nc" id="L111">        return this.freeColClient.getGUI();</span>
+    }
+
+    /**
+     * Internal game accessor.
+     *
+     * @return The {@code Game}.
+     */
+    private Game getGame() {
+<span class="nc" id="L120">        return this.freeColClient.getGame();</span>
+    }
+
+    /**
+     * Internal Map accessor.
+     *
+     * @return The {@code Map}.
+     */
+    private Map getMap() {
+<span class="nc" id="L129">        Game game = getGame();</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        return (game == null) ? null : game.getMap();</span>
+    }
+
+    /**
+     * Set the DEFAULT_ZOOM_LEVEL option on the basis of a tile size.
+     *
+     * @param tileSize The tile size to check.
+     */
+    private void setZoomOption(int tileSize) {
+<span class="nc" id="L139">        int zoom = tileSize / 4;</span>
+<span class="nc" id="L140">        freeColClient.getClientOptions()</span>
+<span class="nc" id="L141">            .setInteger(ClientOptions.DEFAULT_ZOOM_LEVEL, zoom);</span>
+<span class="nc" id="L142">    }</span>
+
+    /**
+     * Set the map focus from a mouse click location.
+     *
+     * @param e The {@code MouseEvent} containing the location.
+     */
+    private void setFocus(MouseEvent e) {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        if (!e.getComponent().isEnabled()) {</span>
+<span class="nc" id="L151">            return;</span>
+        }
+        
+<span class="nc" id="L154">        final Map map = getMap();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (map == null) {</span>
+<span class="nc" id="L156">            return;</span>
+        }
+        
+<span class="nc" id="L159">        final int x = e.getX(), y = e.getY();</span>
+
+<span class="nc" id="L161">        final Dimension size = getSize();</span>
+<span class="nc" id="L162">        final Point focusPoint = getGUI().getFocusMapPoint();</span>
+<span class="nc" id="L163">        final Dimension mapTileSize = getGUI().getScaledImageLibrary().scale(ImageLibrary.TILE_SIZE);</span>
+<span class="nc" id="L164">        final int mapPointX = focusPoint.x + (mapTileSize.width * (x - size.width / 2)) / tileSize;</span>
+<span class="nc" id="L165">        final int mapPointY = focusPoint.y + (mapTileSize.height * (y - size.height / 2)) / (tileSize / 2);</span>
+        
+<span class="nc" id="L167">        getGUI().setFocusMapPoint(new Point(mapPointX, mapPointY));</span>
+<span class="nc" id="L168">    }</span>
+
+    private void recreateBufferImage() {
+<span class="nc" id="L171">        final Map map = getMap();</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (map == null) {</span>
+<span class="nc" id="L173">            this.prerenderedMinimap = null;</span>
+<span class="nc" id="L174">            return;</span>
+        }
+        
+<span class="nc" id="L177">        final int theTileSize = tileSize;</span>
+<span class="nc" id="L178">        final Dimension size = new Dimension(theTileSize * map.getWidth() + theTileSize / 2,</span>
+<span class="nc" id="L179">                theTileSize * map.getHeight() / 2 + theTileSize / 4);</span>
+<span class="nc" id="L180">        final BufferedImage nextPaintedMinimapImage = Utils.getGoodGraphicsDevice()</span>
+<span class="nc" id="L181">                .getDefaultConfiguration()</span>
+<span class="nc" id="L182">                .createCompatibleImage(size.width, size.height, Transparency.OPAQUE);</span>
+<span class="nc" id="L183">        final Graphics2D g2d = nextPaintedMinimapImage.createGraphics();</span>
+<span class="nc" id="L184">        paintEntireMinimap(g2d, theTileSize, size);</span>
+<span class="nc" id="L185">        g2d.dispose();</span>
+        
+<span class="nc" id="L187">        this.prerenderedMinimap = new PrerenderedMinimap(nextPaintedMinimapImage, theTileSize);</span>
+<span class="nc" id="L188">    }</span>
+
+    // Public API
+
+    /**
+     * Updates the cached minimap image.
+     */
+    public void updateCachedMinimap() {
+<span class="nc" id="L196">        this.dirty = true;</span>
+<span class="nc" id="L197">        LockSupport.unpark(minimapPainterThread);</span>
+<span class="nc" id="L198">    }</span>
+    
+    /**
+     * Zooms in the mini map.
+     */
+    public void zoomIn() {
+<span class="nc" id="L204">        tileSize = Math.min(tileSize + SCALE_STEP, MAX_TILE_SIZE);</span>
+<span class="nc" id="L205">        setZoomOption(tileSize);</span>
+<span class="nc" id="L206">        updateCachedMinimap();</span>
+<span class="nc" id="L207">    }</span>
+
+    /**
+     * Zooms out the mini map.
+     */
+    public void zoomOut() {
+<span class="nc" id="L213">        tileSize = Math.max(tileSize - SCALE_STEP, MIN_TILE_SIZE);</span>
+<span class="nc" id="L214">        setZoomOption(tileSize);</span>
+<span class="nc" id="L215">        updateCachedMinimap();</span>
+<span class="nc" id="L216">    }</span>
+
+    /**
+     * Return true if tile size can be decreased.
+     *
+     * @return a {@code boolean} value
+     */
+    public boolean canZoomIn() {
+<span class="nc bnc" id="L224" title="All 4 branches missed.">        return tileSize &lt; MAX_TILE_SIZE &amp;&amp; getMap() != null;</span>
+    }
+
+    /**
+     * Return true if tile size can be increased.
+     *
+     * @return a {@code boolean} value
+     */
+    public boolean canZoomOut() {
+<span class="nc bnc" id="L233" title="All 4 branches missed.">        return tileSize &gt; MIN_TILE_SIZE &amp;&amp; getMap() != null;</span>
+    }
+    
+    /**
+     * Set tile size to the given value, or the minimum or maximum
+     * bound of the tile size.
+     *
+     * FIXME: Public for MapEditorController.createMiniMapThumbnail.
+     *
+     * @param size an {@code int} value
+     */
+    public void setTileSize(int size) {
+<span class="nc" id="L245">        tileSize = Math.max(Math.min(size, MAX_TILE_SIZE), MIN_TILE_SIZE);</span>
+<span class="nc" id="L246">        setZoomOption(tileSize);</span>
+<span class="nc" id="L247">        repaint();</span>
+<span class="nc" id="L248">    }</span>
+
+    /**
+     * Paints a representation of the mapboard onto this component.
+     *
+     * FIXME: Public for MapEditorController.createMiniMapThumbnail.
+     *
+     * @param graphics The {@code Graphics} context within which to draw.
+     */
+    public void paintMap(Graphics2D g2d) {
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        if (getMap() == null) {</span>
+<span class="nc" id="L259">            return;</span>
+        }
+
+<span class="nc" id="L262">        final Point focusPoint = getGUI().getFocusMapPoint();</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        if (focusPoint == null) {</span>
+<span class="nc" id="L264">            return;</span>
+        }
+
+<span class="nc" id="L267">        final Dimension size = getSize();</span>
+<span class="nc" id="L268">        g2d.setColor(ImageLibrary.getMinimapBackgroundColor());</span>
+<span class="nc" id="L269">        g2d.fillRect(0, 0, size.width, size.height);</span>
+        
+<span class="nc" id="L271">        final PrerenderedMinimap thePrerenderedMinimap = prerenderedMinimap;</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        if (thePrerenderedMinimap == null) {</span>
+<span class="nc" id="L273">            return;</span>
+        }
+
+<span class="nc" id="L276">        final int theTileSize = thePrerenderedMinimap.tileSize;</span>
+<span class="nc" id="L277">        final Dimension mapTileSize = getGUI().getScaledImageLibrary().scale(ImageLibrary.TILE_SIZE);</span>
+<span class="nc" id="L278">        final int x = -focusPoint.x * theTileSize / mapTileSize.width + size.width / 2;</span>
+<span class="nc" id="L279">        final int y = -focusPoint.y * (theTileSize / 2) / mapTileSize.height + size.height / 2;</span>
+        
+<span class="nc" id="L281">        g2d.drawImage(thePrerenderedMinimap.paintedMinimapImage, x, y, null);</span>
+        
+<span class="nc" id="L283">        paintMarkerForVisibleAreaOnMainMap(g2d, size, theTileSize, mapTileSize);</span>
+<span class="nc" id="L284">    }</span>
+
+    private void paintMarkerForVisibleAreaOnMainMap(Graphics2D g2d, Dimension size, int tileSize, Dimension mapTileSize) {
+<span class="nc" id="L287">        final Dimension actualMapViewDimension = getGUI().getMapViewDimension();</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        if (actualMapViewDimension == null) {</span>
+<span class="nc" id="L289">            return;</span>
+        }
+        
+<span class="nc" id="L292">        final int whiteRectangleWidth = (actualMapViewDimension.width / mapTileSize.width + 1) * tileSize;</span>
+<span class="nc" id="L293">        final int whiteRectangleHeight = (actualMapViewDimension.height / mapTileSize.height + 1) * tileSize / 2;</span>
+        
+<span class="nc" id="L295">        g2d.setColor(ImageLibrary.getMinimapBorderColor());</span>
+<span class="nc" id="L296">        g2d.drawRect(size.width / 2 - whiteRectangleWidth / 2,</span>
+                size.height / 2 - whiteRectangleHeight / 2,
+                whiteRectangleWidth,
+                whiteRectangleHeight);
+<span class="nc" id="L300">    }</span>
+    
+    /**
+     * Paints a representation of the mapboard onto this component.
+     *
+     * FIXME: Public for MapEditorController.createMiniMapThumbnail.
+     *
+     * @param graphics The {@code Graphics} context within which to draw.
+     */
+    public void paintEntireMinimap(Graphics graphics, int tileSize, Dimension size) {
+<span class="nc" id="L310">        final Graphics2D g = (Graphics2D) graphics;</span>
+
+<span class="nc" id="L312">        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,</span>
+                           RenderingHints.VALUE_ANTIALIAS_ON);
+<span class="nc" id="L314">        g.setRenderingHint(RenderingHints.KEY_RENDERING,</span>
+                           RenderingHints.VALUE_RENDER_QUALITY);
+
+        /* Fill the rectangle with background color */
+<span class="nc" id="L318">        final int minimapWidth = size.width, minimapHeight = size.height;</span>
+<span class="nc" id="L319">        g.setColor(ImageLibrary.getMinimapBackgroundColor());</span>
+<span class="nc" id="L320">        g.fillRect(0, 0, minimapWidth, minimapHeight);</span>
+
+        /* Make sure the mini map won't try to display tiles off the
+         * bounds of the world map */
+<span class="nc" id="L324">        final Map map = getMap();</span>
+
+<span class="nc" id="L326">        final int tileWidth = tileSize;</span>
+<span class="nc" id="L327">        final int tileHeight = tileSize / 2;</span>
+<span class="nc" id="L328">        final int halfWidth = tileSize / 2;</span>
+<span class="nc" id="L329">        final int halfHeight = tileSize / 4;</span>
+
+        /* Iterate through all the squares on the mini map and paint the
+         * tiles based on terrain */
+<span class="nc" id="L333">        GeneralPath tilePath = new GeneralPath();</span>
+<span class="nc" id="L334">        tilePath.moveTo(halfWidth, 0);</span>
+<span class="nc" id="L335">        tilePath.lineTo(tileWidth, halfHeight);</span>
+<span class="nc" id="L336">        tilePath.lineTo(halfWidth, tileHeight);</span>
+<span class="nc" id="L337">        tilePath.lineTo(0, halfHeight);</span>
+<span class="nc" id="L338">        tilePath.closePath();</span>
+        
+<span class="nc" id="L340">        GeneralPath settlementPath = new GeneralPath(tilePath);</span>
+<span class="nc" id="L341">        settlementPath.transform(AffineTransform.getScaleInstance(0.7, 0.7));</span>
+<span class="nc" id="L342">        settlementPath.transform(AffineTransform.getTranslateInstance(0.15 * tileWidth, 0.15 * tileHeight));</span>
+        
+<span class="nc" id="L344">        GeneralPath unitPath = new GeneralPath(tilePath);</span>
+<span class="nc" id="L345">        unitPath.transform(AffineTransform.getScaleInstance(0.5, 0.5));</span>
+<span class="nc" id="L346">        unitPath.transform(AffineTransform.getTranslateInstance(0.25 * tileWidth, 0.25 * tileHeight));</span>
+        
+<span class="nc" id="L348">        GeneralPath paintFull = new GeneralPath(tilePath);</span>
+<span class="nc" id="L349">        paintFull.transform(AffineTransform.getScaleInstance(1, 1));</span>
+        
+<span class="nc" id="L351">        g.setStroke(new BasicStroke(1f));</span>
+
+<span class="nc" id="L353">        final ClientOptions clientOptions = freeColClient.getClientOptions();</span>
+
+<span class="nc" id="L355">        final List&lt;Tile&gt; subMap = map.subMap(</span>
+                0,
+                0,
+<span class="nc" id="L358">                map.getWidth(),</span>
+<span class="nc" id="L359">                map.getHeight());</span>
+<span class="nc" id="L360">        final Tile firstTile = subMap.get(0);</span>
+        
+<span class="nc" id="L362">        paintEachTile(g, firstTile, tileSize, subMap, (tileG2d, tile) -&gt; {</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">            if (tile.isExplored()) {</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">                if (clientOptions.getBoolean(ClientOptions.MINIMAP_TOGGLE_BORDERS)) {</span>
+<span class="nc" id="L365">                    g.setColor(ImageLibrary.getMinimapPoliticsColor(tile.getType()));</span>
+<span class="nc" id="L366">                    g.fill(tilePath);</span>
+                    
+<span class="nc bnc" id="L368" title="All 2 branches missed.">                    if (tile.getOwner() != null) {</span>
+<span class="nc" id="L369">                        Color nationOwner = tile.getOwner().getNationColor();</span>
+<span class="nc" id="L370">                        Color colorTransparent =</span>
+<span class="nc" id="L371">                            new Color(nationOwner.getRed(), nationOwner.getGreen(), nationOwner.getBlue(), 100);</span>
+<span class="nc" id="L372">                        g.setColor(colorTransparent);</span>
+<span class="nc" id="L373">                        g.fill(paintFull);</span>
+<span class="nc" id="L374">                    }</span>
+                } else {
+<span class="nc" id="L376">                    g.setColor(ImageLibrary.getMinimapEconomicColor(tile.getType()));</span>
+<span class="nc" id="L377">                    g.fill(tilePath);</span>
+                }
+<span class="nc bnc" id="L379" title="All 2 branches missed.">                if (!tile.hasSettlement()) {</span>
+<span class="nc" id="L380">                    Unit unit = tile.getFirstUnit();</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">                    if (unit != null) {</span>
+<span class="nc" id="L382">                        g.setColor(Color.BLACK);</span>
+<span class="nc" id="L383">                        g.draw(unitPath);</span>
+<span class="nc" id="L384">                        g.setColor(unit.getOwner().getNationColor());</span>
+<span class="nc" id="L385">                        g.fill(unitPath);</span>
+                    }
+<span class="nc" id="L387">                } else {</span>
+<span class="nc" id="L388">                    g.setColor(Color.BLACK);</span>
+<span class="nc" id="L389">                    g.draw(settlementPath);</span>
+<span class="nc" id="L390">                    g.setColor(tile.getSettlement().getOwner().getNationColor());</span>
+<span class="nc" id="L391">                    g.fill(settlementPath);</span>
+                }
+<span class="nc bnc" id="L393" title="All 2 branches missed.">                if (!freeColClient.isMapEditor()</span>
+<span class="nc bnc" id="L394" title="All 2 branches missed.">                    &amp;&amp; freeColClient.getMyPlayer() != null</span>
+<span class="nc bnc" id="L395" title="All 2 branches missed.">                    &amp;&amp; !freeColClient.getMyPlayer().canSee(tile)</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">                    &amp;&amp; clientOptions.getBoolean(ClientOptions.MINIMAP_TOGGLE_FOG_OF_WAR)) {</span>
+<span class="nc" id="L397">                    Color blackTransparent = new Color(0, 0, 0, 100);</span>
+<span class="nc" id="L398">                    g.setColor(blackTransparent);</span>
+<span class="nc" id="L399">                    g.fill(paintFull);</span>
+                }
+
+             }
+<span class="nc" id="L403">        });</span>
+<span class="nc" id="L404">    }</span>
+    
+    private static void paintEachTile(Graphics2D g2d, Tile firstTile, int tileSize, List&lt;Tile&gt; tiles, TileRenderingCallback c) {
+<span class="nc bnc" id="L407" title="All 2 branches missed.">        if (tiles.isEmpty()) {</span>
+<span class="nc" id="L408">            return;</span>
+        }
+        
+<span class="nc" id="L411">        final int x0 = firstTile.getX();</span>
+<span class="nc" id="L412">        final int y0 = firstTile.getY();</span>
+        
+<span class="nc" id="L414">        final int width = tileSize;</span>
+<span class="nc" id="L415">        final int halfWidth = tileSize / 2;</span>
+<span class="nc" id="L416">        final int halfHeight = tileSize / 4;</span>
+        
+<span class="nc" id="L418">        int xt0 = 0, yt0 = 0;</span>
+<span class="nc bnc" id="L419" title="All 2 branches missed.">        for (Tile t : tiles) {</span>
+<span class="nc" id="L420">            final int x = t.getX();</span>
+<span class="nc" id="L421">            final int y = t.getY();</span>
+<span class="nc" id="L422">            final int xt = (x-x0) * width</span>
+                + (y&amp;1) * halfWidth;
+<span class="nc" id="L424">            final int yt = (y-y0) * halfHeight;</span>
+<span class="nc" id="L425">            g2d.translate(xt - xt0, yt - yt0);</span>
+<span class="nc" id="L426">            xt0 = xt; yt0 = yt;</span>
+
+<span class="nc" id="L428">            c.render(g2d, t);</span>
+<span class="nc" id="L429">        }</span>
+<span class="nc" id="L430">        g2d.translate(-xt0, -yt0);</span>
+<span class="nc" id="L431">    }</span>
+    
+    // Implement MouseInputListener
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L439">    public void mouseClicked(MouseEvent e) {}</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L445">    public void mousePressed(MouseEvent e) { setFocus(e); }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L451">    public void mouseReleased(MouseEvent e) {}</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L457">    public void mouseEntered(MouseEvent e) {}</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L463">    public void mouseExited(MouseEvent e) {}</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L469">    public void mouseDragged(MouseEvent e) { setFocus(e); }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L475">    public void mouseMoved(MouseEvent e) {}</span>
+
+
+    // Override JComponent
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void paintComponent(Graphics graphics) {
+<span class="nc bnc" id="L485" title="All 2 branches missed.">        if (getMap() == null) return;</span>
+<span class="nc" id="L486">        graphics.drawImage(ImageLibrary.getMiniMapBackground(), 0, 0, null);</span>
+<span class="nc" id="L487">        paintMap((Graphics2D) graphics);</span>
+<span class="nc" id="L488">    }</span>
+    
+    /**
+     * A callback for rendering a single tile.
+     */
+    private interface TileRenderingCallback {
+        
+        /**
+         * Should render a single tile.
+         * 
+         * @param tileG2d The {@code Graphics2D} that should be used when drawing
+         *      the tile. The coordinates for the {@code Graphics2D} will be
+         *      translated so that position (0, 0) is the upper left corner of
+         *      the tile image (that is, outside of the tile diamond itself).
+         * @param tile The {@code Tile} to be rendered. 
+         */
+        void render(Graphics2D tileG2d, Tile tile);
+    }
+    
+    private static final class PrerenderedMinimap {
+        /**
+         * An image to contain the painted minimap. This is necessary in order to
+         * reduce rendering time when scrolling or animating.
+         */
+        private final BufferedImage paintedMinimapImage;
+        
+        private final int tileSize;
+
+<span class="nc" id="L516">        private PrerenderedMinimap(BufferedImage paintedMinimapImage, int tileSize) {</span>
+<span class="nc" id="L517">            this.paintedMinimapImage = paintedMinimapImage;</span>
+<span class="nc" id="L518">            this.tileSize = tileSize;</span>
+<span class="nc" id="L519">        }</span>
+    }
+    
+<span class="nc" id="L522">    private final class MinimapPainterThread extends Thread {</span>
+        @Override
+        public void run() {
+            while (true) {
+<span class="nc" id="L526">                recreateBufferImage();</span>
+<span class="nc" id="L527">                dirty = false;</span>
+<span class="nc bnc" id="L528" title="All 2 branches missed.">                while (!dirty) {</span>
+<span class="nc" id="L529">                    LockSupport.park();</span>
+                }
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

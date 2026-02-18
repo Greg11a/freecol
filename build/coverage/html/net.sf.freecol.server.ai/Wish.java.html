@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Wish.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai</a> &gt; <span class="el_source">Wish.java</span></div><h1>Wish.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Constants.IntegrityType;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.common.util.Utils;
+
+
+/**
+ * Represents a need for something at a given {@code Location}.
+ */
+public abstract class Wish extends ValuedAIObject {
+
+    /** The requesting location of this wish. */
+    protected Location destination;
+
+    /**
+     * The {@code TransportableAIObject} which will realize the wish,
+     * or null if none has been assigned.
+     */
+    protected TransportableAIObject transportable;
+
+
+    /**
+     * Creates a new uninitialized {@code Wish}.
+     *
+     * @param aiMain The main AI-object.
+     * @param id The object identifier.
+     */
+    public Wish(AIMain aiMain, String id) {
+<span class="fc" id="L58">        super(aiMain, id);</span>
+
+<span class="fc" id="L60">        this.destination = null;</span>
+<span class="fc" id="L61">        this.transportable = null;</span>
+<span class="fc" id="L62">    }</span>
+
+    /**
+     * Creates a new {@code Wish} from the given
+     * XML-representation.
+     *
+     * @param aiMain The main AI-object.
+     * @param xr The input stream containing the XML.
+     * @throws XMLStreamException if a problem was encountered
+     *      during parsing.
+     */
+    public Wish(AIMain aiMain, FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L74">        super(aiMain, xr);</span>
+
+<span class="nc" id="L76">        AIColony ac = getDestinationAIColony();</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        if (ac != null) ac.addWish(this);</span>
+<span class="nc" id="L78">    }</span>
+
+
+    /**
+     * Checks if this {@code Wish} needs to be stored in a savegame.
+     *
+     * @return True if it has been allocated a transportable.
+     */
+    public boolean shouldBeStored() {
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        return transportable != null;</span>
+    }
+
+    /**
+     * Gets the {@code TransportableAIObject} assigned to this wish.
+     *
+     * @see #setTransportable
+     * @see net.sf.freecol.server.ai.mission.WishRealizationMission
+     * @return The {@code TransportableAIObject} which will
+     *     realize this wish, or null if none has been assigned.
+     */
+    public TransportableAIObject getTransportable() {
+<span class="fc" id="L99">        return transportable;</span>
+    }
+
+    /**
+     * Assigns a {@code TransportableAIObject} to this {@code Wish}.
+     *
+     * @param transportable The {@code TransportableAIObject}
+     *     which should realize this wish.
+     * @see #getTransportable
+     * @see net.sf.freecol.server.ai.mission.WishRealizationMission
+     */
+    public void setTransportable(TransportableAIObject transportable) {
+<span class="fc" id="L111">        this.transportable = transportable;</span>
+<span class="fc" id="L112">    }</span>
+
+    /**
+     * Gets the destination of this {@code Wish}.
+     *
+     * @return The {@code Location} in which the
+     *     {@link #getTransportable transportable} assigned to
+     *     this {@code Wish} will have to reach.
+     */
+    public final Location getDestination() {
+<span class="fc" id="L122">        return destination;</span>
+    }
+
+    /**
+     * Gets the destination AI colony, if any.
+     *
+     * @return The destination {@code AIColony}.
+     */
+    public final AIColony getDestinationAIColony() {
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        return (destination instanceof Colony)</span>
+<span class="nc" id="L132">            ? getAIMain().getAIColony((Colony)destination)</span>
+<span class="nc" id="L133">            : null;</span>
+    }
+
+    /**
+     * Does a specified unit satisfy this wish?
+     *
+     * @param unit The {@code Unit} to test.
+     * @return True if the unit either matches exactly if expertRequired,
+     *     or at least matches in a land/naval sense if not.
+     */
+    public abstract boolean satisfiedBy(Unit unit);
+
+    /**
+     * Does some specified goods satisfy this wish?
+     *
+     * @param &lt;T&gt; The base type of the goods.
+     * @param goods The goods to test.
+     * @return True if the goods type matches and amount is not less than
+     *     that requested.
+     */
+    public abstract &lt;T extends AbstractGoods&gt; boolean satisfiedBy(T goods);
+    
+
+    // Override AIObject
+
+    /**
+     * Disposes of this {@code AIObject} by removing any references
+     * to this object.
+     */
+    @Override
+    public void dispose() {
+<span class="nc" id="L164">        this.destination = null;</span>
+<span class="nc" id="L165">        this.transportable = null;</span>
+<span class="nc" id="L166">        super.dispose();</span>
+<span class="nc" id="L167">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IntegrityType checkIntegrity(boolean fix, LogBuilder lb) {
+<span class="nc" id="L174">        IntegrityType result = super.checkIntegrity(fix, lb);</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        if (transportable != null) {</span>
+<span class="nc" id="L176">            result = result.combine(transportable.checkIntegrity(fix, lb));</span>
+        }
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        if (destination == null) {</span>
+<span class="nc" id="L179">            lb.add(&quot;\n  Wish destination null for: &quot;, getId());</span>
+<span class="nc" id="L180">            result = result.fail();</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        } else if (((FreeColGameObject)destination).isDisposed()) {</span>
+<span class="nc" id="L182">            lb.add(&quot;\n  Wish destination disposed for: &quot;, getId());</span>
+<span class="nc" id="L183">            result = result.fail();</span>
+        }
+<span class="nc" id="L185">        return result;</span>
+    }
+
+
+    // Serialization
+
+    private static final String DESTINATION_TAG = &quot;destination&quot;;
+    private static final String TRANSPORTABLE_TAG = &quot;transportable&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L200">        super.writeAttributes(xw);</span>
+
+        // Write identifier, Location will match Object
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (destination != null) {</span>
+<span class="nc" id="L204">            xw.writeAttribute(DESTINATION_TAG, destination.getId());</span>
+
+<span class="nc bnc" id="L206" title="All 2 branches missed.">            if (transportable != null) {</span>
+<span class="nc" id="L207">                xw.writeAttribute(TRANSPORTABLE_TAG, transportable.getId());</span>
+            }
+        }
+<span class="nc" id="L210">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L217">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L219">        final AIMain aiMain = getAIMain();</span>
+
+<span class="nc" id="L221">        destination = xr.getLocationAttribute(aiMain.getGame(),</span>
+                                              DESTINATION_TAG, false);
+
+        // Delegate transportable one level down
+<span class="nc" id="L225">    }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">        if (!(o instanceof Wish)) return false;</span>
+<span class="fc" id="L236">        Wish other = (Wish)o;</span>
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">        return Utils.equals(this.destination, other.destination)</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">            &amp;&amp; Utils.equals(this.transportable, other.transportable)</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">            &amp;&amp; super.equals(other);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L247">        int hash = super.hashCode();</span>
+<span class="fc" id="L248">        hash = 37 * hash + Utils.hashCode(this.destination);</span>
+<span class="fc" id="L249">        return 37 * hash + Utils.hashCode(this.transportable);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

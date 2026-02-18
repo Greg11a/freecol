@@ -1,0 +1,449 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MissionaryMission.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.mission</a> &gt; <span class="el_source">MissionaryMission.java</span></div><h1>MissionaryMission.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai.mission;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.PathNode;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.pathfinding.CostDecider;
+import net.sf.freecol.common.model.pathfinding.CostDeciders;
+import net.sf.freecol.common.model.pathfinding.GoalDecider;
+import net.sf.freecol.common.model.pathfinding.GoalDeciders;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.server.ai.AIMain;
+import net.sf.freecol.server.ai.AIMessage;
+import net.sf.freecol.server.ai.AIUnit;
+
+
+/**
+ * Mission for sending a missionary to a native settlement.
+ */
+<span class="nc" id="L49">public final class MissionaryMission extends Mission {</span>
+
+    public static final String TAG = &quot;missionaryMission&quot;;
+
+    /** The tag for this mission. */
+    private static final String tag = &quot;AI missionary&quot;;
+
+    /**
+     * The target to aim for, used for a TransportMission.
+     * Either an IndianSettlement, or a backup Colony to head for before
+     * retargeting.
+     */
+    private Location target;
+
+
+    /**
+     * Creates a missionary mission for the given {@code AIUnit}.
+     *
+     * @param aiMain The main AI-object.
+     * @param aiUnit The {@code AIUnit} this mission is created for.
+     * @param target The target {@code Location} for this mission.
+     */
+    public MissionaryMission(AIMain aiMain, AIUnit aiUnit, Location target) {
+<span class="nc" id="L72">        super(aiMain, aiUnit);</span>
+
+<span class="nc" id="L74">        setTarget(target);</span>
+<span class="nc" id="L75">    }</span>
+
+    /**
+     * Creates a new {@code MissionaryMission} from a reader.
+     *
+     * @param aiMain The main AI-object.
+     * @param aiUnit The {@code AIUnit} this mission is created for.
+     * @param xr The input stream containing the XML.
+     * @throws XMLStreamException if a problem was encountered
+     *      during parsing.
+     * @see net.sf.freecol.server.ai.AIObject#readFromXML
+     */
+    public MissionaryMission(AIMain aiMain, AIUnit aiUnit,
+                             FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L89">        super(aiMain, aiUnit);</span>
+
+<span class="nc" id="L91">        readFromXML(xr);</span>
+<span class="nc" id="L92">    }</span>
+
+
+    /**
+     * Extract a valid target for this mission from a path.
+     *
+     * @param aiUnit A {@code AIUnit} to perform the mission.
+     * @param path A {@code PathNode} to extract a target from,
+     *     (uses the unit location if null).
+     * @return A target for this mission, or null if none found.
+     */
+    private static Location extractTarget(AIUnit aiUnit, PathNode path) {
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (path == null) return null;</span>
+<span class="nc" id="L105">        final Location loc = path.getLastNode().getLocation();</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        Settlement settlement = (loc == null) ? null : loc.getSettlement();</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        return (settlement instanceof IndianSettlement</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">            &amp;&amp; invalidIndianSettlementReason(aiUnit,</span>
+                (IndianSettlement)settlement) == null)
+<span class="nc" id="L110">            ? (IndianSettlement)settlement</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">            : (settlement instanceof Colony</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">                &amp;&amp; invalidColonyReason(aiUnit, (Colony)settlement) == null)</span>
+<span class="nc" id="L113">            ? (Colony)settlement</span>
+<span class="nc" id="L114">            : null;        </span>
+    }
+    
+    /**
+     * Evaluate a potential cashin mission for a given unit and
+     * path.
+     *
+     * @param aiUnit The {@code AIUnit} to do the mission.
+     * @param path A {@code PathNode} to take to the target.
+     * @return A score for the proposed mission.
+     */
+    public static int scorePath(AIUnit aiUnit, PathNode path) {
+<span class="nc" id="L126">        Location loc = extractTarget(aiUnit, path);</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        return (loc instanceof IndianSettlement)</span>
+<span class="nc" id="L128">            ? 1000 / (path.getTotalTurns() + 1)</span>
+<span class="nc" id="L129">            : Integer.MIN_VALUE;</span>
+    }
+
+    /**
+     * Makes a goal decider that checks for potential missions.
+     *
+     * @param aiUnit The {@code AIUnit} to find a mission with.
+     * @param deferOK Enable deferring to a fallback colony.
+     * @return A suitable {@code GoalDecider}.
+     */
+    private static GoalDecider getGoalDecider(final AIUnit aiUnit,
+                                              final boolean deferOK) {
+<span class="nc" id="L141">        GoalDecider gd = new GoalDecider() {</span>
+<span class="nc" id="L142">                private PathNode bestPath = null;</span>
+<span class="nc" id="L143">                private int bestValue = Integer.MIN_VALUE;</span>
+
+                @Override
+<span class="nc" id="L146">                public PathNode getGoal() { return bestPath; }</span>
+                @Override
+<span class="nc" id="L148">                public boolean hasSubGoals() { return true; }</span>
+                @Override
+                public boolean check(Unit u, PathNode path) {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">                    if (path.getLastNode().getLocation().getSettlement()</span>
+                        instanceof IndianSettlement) {
+<span class="nc" id="L153">                        int value = scorePath(aiUnit, path);</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                        if (bestValue &lt; value) {</span>
+<span class="nc" id="L155">                            bestValue = value;</span>
+<span class="nc" id="L156">                            bestPath = path;</span>
+<span class="nc" id="L157">                            return true;</span>
+                        }
+                    }
+<span class="nc" id="L160">                    return false;</span>
+                }
+            };
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        return (deferOK) ? GoalDeciders.getComposedGoalDecider(false, gd,</span>
+<span class="nc" id="L164">            GoalDeciders.getOurClosestSettlementGoalDecider())</span>
+<span class="nc" id="L165">            : gd;</span>
+    }
+            
+    /**
+     * Find a suitable mission location for this unit.
+     *
+     * @param aiUnit The {@code AIUnit} to execute this mission.
+     * @param range An upper bound on the number of moves.
+     * @param deferOK Enables deferring to a fallback colony.
+     * @return A path to the new target, or null if none found.
+     */
+    private static PathNode findTargetPath(AIUnit aiUnit, int range,
+                                           boolean deferOK) {
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        if (invalidAIUnitReason(aiUnit) != null) return null;</span>
+<span class="nc" id="L179">        final Unit unit = aiUnit.getUnit();</span>
+<span class="nc" id="L180">        final Location start = unit.getPathStartLocation();</span>
+<span class="nc" id="L181">        final Unit carrier = unit.getCarrier();</span>
+<span class="nc" id="L182">        final GoalDecider gd = getGoalDecider(aiUnit, deferOK);</span>
+        final CostDecider standardCd
+<span class="nc" id="L184">            = CostDeciders.avoidSettlementsAndBlockingUnits();</span>
+        // Is there a valid target available from the starting tile?
+<span class="nc" id="L186">        return unit.search(start, gd, standardCd, range, carrier);</span>
+    }
+
+    /**
+     * Finds a suitable mission target for the supplied unit.
+     * Falls back to the best colony if a path is not found.
+     *
+     * @param aiUnit The {@code AIUnit} to test.
+     * @param range An upper bound on the number of moves.
+     * @param deferOK Enables deferring to a fallback colony.
+     * @return A new target for this mission.
+     */
+    public static Location findMissionTarget(AIUnit aiUnit, int range,
+                                             boolean deferOK) {
+<span class="nc" id="L200">        PathNode path = findTargetPath(aiUnit, range, deferOK);</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        return (path == null) ? null : extractTarget(aiUnit, path);</span>
+    }
+
+    /**
+     * Prepare a unit for a Missionary mission.
+     *
+     * @param aiUnit The {@code AIUnit} to prepare.
+     * @return A reason why the unit can not perform this mission, or null
+     *     if none.
+     */
+    public static String prepare(AIUnit aiUnit) {
+<span class="nc" id="L212">        String reason = invalidUnitReason(aiUnit);</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        if (reason == null) {</span>
+<span class="nc" id="L214">            final Unit unit = aiUnit.getUnit();</span>
+<span class="nc bnc" id="L215" title="All 2 branches missed.">            if (!unit.hasAbility(Ability.ESTABLISH_MISSION)</span>
+<span class="nc" id="L216">                &amp;&amp; (((FreeColGameObject)unit.getLocation())</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">                    .hasAbility(Ability.DRESS_MISSIONARY))) {</span>
+<span class="nc" id="L218">                aiUnit.equipForRole(unit.getSpecification().getMissionaryRole());</span>
+            }
+<span class="nc bnc" id="L220" title="All 2 branches missed.">            reason = (unit.hasAbility(Ability.ESTABLISH_MISSION))</span>
+<span class="nc" id="L221">                ? null</span>
+<span class="nc" id="L222">                : &quot;unit-can-not-establish-mission&quot;;</span>
+        }
+<span class="nc" id="L224">        return reason;</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given unit?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @return A reason to not perform the mission, or null if none.
+     */
+    private static String invalidUnitReason(AIUnit aiUnit) {
+<span class="nc" id="L234">        String reason = invalidAIUnitReason(aiUnit);</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        if (reason != null) return reason;</span>
+<span class="nc" id="L236">        final Unit unit = aiUnit.getUnit();</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">        return (!unit.isPerson()) ? Mission.UNITNOTAPERSON</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            : (unit.getSkillLevel() &gt;= -1</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">                &amp;&amp; !unit.hasAbility(Ability.EXPERT_MISSIONARY))</span>
+<span class="nc" id="L240">            ? &quot;unit-is-not-subskilled-or-expertMissionary&quot;</span>
+<span class="nc bnc" id="L241" title="All 4 branches missed.">            : (unit.isInEurope() || unit.isAtSea()) </span>
+<span class="nc bnc" id="L242" title="All 2 branches missed.">            ? ((!unit.getOwner().hasSettlements())</span>
+<span class="nc" id="L243">                ? &quot;unit-off-map-but-missing-initial-settlement&quot;</span>
+<span class="nc" id="L244">                : null)</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">            : (unit.isInMission()) ? &quot;unit-is-already-at-mission&quot;</span>
+<span class="nc" id="L246">            : null;</span>
+    }
+
+    /**
+     * Why would a MissionaryMission be invalid with the given Colony?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @param colony The {@code Colony} to check.
+     * @return A reason to not perform the mission, or null if none.
+     */
+    private static String invalidColonyReason(AIUnit aiUnit, Colony colony) {
+<span class="nc" id="L257">        return invalidTargetReason(colony, aiUnit.getUnit().getOwner());</span>
+    }
+
+    /**
+     * Why would a MissionaryMission be invalid with the given
+     * IndianSettlement?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @param is The {@code IndianSettlement} to check.
+     * @return A reason to not perform the mission, or null if none.
+     */
+    private static String invalidIndianSettlementReason(AIUnit aiUnit,
+                                                        IndianSettlement is) {
+<span class="nc" id="L270">        String reason = invalidTargetReason(is);</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">        if (reason != null) return reason;</span>
+<span class="nc" id="L272">        final Player owner = aiUnit.getUnit().getOwner();</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        return (!owner.hasContacted(is.getOwner()))</span>
+<span class="nc" id="L274">            ? &quot;target-is-uncontacted&quot;</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            : (is.getOwner().atWarWith(owner))</span>
+<span class="nc" id="L276">            ? &quot;target-at-war&quot;</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">            : (is.hasMissionary(owner))</span>
+<span class="nc" id="L278">            ? &quot;target-has-our-mission&quot;</span>
+<span class="nc" id="L279">            : null;</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given AI unit?
+     *
+     * @param aiUnit The {@code AIUnit} to test.
+     * @return A reason for invalidity, or null if none found.
+     */
+    public static String invalidMissionReason(AIUnit aiUnit) {
+<span class="nc" id="L289">        return invalidUnitReason(aiUnit);</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given AI unit and location?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @param loc The {@code Location} to check.
+     * @return A reason for invalidity, or null if none found.
+     */
+    public static String invalidMissionReason(AIUnit aiUnit, Location loc) {
+<span class="nc" id="L300">        String reason = invalidMissionReason(aiUnit);</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        return (reason != null)</span>
+<span class="nc" id="L302">            ? reason</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">            : (loc instanceof IndianSettlement)</span>
+<span class="nc" id="L304">            ? invalidIndianSettlementReason(aiUnit, (IndianSettlement)loc)</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">            : (loc instanceof Colony)</span>
+<span class="nc" id="L306">            ? invalidColonyReason(aiUnit, (Colony)loc)</span>
+<span class="nc" id="L307">            : Mission.TARGETINVALID;</span>
+    }
+
+
+    // Implement Mission
+    //   Inherit dispose, getTransportDestination, isOneTime
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getBaseTransportPriority() {
+<span class="nc" id="L319">        return NORMAL_TRANSPORT_PRIORITY;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTarget() {
+<span class="nc" id="L327">        return target;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setTarget(Location target) {
+<span class="nc bnc" id="L335" title="All 4 branches missed.">        if (target == null || target instanceof Settlement) {</span>
+<span class="nc" id="L336">            this.target = target;</span>
+        }
+<span class="nc" id="L338">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location findTarget() {
+<span class="nc" id="L345">        return findMissionTarget(getAIUnit(), 20, true);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String invalidReason() {
+<span class="nc" id="L353">        return invalidMissionReason(getAIUnit(), getTarget());</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Mission doMission(LogBuilder lb) {
+<span class="nc" id="L361">        lb.add(tag);</span>
+<span class="nc" id="L362">        String reason = invalidReason();</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">        if (isTargetReason(reason)) {</span>
+<span class="nc" id="L364">            return retargetMission(reason, lb);</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        } else if (reason != null) {</span>
+<span class="nc" id="L366">            return lbFail(lb, false, reason);</span>
+        }
+
+        // Go to the target.
+<span class="nc" id="L370">        final AIUnit aiUnit = getAIUnit();</span>
+<span class="nc" id="L371">        final Unit unit = getUnit();</span>
+
+<span class="nc" id="L373">        Unit.MoveType mt = travelToTarget(getTarget(),</span>
+<span class="nc" id="L374">            CostDeciders.avoidSettlementsAndBlockingUnits(), lb);</span>
+<span class="nc bnc" id="L375" title="All 6 branches missed.">        switch (mt) {</span>
+        case MOVE:
+            // Reached an intermediate colony.  Retarget, but do not
+            // accept fallback targets.
+<span class="nc" id="L379">            lbAt(lb);</span>
+<span class="nc" id="L380">            Location completed = getTarget();</span>
+<span class="nc" id="L381">            Location newTarget = findMissionTarget(aiUnit, 20, false);</span>
+<span class="nc bnc" id="L382" title="All 4 branches missed.">            if (newTarget == null || newTarget == completed) {</span>
+<span class="nc" id="L383">                return lbFail(lb, false, &quot;retarget failed&quot;);</span>
+            }
+<span class="nc" id="L385">            setTarget(newTarget);</span>
+<span class="nc" id="L386">            return lbRetarget(lb);</span>
+
+        case MOVE_HIGH_SEAS: case MOVE_NO_MOVES: case MOVE_ILLEGAL:
+<span class="nc" id="L389">            return lbWait(lb);</span>
+            
+        case MOVE_NO_REPAIR:
+<span class="nc" id="L392">            return lbFail(lb, false, AIUNITDIED);</span>
+
+        case MOVE_NO_ACCESS_EMBARK: case MOVE_NO_TILE:
+<span class="nc" id="L395">            return this;</span>
+
+        case ENTER_INDIAN_SETTLEMENT_WITH_MISSIONARY: // Arrived
+<span class="nc" id="L398">            break;</span>
+
+        default:
+<span class="nc" id="L401">            return lbMove(lb, mt);</span>
+        }
+
+        // Establish the mission.
+<span class="nc" id="L405">        lbAt(lb);</span>
+<span class="nc" id="L406">        Direction d = unit.getTile().getDirection(getTarget().getTile());</span>
+<span class="nc bnc" id="L407" title="All 2 branches missed.">        assert d != null;</span>
+<span class="nc" id="L408">        IndianSettlement is = (IndianSettlement)getTarget();</span>
+<span class="nc" id="L409">        AIMessage.askEstablishMission(aiUnit, d, is.hasMissionary());</span>
+<span class="nc bnc" id="L410" title="All 4 branches missed.">        return (is.hasMissionary(unit.getOwner()) &amp;&amp; unit.isInMission())</span>
+<span class="nc" id="L411">            ? lbDone(lb, false, &quot;established&quot;)</span>
+<span class="nc" id="L412">            : lbFail(lb, false, &quot;establish&quot;);</span>
+    }
+
+
+    // Serialization
+    
+    private static final String TARGET_TAG = &quot;target&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L426">        super.writeAttributes(xw);</span>
+
+<span class="nc bnc" id="L428" title="All 2 branches missed.">        if (target != null) {</span>
+<span class="nc" id="L429">            xw.writeAttribute(TARGET_TAG, target.getId());</span>
+        }
+<span class="nc" id="L431">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L438">        super.readAttributes(xr);</span>
+        
+<span class="nc" id="L440">        target = xr.getLocationAttribute(getGame(), TARGET_TAG, false);</span>
+<span class="nc" id="L441">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L447">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

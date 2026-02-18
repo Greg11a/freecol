@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportProductionPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel.report</a> &gt; <span class="el_source">ReportProductionPanel.java</span></div><h1>ReportProductionPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel.report;
+
+import java.awt.event.ActionEvent;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+
+import net.miginfocom.swing.MigLayout;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.label.GoodsLabel;
+import net.sf.freecol.client.gui.panel.*;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Building;
+import net.sf.freecol.common.model.BuildingType;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Specification;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+
+/**
+ * This panel displays the Production Report.
+ */
+public final class ReportProductionPanel extends ReportPanel {
+
+    /** The number of selection boxes. */
+    private static final int NUMBER_OF_GOODS = 4;
+
+    /** The goods types available for selection. */
+    private final List&lt;GoodsType&gt; goodsTypes;
+
+    /** The boxes with which to select goods types for display. */
+    private final List&lt;JComboBox&lt;String&gt;&gt; boxes;
+
+
+    /**
+     * The constructor that will add the items to this panel.
+     *
+     * FIXME: can we extend this to cover farmed goods?
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public ReportProductionPanel(FreeColClient freeColClient) {
+<span class="nc" id="L73">        super(freeColClient, &quot;reportProductionAction&quot;);</span>
+
+<span class="nc" id="L75">        this.goodsTypes = transform(getSpecification().getGoodsTypeList(),</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                                    gt -&gt; !gt.isFarmed());</span>
+<span class="nc" id="L77">        List&lt;String&gt; goodsNames = transform(this.goodsTypes, alwaysTrue(),</span>
+<span class="nc" id="L78">                                            gt -&gt; Messages.getName(gt));</span>
+<span class="nc" id="L79">        goodsNames.add(0, Messages.message(&quot;nothing&quot;));</span>
+<span class="nc" id="L80">        String[] model = goodsNames.toArray(new String[0]);</span>
+<span class="nc" id="L81">        this.boxes = new ArrayList&lt;&gt;(NUMBER_OF_GOODS);</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        for (int index = 0; index &lt; NUMBER_OF_GOODS; index++) {</span>
+<span class="nc" id="L83">            JComboBox&lt;String&gt; newBox = new JComboBox&lt;&gt;(model);</span>
+<span class="nc" id="L84">            newBox.setSelectedIndex(0);</span>
+<span class="nc" id="L85">            this.boxes.add(newBox);</span>
+        }
+
+<span class="nc" id="L88">        reportPanel.setLayout(new MigLayout(&quot;gap 0 0&quot;, &quot;[fill]&quot;, &quot;[fill]&quot;));</span>
+<span class="nc" id="L89">        update();</span>
+<span class="nc" id="L90">    }</span>
+
+
+    private void update() {
+<span class="nc" id="L94">        reportPanel.removeAll();</span>
+<span class="nc" id="L95">        JLabel selectLabel</span>
+<span class="nc" id="L96">            = Utility.localizedLabel(&quot;report.production.selectGoods&quot;);</span>
+<span class="nc" id="L97">        reportPanel.add(selectLabel);</span>
+
+<span class="nc" id="L99">        JButton selectButton</span>
+<span class="nc" id="L100">            = Utility.localizedButton(&quot;report.production.update&quot;);</span>
+<span class="nc" id="L101">        selectButton.addActionListener((ActionEvent ae) -&gt; update());</span>
+<span class="nc" id="L102">        reportPanel.add(selectButton, &quot;wrap&quot;);</span>
+
+<span class="nc" id="L104">        List&lt;GoodsType&gt; selectedTypes = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        for (int index = 0; index &lt; NUMBER_OF_GOODS; index++) {</span>
+<span class="nc" id="L106">            JComboBox&lt;String&gt; box = this.boxes.get(index);</span>
+<span class="nc" id="L107">            reportPanel.add(box);</span>
+<span class="nc" id="L108">            int selectedIndex = box.getSelectedIndex();</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">            if (selectedIndex &gt; 0) {</span>
+<span class="nc" id="L110">                selectedTypes.add(this.goodsTypes.get(selectedIndex - 1));</span>
+            }
+        }
+
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (!selectedTypes.isEmpty()) {</span>
+<span class="nc" id="L115">            final Specification spec = getSpecification();</span>
+<span class="nc" id="L116">            final FreeColClient fcc = getFreeColClient();</span>
+<span class="nc" id="L117">            final Function&lt;GoodsType, Set&lt;BuildingType&gt;&gt; mapper = gt -&gt;</span>
+<span class="nc" id="L118">                transform(spec.getBuildingTypeList(),</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">                          bt -&gt; (gt == bt.getProducedGoodsType()</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                              || bt.hasModifier(gt.getId())),</span>
+<span class="nc" id="L121">                          BuildingType::getFirstLevel, Collectors.toSet());</span>
+<span class="nc" id="L122">            List&lt;Set&lt;BuildingType&gt;&gt; basicBuildingTypes</span>
+<span class="nc" id="L123">                = transform(selectedTypes, alwaysTrue(), mapper);</span>
+
+            // labels
+            JLabel newLabel;
+<span class="nc" id="L127">            newLabel = Utility.localizedLabel(&quot;Colony&quot;);</span>
+<span class="nc" id="L128">            newLabel.setBorder(Utility.getTopLeftCellBorder());</span>
+<span class="nc" id="L129">            reportPanel.add(newLabel, &quot;newline 20&quot;);</span>
+
+<span class="nc bnc" id="L131" title="All 2 branches missed.">            for (int index = 0; index &lt; selectedTypes.size(); index++) {</span>
+<span class="nc" id="L132">                newLabel = Utility.localizedLabel(selectedTypes.get(index));</span>
+<span class="nc" id="L133">                newLabel.setBorder(Utility.getTopCellBorder());</span>
+<span class="nc" id="L134">                reportPanel.add(newLabel);</span>
+
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                for (BuildingType bt : basicBuildingTypes.get(index)) {</span>
+<span class="nc" id="L137">                    newLabel = Utility.localizedLabel(bt);</span>
+<span class="nc" id="L138">                    newLabel.setBorder(Utility.getTopCellBorder());</span>
+<span class="nc" id="L139">                    reportPanel.add(newLabel);</span>
+<span class="nc" id="L140">                }</span>
+            }
+
+<span class="nc" id="L143">            final Player player = getMyPlayer();</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">            for (Colony colony : player.getColonyList()) {</span>
+                // colonyButton
+<span class="nc" id="L146">                JButton colonyButton = Utility.getLinkButton(colony.getName(),</span>
+<span class="nc" id="L147">                    null, colony.getId());</span>
+<span class="nc" id="L148">                colonyButton.setBorder(Utility.getLeftCellBorder());</span>
+<span class="nc" id="L149">                colonyButton.addActionListener(this);</span>
+<span class="nc" id="L150">                reportPanel.add(colonyButton, &quot;newline&quot;);</span>
+
+                // production
+<span class="nc bnc" id="L153" title="All 2 branches missed.">                for (int index = 0; index &lt; selectedTypes.size(); index++) {</span>
+<span class="nc" id="L154">                    GoodsType goodsType = selectedTypes.get(index);</span>
+<span class="nc" id="L155">                    int newValue = colony.getNetProductionOf(goodsType);</span>
+<span class="nc" id="L156">                    Goods goods = new Goods(colony.getGame(), colony,</span>
+                                            goodsType, newValue);
+<span class="nc" id="L158">                    GoodsLabel goodsLabel = new GoodsLabel(fcc, goods);</span>
+<span class="nc" id="L159">                    goodsLabel.setHorizontalAlignment(JLabel.LEADING);</span>
+<span class="nc" id="L160">                    goodsLabel.setBorder(Utility.getCellBorder());</span>
+<span class="nc" id="L161">                    reportPanel.add(goodsLabel);</span>
+
+<span class="nc bnc" id="L163" title="All 2 branches missed.">                    for (BuildingType bt : basicBuildingTypes.get(index)) {</span>
+<span class="nc" id="L164">                        Building building = colony.getBuilding(bt);</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">                        if (building == null) {</span>
+<span class="nc" id="L166">                            newLabel = new JLabel();</span>
+<span class="nc" id="L167">                            newLabel.setBorder(Utility.getCellBorder());</span>
+<span class="nc" id="L168">                            reportPanel.add(newLabel);</span>
+                        } else {
+<span class="nc" id="L170">                            BuildingPanel buildingPanel</span>
+                                = new BuildingPanel(fcc, building);
+<span class="nc" id="L172">                            buildingPanel.setBorder(Utility.getCellBorder());</span>
+<span class="nc" id="L173">                            buildingPanel.initialize();</span>
+<span class="nc" id="L174">                            reportPanel.add(buildingPanel);</span>
+                        }
+<span class="nc" id="L176">                    }</span>
+                }
+<span class="nc" id="L178">            }</span>
+        }
+<span class="nc" id="L180">        revalidate();</span>
+<span class="nc" id="L181">        repaint();</span>
+<span class="nc" id="L182">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

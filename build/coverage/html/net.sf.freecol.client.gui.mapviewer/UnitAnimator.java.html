@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnitAnimator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.mapviewer</a> &gt; <span class="el_source">UnitAnimator.java</span></div><h1>UnitAnimator.java</h1><pre class="source lang-java linenums">package net.sf.freecol.client.gui.mapviewer;
+
+import java.awt.Point;
+import java.awt.image.BufferedImage;
+import java.util.HashMap;
+
+import javax.swing.ImageIcon;
+import javax.swing.JLabel;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+
+/**
+ * Handles taking units of of the map rendering in order to be animated using {@code JLabel}s.
+ */
+public class UnitAnimator {
+    /** The units that are being animated and an associated reference count. */
+<span class="nc" id="L20">    private final java.util.Map&lt;Unit, Integer&gt; unitsOutForAnimation</span>
+        = new HashMap&lt;&gt;();
+    /** The labels being used in animation for a unit. */
+<span class="nc" id="L23">    private final java.util.Map&lt;Unit, JLabel&gt; unitsOutForAnimationLabels</span>
+        = new HashMap&lt;&gt;();
+    
+    private final MapViewer mapViewer;
+    private final ImageLibrary lib;
+    
+    
+<span class="nc" id="L30">    UnitAnimator(FreeColClient freeColClient, MapViewer mapViewer, ImageLibrary lib) {</span>
+<span class="nc" id="L31">        this.mapViewer = mapViewer;</span>
+<span class="nc" id="L32">        this.lib = lib;</span>
+<span class="nc" id="L33">    }</span>
+
+    
+    /**
+     * Make an animation label for the unit, and reference count it.
+     *
+     * @param unit The {@code Unit} to animate.
+     * @return A {@code JLabel} for the animation.
+     */
+    public JLabel enterUnitOutForAnimation(final Unit unit) {
+<span class="nc" id="L43">        Integer i = this.unitsOutForAnimation.get(unit);</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">        if (i == null) {</span>
+<span class="nc" id="L45">            final JLabel unitLabel = createUnitAnimationLabel(unit);</span>
+<span class="nc" id="L46">            this.unitsOutForAnimationLabels.put(unit, unitLabel);</span>
+<span class="nc" id="L47">            i = 1;</span>
+<span class="nc" id="L48">        } else {</span>
+<span class="nc" id="L49">            i++;</span>
+        }
+<span class="nc" id="L51">        this.unitsOutForAnimation.put(unit, i);</span>
+<span class="nc" id="L52">        return this.unitsOutForAnimationLabels.get(unit);</span>
+    }
+
+    /**
+     * Release an animation label for a unit, maintain the reference count.
+     *
+     * @param unit The {@code Unit} to animate.
+     */
+    public void releaseUnitOutForAnimation(final Unit unit) {
+<span class="nc" id="L61">        Integer i = this.unitsOutForAnimation.get(unit);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        if (i == null) {</span>
+<span class="nc" id="L63">            throw new RuntimeException(&quot;Unit not out for animation: &quot; + unit);</span>
+        }
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        if (i == 1) {</span>
+<span class="nc" id="L66">            this.unitsOutForAnimation.remove(unit);</span>
+        } else {
+<span class="nc" id="L68">            i--;</span>
+<span class="nc" id="L69">            this.unitsOutForAnimation.put(unit, i);</span>
+        }
+<span class="nc" id="L71">    }</span>
+    
+    /**
+     * Are any units being animated?
+     *
+     * @return True if unit animation underway.
+     */
+    boolean isUnitsOutForAnimation() {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        return !unitsOutForAnimation.isEmpty();</span>
+    }
+
+    /**
+     * Is a given unit being animated?
+     *
+     * @param unit The {@code Unit} to check.
+     * @return True if the unit is being animated.
+     */
+    public boolean isOutForAnimation(final Unit unit) {
+<span class="nc" id="L89">        return this.unitsOutForAnimation.containsKey(unit);</span>
+    }
+
+    /**
+     * Get the position a unit label should be positioned in a tile.
+     *
+     * @param unitLabel The unit {@code JLabel}.
+     * @param tile The {@code Tile} to position in.
+     * @return The {@code Point} to position the label.
+     */
+    public Point getAnimationPosition(JLabel unitLabel, Tile tile) {
+<span class="nc" id="L100">        final Point tilePosition = mapViewer.getMapViewerBounds().calculateTilePosition(tile, false);</span>
+<span class="nc" id="L101">        return mapViewer.calculateUnitLabelPositionInTile(unitLabel, tilePosition);</span>
+    }
+    
+    /**
+     * Create a label to use for animating a unit.
+     *
+     * @param unit The {@code Unit} to animate.
+     * @return A {@code JLabel} to use in animation.
+     */
+    private JLabel createUnitAnimationLabel(Unit unit) {
+<span class="nc" id="L111">        final BufferedImage unitImg = this.lib.getScaledUnitImage(unit);</span>
+
+<span class="nc" id="L113">        final JLabel label = new JLabel(new ImageIcon(unitImg));</span>
+<span class="nc" id="L114">        label.setHorizontalAlignment(JLabel.CENTER);</span>
+<span class="nc" id="L115">        label.setVerticalAlignment(JLabel.CENTER);</span>
+<span class="nc" id="L116">        label.setSize(unitImg.getWidth(), unitImg.getHeight());</span>
+
+<span class="nc" id="L118">        return label;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

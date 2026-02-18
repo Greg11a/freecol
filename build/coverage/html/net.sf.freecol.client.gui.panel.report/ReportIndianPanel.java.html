@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportIndianPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel.report</a> &gt; <span class="el_source">ReportIndianPanel.java</span></div><h1>ReportIndianPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel.report;
+
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JSeparator;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.FontLibrary;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.NationSummary;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.resources.ResourceManager;
+import net.sf.freecol.common.util.CollectionUtils;
+
+
+/**
+ * This panel displays the Native Affairs Advisor.
+ */
+public final class ReportIndianPanel extends ReportPanel {
+
+<span class="nc" id="L57">    private static final String[] headlines = {</span>
+        &quot;settlement&quot;,
+        &quot;mission&quot;,
+        &quot;report.indian.tension&quot;,
+        &quot;skillTaught&quot;,
+        &quot;report.indian.mostHated&quot;,
+        &quot;report.indian.tradeInterests&quot;
+    };
+
+
+    /**
+     * The constructor that will add the items to this panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public ReportIndianPanel(FreeColClient freeColClient) {
+<span class="nc" id="L73">        super(freeColClient, &quot;reportIndianAction&quot;);</span>
+
+<span class="nc" id="L75">        Player player = getMyPlayer();</span>
+<span class="nc" id="L76">        reportPanel.setLayout(new MigLayout(&quot;wrap 6, fillx, insets 0&quot;,</span>
+                                            &quot;[]20px[center]&quot;, &quot;[top]&quot;));
+<span class="nc" id="L78">        boolean needsSeperator = false;</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        for (Player opponent : CollectionUtils.transform(getGame().getLiveNativePlayers(),</span>
+<span class="nc" id="L80">                                         p -&gt; player.hasContacted(p))) {</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">            if (needsSeperator) {</span>
+<span class="nc" id="L82">                reportPanel.add(new JSeparator(JSeparator.HORIZONTAL),</span>
+                    &quot;newline 20, span, growx, wrap 20&quot;);
+            }
+<span class="nc" id="L85">            buildIndianAdvisorPanel(player, opponent);</span>
+<span class="nc" id="L86">            needsSeperator = true;</span>
+<span class="nc" id="L87">        }</span>
+<span class="nc" id="L88">        scrollPane.getViewport().setOpaque(false);</span>
+<span class="nc" id="L89">        reportPanel.setOpaque(true);</span>
+<span class="nc" id="L90">        reportPanel.doLayout();</span>
+<span class="nc" id="L91">    }</span>
+
+    private void buildIndianAdvisorPanel(Player player, Player opponent) {
+<span class="nc" id="L94">        final NationSummary ns = igc().nationSummary(opponent);</span>
+<span class="nc" id="L95">        List&lt;IndianSettlement&gt; nativeSettlements</span>
+<span class="nc" id="L96">            = opponent.getIndianSettlementList();</span>
+<span class="nc" id="L97">        String numSettlements = String.valueOf(nativeSettlements.size())</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">            + &quot; / &quot; + ((ns == null) ? &quot;?&quot;</span>
+<span class="nc" id="L99">                : String.valueOf(ns.getNumberOfSettlements()));</span>
+
+<span class="nc" id="L101">        ImageLibrary lib = getImageLibrary();</span>
+<span class="nc" id="L102">        JLabel villageLabel = new JLabel();</span>
+<span class="nc" id="L103">        villageLabel.setIcon(new ImageIcon(lib</span>
+<span class="nc" id="L104">                .getScaledSettlementTypeImage(opponent.getNationType().getCapitalType())));</span>
+<span class="nc" id="L105">        reportPanel.add(villageLabel, SPAN_SPLIT_2);</span>
+<span class="nc" id="L106">        JLabel headline = Utility.localizedLabel(opponent.getNationLabel());</span>
+<span class="nc" id="L107">        headline.setFont(FontLibrary.getScaledFont(&quot;normal-bold-small&quot;));</span>
+<span class="nc" id="L108">        reportPanel.add(headline, &quot;wrap 20, aligny center&quot;);</span>
+<span class="nc" id="L109">        JLabel label = Utility.localizedLabel(&quot;report.indian.chieftain&quot;);</span>
+<span class="nc" id="L110">        Font font = FontLibrary.getScaledFont(&quot;normal-bold-tiny&quot;);</span>
+<span class="nc" id="L111">        label.setFont(font);</span>
+<span class="nc" id="L112">        reportPanel.add(label);</span>
+<span class="nc" id="L113">        reportPanel.add(Utility.localizedLabel(opponent.getName()), &quot;left, wrap&quot;);</span>
+<span class="nc" id="L114">        label = Utility.localizedLabel(&quot;report.indian.typeOfSettlements&quot;);</span>
+<span class="nc" id="L115">        label.setFont(font);</span>
+<span class="nc" id="L116">        reportPanel.add(label);</span>
+<span class="nc" id="L117">        reportPanel.add(Utility.localizedLabel(Messages.nameKey(opponent</span>
+<span class="nc" id="L118">                .getNationType().getCapitalType().getId())), &quot;left, wrap&quot;);</span>
+<span class="nc" id="L119">        label = Utility.localizedLabel(&quot;report.indian.numberOfSettlements&quot;);</span>
+<span class="nc" id="L120">        reportPanel.add(label);</span>
+<span class="nc" id="L121">        label.setFont(font);</span>
+<span class="nc" id="L122">        reportPanel.add(new JLabel(numSettlements), &quot;left, wrap&quot;);</span>
+<span class="nc" id="L123">        label = Utility.localizedLabel(&quot;report.indian.tribeTension&quot;);</span>
+<span class="nc" id="L124">        reportPanel.add(label);</span>
+<span class="nc" id="L125">        label.setFont(font);</span>
+<span class="nc" id="L126">        reportPanel.add(Utility.localizedLabel(StringTemplate</span>
+<span class="nc" id="L127">                .template(&quot;report.indian.tensionStance&quot;)</span>
+<span class="nc" id="L128">                .addNamed(&quot;%tension%&quot;, opponent.getTension(player))</span>
+<span class="nc" id="L129">                .addNamed(&quot;%stance%&quot;, opponent.getStance(player))),</span>
+            &quot;left, wrap 20&quot;);
+
+<span class="nc bnc" id="L132" title="All 2 branches missed.">        if (nativeSettlements.isEmpty()) {</span>
+<span class="nc" id="L133">            reportPanel.add(Utility</span>
+<span class="nc" id="L134">                    .localizedLabel(&quot;report.indian.noKnownSettlements&quot;));</span>
+        } else {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">            for (String key : headlines) {</span>
+<span class="nc" id="L137">                JLabel head = Utility.localizedLabel(key);</span>
+<span class="nc" id="L138">                head.setFont(font);</span>
+<span class="nc" id="L139">                reportPanel.add(head);</span>
+            }
+<span class="nc" id="L141">            List&lt;IndianSettlement&gt; settlements</span>
+<span class="nc" id="L142">                = new ArrayList&lt;&gt;(nativeSettlements.size());</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">            for (IndianSettlement is : nativeSettlements) {</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">                if (is.isCapital()) {</span>
+<span class="nc" id="L145">                    settlements.add(0, is);</span>
+                } else {
+<span class="nc" id="L147">                    settlements.add(is);</span>
+                }
+<span class="nc" id="L149">            }</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">            for (IndianSettlement is : settlements) {</span>
+<span class="nc" id="L151">                final Tile tile = is.getTile();</span>
+<span class="nc" id="L152">                final boolean known = tile.isExplored();</span>
+<span class="nc" id="L153">                final boolean contacted = is.hasContacted(player);</span>
+<span class="nc" id="L154">                final boolean visited = is.hasVisited(player);</span>
+                // final boolean scouted = is.hasScouted(player);
+<span class="nc" id="L156">                String locationName</span>
+<span class="nc" id="L157">                    = Messages.message(is.getLocationLabelFor(player));</span>
+<span class="nc bnc" id="L158" title="All 4 branches missed.">                if (known &amp;&amp; is.isCapital()) {</span>
+<span class="nc" id="L159">                    locationName += ResourceManager</span>
+<span class="nc" id="L160">                            .getString(&quot;indianSettlementChip.capital&quot;);</span>
+                }
+<span class="nc bnc" id="L162" title="All 2 branches missed.">                if (is.worthScouting(player)) {</span>
+<span class="nc" id="L163">                    locationName += ResourceManager</span>
+<span class="nc" id="L164">                            .getString(&quot;unscoutedIndianSettlement&quot;);</span>
+                }
+<span class="nc" id="L166">                JButton settlementButton = Utility.getLinkButton(locationName,</span>
+<span class="nc" id="L167">                    null, is.getTile().getId());</span>
+<span class="nc" id="L168">                Utility.localizeToolTip(settlementButton, is.getTile()</span>
+<span class="nc" id="L169">                    .getLocationLabelFor(player));</span>
+<span class="nc" id="L170">                settlementButton.addActionListener(this);</span>
+<span class="nc" id="L171">                reportPanel.add(settlementButton, &quot;newline 15&quot;);</span>
+
+<span class="nc" id="L173">                final Unit missionary = is.getMissionary();</span>
+<span class="nc" id="L174">                JLabel missionLabel = new JLabel(&quot;&quot;);</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">                if (missionary != null) {</span>
+<span class="nc" id="L176">                    BufferedImage dummy = new BufferedImage(1, 1,</span>
+                        BufferedImage.TYPE_INT_ARGB);
+<span class="nc" id="L178">                    Graphics2D g = dummy.createGraphics();</span>
+<span class="nc" id="L179">                    missionLabel.setIcon(new ImageIcon(lib</span>
+<span class="nc" id="L180">                            .getMissionChip(g, missionary.getOwner(),</span>
+<span class="nc" id="L181">                                missionary.hasAbility(Ability</span>
+                                        .EXPERT_MISSIONARY))));
+<span class="nc" id="L183">                    g.dispose();</span>
+<span class="nc" id="L184">                    Utility.localizeToolTip(missionLabel, Messages</span>
+<span class="nc" id="L185">                        .message(missionary.getLabel(Unit.UnitLabelType</span>
+                                .NATIONAL)));
+                }
+<span class="nc" id="L188">                reportPanel.add(missionLabel);</span>
+
+<span class="nc" id="L190">                reportPanel.add(Utility</span>
+<span class="nc" id="L191">                    .localizedLabel(is.getAlarmLevelKey(player)));</span>
+
+<span class="nc" id="L193">                final UnitType skillType = is.getLearnableSkill();</span>
+                JLabel skillLabel;
+<span class="nc bnc" id="L195" title="All 4 branches missed.">                if (visited &amp;&amp; skillType != null) {</span>
+<span class="nc" id="L196">                    skillLabel = new JLabel(&quot;&quot;);</span>
+<span class="nc" id="L197">                    skillLabel.setIcon(new ImageIcon(lib</span>
+<span class="nc" id="L198">                            .getSmallUnitTypeImage(skillType)));</span>
+<span class="nc" id="L199">                    Utility.localizeToolTip(skillLabel, Messages</span>
+<span class="nc" id="L200">                        .message(is.getLearnableSkillLabel(visited)));</span>
+                } else {
+<span class="nc" id="L202">                    skillLabel = Utility.localizedLabel(is</span>
+<span class="nc" id="L203">                        .getLearnableSkillLabel(visited));</span>
+                }
+<span class="nc" id="L205">                reportPanel.add(skillLabel);</span>
+
+<span class="nc" id="L207">                reportPanel.add(Utility.localizedLabel(is</span>
+<span class="nc" id="L208">                        .getMostHatedLabel(contacted)));</span>
+
+<span class="nc bnc" id="L210" title="All 2 branches missed.">                final int n = (visited) ? is.getWantedGoodsCount() : 1;</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">                String x = (n &gt; 1) ? &quot;split &quot; + Integer.toString(n) : null;</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">                for (int i = 0; i &lt; n; i++) {</span>
+                    JLabel goodsLabel;
+                    GoodsType gt;
+<span class="nc" id="L215">                    List&lt;StringTemplate&gt; gl = is.getWantedGoodsLabel(i, player);</span>
+<span class="nc bnc" id="L216" title="All 4 branches missed.">                    if (visited &amp;&amp; (gt = is.getWantedGoods(i)) != null) {</span>
+<span class="nc" id="L217">                        goodsLabel = new JLabel(&quot;&quot;);</span>
+<span class="nc" id="L218">                        goodsLabel.setIcon(new ImageIcon(lib</span>
+<span class="nc" id="L219">                                .getSmallGoodsTypeImage(gt)));</span>
+<span class="nc" id="L220">                        Utility.localizeToolTip(goodsLabel,</span>
+<span class="nc" id="L221">                            Messages.message(gl.get(0)));</span>
+                    } else {
+<span class="nc" id="L223">                        goodsLabel = Utility.localizedLabel(gl.get(0));</span>
+                    }
+<span class="nc" id="L225">                    reportPanel.add(goodsLabel, x);</span>
+<span class="nc" id="L226">                    x = null;</span>
+                }
+<span class="nc" id="L228">            }                </span>
+        }
+<span class="nc" id="L230">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

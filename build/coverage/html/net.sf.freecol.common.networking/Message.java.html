@@ -1,0 +1,701 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Message.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">Message.java</span></div><h1>Message.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.lang.reflect.Constructor;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.FreeColObject;
+import net.sf.freecol.common.model.Game;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import net.sf.freecol.common.util.Introspector;
+import static net.sf.freecol.common.util.StringUtils.*;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * Base abstract class for all messages.
+ */
+public abstract class Message {
+
+<span class="fc" id="L57">    protected static final Logger logger = Logger.getLogger(Message.class.getName());</span>
+
+    /**
+     * A map of message name to message constructors, built on the fly
+     * as new messages are encountered and suitable constructors found.
+     */
+<span class="fc" id="L63">    private final static Map&lt;String, Constructor&lt;? extends Message&gt;&gt; builders</span>
+<span class="fc" id="L64">        = Collections.synchronizedMap(new HashMap&lt;String,</span>
+            Constructor&lt;? extends Message&gt;&gt;());
+
+    /** Classes used by Message.read() */
+<span class="fc" id="L68">    private static final Class&lt;?&gt;[] readClasses = {</span>
+        Game.class, FreeColXMLReader.class };
+
+    // Convenient way to specify the relative priorities of the messages
+    // types in one place.
+<span class="fc" id="L73">    public static enum MessagePriority {</span>
+<span class="fc" id="L74">        ATTRIBUTE(-1), // N/A</span>
+<span class="fc" id="L75">        ANIMATION(0),  // Do animations first</span>
+<span class="fc" id="L76">        REMOVE(100),   // Do removes last</span>
+<span class="fc" id="L77">        ADDPLAYER(4),  // Do add player before stance</span>
+<span class="fc" id="L78">        STANCE(5),     // Do stance before updates</span>
+<span class="fc" id="L79">        OWNED(20),     // Do owned changes after updates</span>
+<span class="fc" id="L80">        PARTIAL(9),    // There are a lot of partial updates</span>
+<span class="fc" id="L81">        UPDATE(10),    // There are a lot of updates</span>
+        // Symbolic priorities used by various non-fixed types
+<span class="fc" id="L83">        EARLY(1),</span>
+<span class="fc" id="L84">        NORMAL(15),</span>
+<span class="fc" id="L85">        LATE(90),</span>
+<span class="fc" id="L86">        LAST(99);</span>
+
+        private final int level;
+
+<span class="fc" id="L90">        MessagePriority(int level) {</span>
+<span class="fc" id="L91">            this.level = level;</span>
+<span class="fc" id="L92">        }</span>
+
+        public int getValue() {
+<span class="fc" id="L95">            return this.level;</span>
+        }
+    }
+
+    /** Comparator comparing by message priority. */
+<span class="fc" id="L100">    public static final Comparator&lt;Message&gt; messagePriorityComparator</span>
+<span class="fc" id="L101">        = Comparator.comparingInt(Message::getPriorityLevel);</span>
+
+
+    /**
+     * Deliberately trivial constructor.
+     */
+<span class="fc" id="L107">    protected Message() {</span>
+        // empty constructor
+<span class="fc" id="L109">    }</span>
+
+
+    /**
+     * Get the message tag.
+     *
+     * @return The message tag.
+     */
+    abstract public String getType();
+    
+    /**
+     * Set the message tag.
+     *
+     * @param type The new message tag.
+     */
+    abstract protected void setType(String type);
+    
+    /**
+     * Checks if an attribute is present in this message.
+     * 
+     * @param key The attribute to look for.
+     * @return True if the attribute is present.
+     */
+    abstract protected boolean hasAttribute(String key);
+
+    /**
+     * Get a string attribute value.
+     *
+     * @param key The attribute to look for.
+     * @return The string value found, or null if the attribute was absent.
+     */
+    abstract protected String getStringAttribute(String key);
+
+    /**
+     * Sets an attribute in this message.
+     * 
+     * @param key The attribute to set.
+     * @param value The new value of the attribute.
+     */
+    abstract protected void setStringAttribute(String key, String value);
+
+    /**
+     * Get a map of all the attributes in this message.
+     *
+     * @return A {@code Map} of the attributes.
+     */
+    abstract protected Map&lt;String,String&gt; getStringAttributeMap();
+
+    /**
+     * Get the number of child objects.
+     *
+     * @return The child count.
+     */
+    abstract protected int getChildCount();
+
+    /**
+     * Get the child objects of this message.
+     *
+     * @return A list of child {@code FreeColObject}s.
+     */
+    abstract protected List&lt;FreeColObject&gt; getChildren();
+        
+    /**
+     * Set the list of objects attached to this message.
+     *
+     * @param fcos The new list of attached {@code FreeColObject}s.
+     */
+    abstract protected void setChildren(List&lt;? extends FreeColObject&gt; fcos);
+
+    /**
+     * Append a new child.
+     *
+     * @param &lt;T&gt; The child type.
+     * @param fco The new child object.
+     */
+    abstract protected &lt;T extends FreeColObject&gt; void appendChild(T fco);
+    
+    /**
+     * Append a multiple new children.
+     *
+     * @param &lt;T&gt; The child type.
+     * @param fcos The new child objects.
+     */
+    abstract protected &lt;T extends FreeColObject&gt; void appendChildren(Collection&lt;T&gt; fcos);
+
+    /**
+     * Should this message only be sent to a server by the current player?
+     *
+     * @return True if this is a current-player-only message.
+     */
+    abstract public boolean currentPlayerMessage();
+
+    /**
+     * Get the priority of this type of message.
+     *
+     * @return The message priority.
+     */
+    abstract public MessagePriority getPriority();
+
+
+    /**
+     * Does this message consist only of mergeable attributes?
+     *
+     * @return True if this message is trivially mergeable.
+     */
+    public boolean canMerge() {
+<span class="nc" id="L215">        return false;</span>
+    }
+
+    /**
+     * AI-side handler for this message.
+     *
+     * AI handlers always return null.
+     * FIXME: One day the FreeColServer should devolve to AIMain.
+     * 
+     * @param freeColServer The {@code FreeColServer} handling the request.
+     * @param aiPlayer The {@code AIPlayer} the message was sent to.
+     * @exception FreeColException if there is a problem handling the message.
+     */
+    abstract public void aiHandler(FreeColServer freeColServer,
+                                   AIPlayer aiPlayer) throws FreeColException;
+
+    /**
+     * Client-side handler for this message.
+     *
+     * Client handlers always return null.
+     *
+     * @param freeColClient The {@code FreeColClient} to handle this message.
+     * @exception FreeColException if there is a problem building the message.
+     */
+    abstract public void clientHandler(FreeColClient freeColClient)
+        throws FreeColException;
+
+    /**
+     * Server-side handler for this message.
+     *
+     * @param freeColServer The {@code FreeColServer} handling the request.
+     * @param serverPlayer The {@code ServerPlayer} that sent the request.
+     * @return A {@code ChangeSet} defining the response.
+     */
+    abstract public ChangeSet serverHandler(FreeColServer freeColServer,
+                                            ServerPlayer serverPlayer);
+
+
+    // Utilities derived from the above primitives
+
+    /**
+     * Checks if this message is of a given type.
+     * 
+     * @param type The type you wish to test against.
+     * @return True if the type of this message equals the given type.
+     */
+    public boolean isType(String type) {
+<span class="nc" id="L262">        return getType().equals(type);</span>
+    }
+        
+    /**
+     * Get a boolean attribute value.
+     *
+     * @param key The attribute to look for.
+     * @param defaultValue The fallback result.
+     * @return The boolean value, or the default value if no boolean is found.
+     */
+    protected Boolean getBooleanAttribute(String key, Boolean defaultValue) {
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">        if (hasAttribute(key)) {</span>
+            try {
+<span class="fc" id="L275">                return Boolean.valueOf(getStringAttribute(key));</span>
+<span class="nc" id="L276">            } catch (NumberFormatException nfe) {}</span>
+        }
+<span class="nc" id="L278">        return defaultValue;</span>
+    }
+
+    /**
+     * Get an integer attribute value.
+     *
+     * @param key The attribute to look for.
+     * @param defaultValue The fallback result.
+     * @return The integer value, or the default value if no integer is found.
+     */
+    protected Integer getIntegerAttribute(String key, int defaultValue) {
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">        if (hasAttribute(key)) {</span>
+            try {
+<span class="fc" id="L291">                return Integer.valueOf(getStringAttribute(key));</span>
+<span class="nc" id="L292">            } catch (NumberFormatException nfe) {}</span>
+        }
+<span class="nc" id="L294">        return defaultValue;</span>
+    }
+
+    /**
+     * Gets an enum attribute value.
+     *
+     * @param &lt;T&gt; The expected enum type.
+     * @param key The attribute name.
+     * @param returnClass The class of the return value.
+     * @param defaultValue The default value.
+     * @return The enum attribute value, or the default value if none found.
+     */
+    protected &lt;T extends Enum&lt;T&gt;&gt; T getEnumAttribute(String key,
+                                                     Class&lt;T&gt; returnClass,
+                                                     T defaultValue) {
+<span class="fc" id="L309">        T result = defaultValue;</span>
+<span class="pc bpc" id="L310" title="1 of 2 branches missed.">        if (hasAttribute(key)) {</span>
+<span class="fc" id="L311">            String kv = upCase(getStringAttribute(key));</span>
+            try {
+<span class="fc" id="L313">                result = Enum.valueOf(returnClass, kv);</span>
+<span class="nc" id="L314">            } catch (Exception e) {</span>
+<span class="nc" id="L315">                logger.warning(&quot;Not a &quot; + defaultValue.getClass().getName()</span>
+                    + &quot;: &quot; + kv);
+<span class="fc" id="L317">            }</span>
+        }
+<span class="fc" id="L319">        return result;</span>
+    }
+            
+    /**
+     * Sets an attribute in this message with a boolean value.
+     *
+     * @param key The attribute to set.
+     * @param value The value of the attribute.
+     */
+    protected void setBooleanAttribute(String key, Boolean value) {
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">        if (value != null) setStringAttribute(key, Boolean.toString(value));</span>
+<span class="fc" id="L330">    }</span>
+
+    /**
+     * Sets an attribute in this message with an enum value.
+     *
+     * @param key The attribute to set.
+     * @param value The value of the attribute.
+     */
+    protected void setEnumAttribute(String key, Enum&lt;?&gt; value) {
+<span class="nc bnc" id="L339" title="All 2 branches missed.">        if (value != null) setStringAttribute(key, downCase(value.toString()));</span>
+<span class="nc" id="L340">    }</span>
+
+    /**
+     * Sets an attribute in this message with an integer value.
+     *
+     * @param key The attribute to set.
+     * @param value The value of the attribute.
+     */
+    protected void setIntegerAttribute(String key, int value) {
+<span class="fc" id="L349">        setStringAttribute(key, Integer.toString(value));</span>
+<span class="fc" id="L350">    }</span>
+
+    /**
+     * Set all the attributes in a map.
+     *
+     * @param attributeMap The map of key,value pairs to set.
+     */
+    protected void setStringAttributeMap(Map&lt;String, String&gt; attributeMap) {
+<span class="fc" id="L358">        forEachMapEntry(attributeMap,</span>
+<span class="fc" id="L359">                        e -&gt; setStringAttribute(e.getKey(), e.getValue()));</span>
+<span class="fc" id="L360">    }</span>
+
+    /**
+     * Set all the attributes from a list.
+     *
+     * @param attributes A list of alternating key,value pairs.
+     */
+    protected void setStringAttributes(List&lt;String&gt; attributes) {
+<span class="nc bnc" id="L368" title="All 2 branches missed.">        for (int i = 0; i &lt; attributes.size()-1; i += 2) {</span>
+<span class="nc" id="L369">            String k = attributes.get(i);</span>
+<span class="nc" id="L370">            String v = attributes.get(i+1);</span>
+<span class="nc bnc" id="L371" title="All 4 branches missed.">            if (k != null &amp;&amp; v != null) setStringAttribute(k, v);</span>
+        }
+<span class="nc" id="L373">    }</span>
+
+    /**
+     * Set all the attributes from an array.
+     *
+     * @param attributes An array of alternating key,value pairs.
+     */
+    protected void setStringAttributes(String[] attributes) {
+<span class="fc bfc" id="L381" title="All 2 branches covered.">        for (int i = 0; i &lt; attributes.length; i += 2) {</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">            if (attributes[i+1] != null) {</span>
+<span class="fc" id="L383">                setStringAttribute(attributes[i], attributes[i+1]);</span>
+            }
+        }
+<span class="fc" id="L386">    }</span>
+
+    /**
+     * Get the array attributes of this message.
+     *
+     * @return A list of the array attributes found.
+     */
+    protected List&lt;String&gt; getArrayAttributes() {
+<span class="fc" id="L394">        List&lt;String&gt; ret = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L395">        int n = getIntegerAttribute(FreeColObject.ARRAY_SIZE_TAG, -1);</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L397">            String key = FreeColObject.arrayKey(i);</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">            if (!hasAttribute(key)) break;</span>
+<span class="fc" id="L399">            ret.add(getStringAttribute(key));</span>
+        }
+<span class="fc" id="L401">        return ret;</span>
+    }
+
+    /**
+     * Set a list of attributes as an array.
+     *
+     * @param attributes A list of attribute values.
+     */
+    protected void setArrayAttributes(List&lt;String&gt; attributes) {
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">        if (attributes != null) {</span>
+<span class="fc" id="L411">            int i = 0;</span>
+<span class="fc bfc" id="L412" title="All 2 branches covered.">            for (String a : attributes) {</span>
+<span class="fc" id="L413">                String key = FreeColObject.arrayKey(i);</span>
+<span class="fc" id="L414">                i++;</span>
+<span class="fc" id="L415">                setStringAttribute(key, a);</span>
+<span class="fc" id="L416">            }</span>
+<span class="fc" id="L417">            setIntegerAttribute(FreeColObject.ARRAY_SIZE_TAG, i);</span>
+        }
+<span class="fc" id="L419">    }</span>
+
+    /**
+     * Set an array of attributes.
+     *
+     * @param attributes The array of attributes.
+     */
+    protected void setArrayAttributes(String[] attributes) {
+<span class="nc bnc" id="L427" title="All 2 branches missed.">        if (attributes != null) {</span>
+<span class="nc bnc" id="L428" title="All 2 branches missed.">            for (int i = 0; i &lt; attributes.length; i++) {</span>
+<span class="nc" id="L429">                setStringAttribute(FreeColObject.arrayKey(i), attributes[i]);</span>
+            }
+        }
+<span class="nc" id="L432">    }</span>
+
+    /**
+     * Get a child object.
+     *
+     * @param &lt;T&gt; The actual class of {@code FreeColObject} to get.
+     * @param index The index of the child to get.
+     * @param returnClass The expected class of child.
+     * @return The child object found, or null if the index is invalid or
+     *     return class incorrect.
+     */
+    protected &lt;T extends FreeColObject&gt; T getChild(int index,
+                                                   Class&lt;T&gt; returnClass) {
+<span class="pc bpc" id="L445" title="1 of 2 branches missed.">        if (index &gt;= getChildCount()) return (T)null;</span>
+<span class="fc" id="L446">        FreeColObject fco = getChildren().get(index);</span>
+        try {
+<span class="fc" id="L448">            return returnClass.cast(fco);</span>
+<span class="nc" id="L449">        } catch (ClassCastException cce) {</span>
+<span class="nc" id="L450">            logger.log(Level.WARNING, &quot;Cast fail&quot;, cce);</span>
+<span class="nc" id="L451">            return null;</span>
+        }
+    }
+
+    /**
+     * Get the child objects.
+     *
+     * @param &lt;T&gt; The actual class of {@code FreeColObject} to get.
+     * @param returnClass The expected class of children.
+     * @return The children with the expected class.
+     */
+    protected &lt;T extends FreeColObject&gt; List&lt;T&gt; getChildren(Class&lt;T&gt; returnClass) {
+<span class="fc" id="L463">        List&lt;T&gt; ret = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L464" title="All 2 branches covered.">        for (FreeColObject fco : getChildren()) {</span>
+            try {
+<span class="fc" id="L466">                ret.add(returnClass.cast(fco));</span>
+<span class="pc" id="L467">            } catch (ClassCastException cce) {}</span>
+<span class="fc" id="L468">        }</span>
+<span class="fc" id="L469">        return ret;</span>
+    }
+            
+    /**
+     * Is this message vacuous?
+     *
+     * @return True if there are no attributes or children present.
+     */
+    protected boolean isEmpty() {
+<span class="pc bpc" id="L478" title="2 of 4 branches missed.">        return getStringAttributeMap().isEmpty() &amp;&amp; getChildren().isEmpty();</span>
+    }
+
+    /**
+     * Get the priority level of this type of message.
+     *
+     * @return The message priority level.
+     */
+    public final int getPriorityLevel() {
+<span class="fc" id="L487">        return getPriority().getValue();</span>
+    }
+
+    /**
+     * Merge another message into this message if possible.
+     *
+     * @param message The {@code Message} to merge.
+     * @return True if the other message was merged.
+     */
+    public boolean merge(Message message) {
+<span class="fc bfc" id="L497" title="All 2 branches covered.">        if (!message.canMerge()) return false;</span>
+
+<span class="fc" id="L499">        Map&lt;String,String&gt; map = this.getStringAttributeMap();</span>
+<span class="fc" id="L500">        map.putAll(message.getStringAttributeMap());</span>
+<span class="fc" id="L501">        this.setStringAttributeMap(map);</span>
+<span class="fc" id="L502">        Set&lt;FreeColObject&gt; objs = new HashSet&lt;&gt;(this.getChildren());</span>
+<span class="fc" id="L503">        objs.addAll(message.getChildren());</span>
+<span class="fc" id="L504">        this.setChildren(toList(objs));</span>
+<span class="fc" id="L505">        return true;</span>
+    }
+
+    /**
+     * Write any attributes of this message.
+     *
+     * @param xw The {@code FreeColXMLWriter} to write to.
+     * @exception XMLStreamException if there is a problem writing the stream.
+     */
+    protected void writeAttributes(FreeColXMLWriter xw)
+        throws XMLStreamException {
+<span class="fc bfc" id="L516" title="All 2 branches covered.">        for (Entry&lt;String,String&gt; e : getStringAttributeMap().entrySet()) {</span>
+<span class="fc" id="L517">            xw.writeAttribute(e.getKey(), e.getValue());</span>
+<span class="fc" id="L518">        }</span>
+<span class="fc" id="L519">    }</span>
+
+    /**
+     * Write any children of this message.
+     *
+     * @param xw The {@code FreeColXMLWriter} to write to.
+     * @exception XMLStreamException if there is a problem writing the stream.
+     */
+    protected void writeChildren(FreeColXMLWriter xw)
+        throws XMLStreamException {
+<span class="fc bfc" id="L529" title="All 2 branches covered.">        for (FreeColObject fco : getChildren()) {</span>
+<span class="fc" id="L530">            fco.toXML(xw);</span>
+<span class="fc" id="L531">        }</span>
+<span class="fc" id="L532">    }</span>
+
+    /**
+     * Write this message as XML.
+     *
+     * @param xw The {@code FreeColXMLWriter} to write with.
+     * @exception XMLStreamException if there is a problem writing the stream.
+     */
+    public void toXML(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L541">        xw.writeStartElement(getType());</span>
+
+<span class="fc" id="L543">        writeAttributes(xw);</span>
+
+<span class="fc" id="L545">        writeChildren(xw);</span>
+
+<span class="fc" id="L547">        xw.writeEndElement();</span>
+<span class="fc" id="L548">    }</span>
+
+
+    // Convenience methods for the subclasses
+
+    protected net.sf.freecol.client.control.InGameController
+        igc(FreeColClient freeColClient) {
+<span class="nc" id="L555">        return freeColClient.getInGameController();</span>
+    }
+
+    protected net.sf.freecol.server.control.InGameController
+        igc(FreeColServer freeColServer) {
+<span class="fc" id="L560">        return freeColServer.getInGameController();</span>
+    }
+
+    protected void invokeAndWait(FreeColClient freeColClient,
+                                 Runnable runnable) {
+<span class="nc" id="L565">        freeColClient.getGUI().invokeNowOrWait(runnable);</span>
+<span class="nc" id="L566">    }</span>
+
+    protected void invokeLater(FreeColClient freeColClient,
+                               Runnable runnable) {
+<span class="nc" id="L570">        freeColClient.getGUI().invokeNowOrLater(runnable);</span>
+<span class="nc" id="L571">    }</span>
+
+    protected net.sf.freecol.client.control.PreGameController
+        pgc(FreeColClient freeColClient) {
+<span class="fc" id="L575">        return freeColClient.getPreGameController();</span>
+    }
+
+    protected net.sf.freecol.server.control.PreGameController
+        pgc(FreeColServer freeColServer) {
+<span class="nc" id="L580">        return freeColServer.getPreGameController();</span>
+    }
+
+    /**
+     * Create a runnable to execute generic message actions.
+     *
+     * @param freeColClient The client.
+     */
+    protected void clientGeneric(FreeColClient freeColClient) {
+<span class="nc" id="L589">        final FreeColClient fcc = freeColClient;</span>
+<span class="nc bnc" id="L590" title="All 2 branches missed.">        if (fcc.currentPlayerIsMyPlayer()) {</span>
+            // If there is a &quot;sound&quot; attribute present, play that sound
+<span class="nc" id="L592">            final String soundId = getStringAttribute(&quot;sound&quot;);</span>
+            // If there is a &quot;flush&quot; attribute present, encourage the
+            // client to display any new messages.
+<span class="nc" id="L595">            final boolean flush = getBooleanAttribute(&quot;flush&quot;, Boolean.FALSE);</span>
+<span class="nc bnc" id="L596" title="All 4 branches missed.">            if (soundId != null || flush) {</span>
+<span class="nc" id="L597">                invokeLater(freeColClient, () -&gt; {</span>
+<span class="nc bnc" id="L598" title="All 2 branches missed.">                        if (soundId != null) igc(fcc).sound(soundId);</span>
+<span class="nc bnc" id="L599" title="All 2 branches missed.">                        if (flush) igc(fcc).nextModelMessage();</span>
+<span class="nc" id="L600">                    });</span>
+            }
+        }
+<span class="nc" id="L603">    }</span>
+    
+    /**
+     * Complain about finding the wrong XML element.
+     *
+     * @param wanted The tag we wanted.
+     * @param got The tag we got.
+     * @exception XMLStreamException is always thrown.
+     */
+    protected void expected(String wanted, String got)
+        throws XMLStreamException {
+<span class="nc" id="L614">        throw new XMLStreamException(&quot;In &quot; + getClass().getName()</span>
+            + &quot;, expected &quot; + wanted + &quot; but read: &quot; + got);
+    }
+
+
+    // Fundamental utility for the input handlers to call
+
+    /**
+     * Read a new message from a stream.
+     *
+     * @param game The {@code Game} within which to construct the message.
+     * @param xr A {@code FreeColXMLReader} to read from.
+     * @return The new {@code Message}.
+     * @exception FreeColException if there is problem reading the message.
+     */
+    public static Message read(Game game, FreeColXMLReader xr)
+        throws FreeColException {
+<span class="fc" id="L631">        final String tag = xr.getLocalName();</span>
+<span class="fc" id="L632">        Message ret = null;</span>
+<span class="fc" id="L633">        Constructor&lt;? extends Message&gt; mb = builders.get(tag);</span>
+<span class="fc bfc" id="L634" title="All 2 branches covered.">        if (mb == null) {</span>
+<span class="fc" id="L635">            final String className = &quot;net.sf.freecol.common.networking.&quot;</span>
+<span class="fc" id="L636">                + capitalize(tag) + &quot;Message&quot;;</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L638">            final Class&lt;? extends Message&gt; cl</span>
+<span class="fc" id="L639">                = (Class&lt;? extends Message&gt;)Introspector.getClassByName(className);</span>
+<span class="pc bpc" id="L640" title="1 of 2 branches missed.">            if (cl == null) {</span>
+<span class="nc" id="L641">                throw new FreeColException(&quot;No class for: &quot; + tag)</span>
+<span class="nc" id="L642">                    .preserveDebug();</span>
+            }
+
+<span class="fc" id="L645">            mb = Introspector.getConstructor(cl, readClasses);</span>
+<span class="pc bpc" id="L646" title="1 of 2 branches missed.">            if (mb == null) {</span>
+<span class="nc" id="L647">                throw new FreeColException(&quot;No constructor for: &quot; + tag)</span>
+<span class="nc" id="L648">                    .preserveDebug();</span>
+            }
+<span class="fc" id="L650">            builders.put(tag, mb);</span>
+        }
+
+        try {
+<span class="fc" id="L654">            ret = Introspector.construct(mb, new Object[] { game, xr });</span>
+<span class="nc" id="L655">        } catch (Introspector.IntrospectorException ie) {</span>
+<span class="nc" id="L656">            throw new FreeColException(ie);</span>
+<span class="fc" id="L657">        }</span>
+<span class="fc" id="L658">        return ret;</span>
+    }
+
+
+    // Override Object
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L669">        StringBuilder sb = new StringBuilder(64);</span>
+<span class="nc" id="L670">        sb.append('[');</span>
+<span class="nc" id="L671">        pretty(sb, getType(), getStringAttributeMap(), getChildren());</span>
+<span class="nc" id="L672">        sb.append(']');</span>
+<span class="nc" id="L673">        return sb.toString();</span>
+    }
+
+    /**
+     * Pretty print the components of a message to a string builder.
+     *
+     * @param sb The {@code StringBuilder} to print to.
+     * @param type The type of the message.
+     * @param attributeMap A map of key,value attribute pairs.
+     * @param children The attached child {@code FreeColObject}s.
+     */
+    protected static void pretty(StringBuilder sb, String type,
+                                 Map&lt;String, String&gt; attributeMap,
+                                 List&lt;FreeColObject&gt; children) {
+<span class="nc" id="L687">        sb.append(type);</span>
+<span class="nc bnc" id="L688" title="All 2 branches missed.">        if (attributeMap != null) {</span>
+<span class="nc bnc" id="L689" title="All 2 branches missed.">            for (Entry&lt;String,String&gt; e : attributeMap.entrySet()) {</span>
+<span class="nc" id="L690">                sb.append(' ').append(e.getKey())</span>
+<span class="nc" id="L691">                    .append('=').append(e.getValue());</span>
+<span class="nc" id="L692">            }</span>
+        }
+<span class="nc bnc" id="L694" title="All 2 branches missed.">        if (children != null) {</span>
+<span class="nc bnc" id="L695" title="All 2 branches missed.">            for (FreeColObject fco : children) {</span>
+<span class="nc" id="L696">                sb.append(' ').append(fco.getId());</span>
+<span class="nc" id="L697">            }</span>
+        }
+<span class="nc" id="L699">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

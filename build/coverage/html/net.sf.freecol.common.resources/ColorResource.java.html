@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColorResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.resources</a> &gt; <span class="el_source">ColorResource.java</span></div><h1>ColorResource.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.resources;
+
+import java.awt.Color;
+import java.lang.reflect.Field;
+import java.net.URI;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+
+/**
+ * A {@code Resource} wrapping a {@code Color}.
+ * 
+ * @see Resource
+ * @see Color
+ */
+public class ColorResource extends Resource {
+
+<span class="fc" id="L37">    private static final Logger logger = Logger.getLogger(ColorResource.class.getName());</span>
+
+<span class="fc" id="L39">    public static final Color REPLACEMENT_COLOR = Color.MAGENTA;</span>
+
+    public static final String SCHEME = &quot;color:&quot;;
+
+    private final Color color;
+
+
+    public ColorResource(String primaryKey, Color color) {
+<span class="nc" id="L47">        super(primaryKey);</span>
+<span class="nc" id="L48">        this.color = color;</span>
+<span class="nc" id="L49">    }</span>
+
+    /**
+     * Do not use directly.
+     *
+     * @param cachingKey The caching key.
+     * @param resourceLocator The {@code URI} used when loading this
+     *     resource.
+     */
+    public ColorResource(String cachingKey, URI resourceLocator) { //throws Exception {
+<span class="fc" id="L59">        super(cachingKey, resourceLocator);</span>
+
+<span class="fc" id="L61">        String colorName = resourceLocator.getSchemeSpecificPart()</span>
+<span class="fc" id="L62">            .substring(SCHEME.length());</span>
+<span class="fc" id="L63">        this.color = createColor(colorName);</span>
+<span class="fc" id="L64">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="nc" id="L70">    public void preload() {}</span>
+
+    /**
+     * Gets the {@code Color} represented by this resource.
+     *
+     * @return The {@code Color} in it's original size.
+     */
+    public Color getColor() {
+<span class="nc" id="L78">        return this.color;</span>
+    }
+
+    private static boolean isHexString(String str) {
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (str == null</span>
+<span class="pc bpc" id="L83" title="1 of 4 branches missed.">            || !(str.startsWith(&quot;0x&quot;) || str.startsWith(&quot;0X&quot;))</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">            || str.length() &lt;= 2) return false;</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        for (int i = 2; i &lt; str.length(); i++) {</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            if (!&quot;0123456789ABCDEFabcdef&quot;.contains(str.substring(i, i + 1))) {</span>
+<span class="nc" id="L87">                return false;</span>
+            }
+        }
+<span class="fc" id="L90">        return true;</span>
+    }
+
+    /**
+     * Returns the {@code Color} identified by the given
+     * string. This is either a hexadecimal integer prefixed with
+     * &quot;0x&quot;, or the name of a field of the Color class.
+     *
+     * @param colorName a {@code String} value
+     * @return a {@code Color} value
+     */
+    private static Color createColor(String colorName) {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (isHexString(colorName)) {</span>
+            try {
+                /*
+                 * We have to read the value as a long and then cast it in order
+                 * to avoid overflow when specifying the alpha.
+                 */
+<span class="fc" id="L108">                final int col = (int) Long.decode(colorName).longValue();</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                return new Color(col, colorName.length() &gt; 8);</span>
+<span class="nc" id="L110">            } catch (NumberFormatException e) {</span>
+<span class="nc" id="L111">                logger.warning(&quot;Failed to decode hex colour string: &quot;</span>
+                    + colorName);
+<span class="nc" id="L113">            }</span>
+        } else {
+            try {
+<span class="fc" id="L116">                Field field = Color.class.getField(colorName);</span>
+<span class="fc" id="L117">                return (Color) field.get(null);</span>
+<span class="nc" id="L118">            } catch (IllegalAccessException | IllegalArgumentException</span>
+                    | NoSuchFieldException | SecurityException e) {
+                // probably a non-standard color name
+<span class="nc" id="L121">                logger.log(Level.WARNING, &quot;Failed to decode colour&quot;, e);</span>
+            }
+        }
+        // Fall back, as there are places where a null colour
+        // can cause crashes.
+<span class="nc" id="L126">        return REPLACEMENT_COLOR;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

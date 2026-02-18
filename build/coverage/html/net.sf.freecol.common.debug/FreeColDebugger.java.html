@@ -1,0 +1,506 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FreeColDebugger.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.debug</a> &gt; <span class="el_source">FreeColDebugger.java</span></div><h1>FreeColDebugger.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.debug;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import static java.nio.file.StandardOpenOption.*;
+
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColDirectories;
+import net.sf.freecol.common.model.Player;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import net.sf.freecol.common.util.LogBuilder;
+import static net.sf.freecol.common.util.StringUtils.*;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.military.DefensiveMap;
+
+
+/**
+ * High-level debug handling.
+ */
+<span class="nc" id="L47">public class FreeColDebugger {</span>
+
+<span class="fc" id="L49">    private static final Logger logger = Logger.getLogger(FreeColDebugger.class.getName());</span>
+
+    /** The debug modes, any of which may be active. */
+<span class="fc" id="L52">    public static enum DebugMode {</span>
+<span class="fc" id="L53">        COMMS, // Trace print full c-s communications, and verbose</span>
+               // (non-i18n) server errors.
+<span class="fc" id="L55">        DESYNC,// Check frequently for desynchronization</span>
+<span class="fc" id="L56">        MENUS, // Enable the Debug menu, the extra commands in</span>
+               // ColonyPanel and TilePopup, the goods-in-market
+               // tooltip in MarketLabel, the extra modifiers on the
+               // BuildingToolTip, the region and Mission
+               // displays in MapViewer, taking over AI players,
+               // and turn skipping.
+<span class="fc" id="L62">        INIT,  // An initial colony is made, and goods added to all</span>
+               // native settlements.
+<span class="fc" id="L64">        PATHS  // Display more information on goto paths</span>
+    }
+<span class="fc" id="L66">    private static int debugMode = 0;</span>
+
+    /**
+     * The number of turns to run without stopping.
+     */
+<span class="fc" id="L71">    private static int debugRunTurns = -1;</span>
+
+    /**
+     * The name of a file to save to at the end of a debug run.
+     */
+<span class="fc" id="L76">    private static String debugRunSave = null;</span>
+
+    /**
+     * Stores the standard fog of war setting when revealing all the map
+     * Allows restore to previous state when re-enabling normal vision
+     */
+<span class="fc" id="L82">    private static boolean normalGameFogOfWar = false;</span>
+
+    /**
+     * Displays elements for debugging the rendering.
+     */
+<span class="fc" id="L87">    private static boolean debugRendering = false;</span>
+    
+    /** Display map coordinates? */
+<span class="fc" id="L90">    private static boolean displayCoordinates = false;</span>
+
+    /** Display tile values as a colony site for this player? */
+<span class="fc" id="L93">    private static Player displayColonyValuePlayer = null;</span>
+
+    /** Show the mission for an AI unit? */
+<span class="fc" id="L96">    private static boolean showMission = false;</span>
+
+    /** Show full mission information? */
+<span class="fc" id="L99">    private static boolean showMissionInfo = false;</span>
+
+    /** Stream for debugLog. */
+<span class="fc" id="L102">    private static final AtomicReference&lt;PrintStream&gt; debugStream</span>
+        = new AtomicReference&lt;PrintStream&gt;(null);
+    
+    /** Displays the defence map for this player */
+<span class="fc" id="L106">    private static Player defenceMapPlayer = null;</span>
+
+
+    /**
+     * Is a debug mode enabled in this game?
+     *
+     * @return True if any debug mode is enabled.
+     */
+    public static boolean isInDebugMode() {
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        return FreeColDebugger.debugMode != 0;</span>
+    }
+    
+    /**
+     * Checks if automatic changing of the scaleFactor on window resize
+     * has been enabled.
+     * 
+     * @return {@code true} if any debug mode is enabled.
+     */
+    public static boolean isAutomaticRescalingOnWindowResize() {
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        return FreeColDebugger.debugMode != 0;    </span>
+    }
+
+    /**
+     * Is a particular debug mode enabled in this game?
+     *
+     * @param mode The {@code DebugMode} to test.
+     * @return True if the specified mode is enabled.
+     */
+    public static boolean isInDebugMode(DebugMode mode) {
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">        return ((1 &lt;&lt; mode.ordinal()) &amp; FreeColDebugger.debugMode) != 0;</span>
+    }
+
+    /**
+     * Set a debug mode.
+     *
+     * @param mode The {@code DebugMode} to set.
+     * @param val The value to set to.
+     */
+    public static void setDebugMode(DebugMode mode, boolean val) {
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (val) {</span>
+<span class="nc" id="L146">            enableDebugMode(mode);</span>
+        } else {
+<span class="nc" id="L148">            disableDebugMode(mode);</span>
+        }
+<span class="nc" id="L150">    }</span>
+
+    /**
+     * Enables a particular debug mode.
+     *
+     * @param mode The {@code DebugMode} to enable.
+     */
+    public static void enableDebugMode(DebugMode mode) {
+<span class="fc" id="L158">        FreeColDebugger.debugMode |= 1 &lt;&lt; mode.ordinal();</span>
+<span class="fc" id="L159">    }</span>
+
+    /**
+     * Disable a particular debug mode.
+     *
+     * @param mode The {@code DebugMode} to disable.
+     */
+    private static void disableDebugMode(DebugMode mode) {
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        if (mode != DebugMode.MENUS) { // Can not leave menus mode!</span>
+<span class="nc" id="L168">            FreeColDebugger.debugMode &amp;= ~(1 &lt;&lt; mode.ordinal());</span>
+        }
+<span class="nc" id="L170">    }</span>
+
+    /**
+     * Gets the debug modes.
+     *
+     * @return A string containing the modes as csv.
+     */
+    public static String getDebugModes() {
+<span class="fc" id="L178">        return transform(DebugMode.values(), m -&gt; isInDebugMode(m),</span>
+<span class="fc" id="L179">                         DebugMode::toString, Collectors.joining(&quot;,&quot;));</span>
+    }
+
+    /**
+     * Configures the debug modes.
+     *
+     * @param optionValue The command line option.
+     * @return True if the modes were set as specified.
+     */
+    public static boolean setDebugModes(String optionValue) {
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">        if (optionValue == null) return false;</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        if (optionValue.isEmpty()) return true;</span>
+
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        for (String s : optionValue.split(&quot;,&quot;)) {</span>
+            try {
+<span class="nc" id="L194">                DebugMode mode = Enum.valueOf(DebugMode.class, upCase(s));</span>
+<span class="nc" id="L195">                enableDebugMode(mode);</span>
+<span class="nc" id="L196">            } catch (RuntimeException e) {</span>
+<span class="nc" id="L197">                logger.warning(&quot;Unrecognized debug mode: &quot; + optionValue);</span>
+<span class="nc" id="L198">                return false;</span>
+<span class="nc" id="L199">            }</span>
+        }
+<span class="nc" id="L201">        return true;</span>
+    }
+
+    /**
+     * Configures a debug run.
+     *
+     * @param option The command line option.
+     */
+    public static void configureDebugRun(String option) {
+<span class="nc" id="L210">        int comma = option.indexOf(',');</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">        String turns = option.substring(0, (comma &lt; 0) ? option.length()</span>
+<span class="nc" id="L212">            : comma);</span>
+        try {
+<span class="nc" id="L214">            setDebugRunTurns(Integer.parseInt(turns));</span>
+<span class="nc" id="L215">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L216">            setDebugRunTurns(-1);</span>
+<span class="nc" id="L217">        }</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        if (comma &gt; 0) setDebugRunSave(option.substring(comma + 1));</span>
+<span class="nc" id="L219">    }</span>
+
+    /**
+     * Gets the turns to run in debug mode.
+     *
+     * @return The turns to run in debug mode.
+     */
+    public static int getDebugRunTurns() {
+<span class="nc" id="L227">        return FreeColDebugger.debugRunTurns;</span>
+    }
+
+    /**
+     * Sets the number of turns to run in debug mode.
+     *
+     * @param debugRunTurns The new number of debug turns.
+     */
+    public static void setDebugRunTurns(int debugRunTurns) {
+<span class="fc" id="L236">        FreeColDebugger.debugRunTurns = debugRunTurns;</span>
+<span class="fc" id="L237">    }</span>
+
+    /**
+     * Gets the debug save file name.
+     *
+     * @return The debug save file name.
+     */
+    public static String getDebugRunSave() {
+<span class="nc" id="L245">        return FreeColDebugger.debugRunSave;</span>
+    }
+
+    /**
+     * Sets the debug save file name.
+     *
+     * @param debugRunSave The new debug save file name.
+     */
+    public static void setDebugRunSave(String debugRunSave) {
+<span class="nc" id="L254">        FreeColDebugger.debugRunSave = debugRunSave;</span>
+<span class="nc" id="L255">    }</span>
+
+    /**
+     * Get the normal fog of war setting.
+     *
+     * @return The normal fog of war setting.
+     */
+    public static boolean getNormalGameFogOfWar() {
+<span class="nc" id="L263">        return normalGameFogOfWar;</span>
+    }
+
+    /**
+     * Set the normal fog of war setting.
+     *
+     * @param normalGameFogOfWar The new normal fog of war setting.
+     */
+    public static void setNormalGameFogOfWar(boolean normalGameFogOfWar) {
+<span class="nc" id="L272">        FreeColDebugger.normalGameFogOfWar = normalGameFogOfWar;</span>
+<span class="nc" id="L273">    }</span>
+
+    /**
+     * Try to complete a debug run if one is happening.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param force Force early completion of a run.
+     * @return True if a debug run was completed.
+     */
+    public static boolean finishDebugRun(FreeColClient freeColClient,
+                                         boolean force) {
+<span class="nc" id="L284">        int turns = getDebugRunTurns();</span>
+<span class="nc bnc" id="L285" title="All 6 branches missed.">        if (turns &lt; 0              // Not a debug run</span>
+            || turns &gt; 0 &amp;&amp; !force // Still going
+<span class="nc" id="L287">            ) return false;</span>
+
+        // Zero =&gt; signalEndDebugRun was called
+<span class="nc" id="L290">        setDebugRunTurns(-1);</span>
+
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        if (getDebugRunSave() != null) {</span>
+<span class="nc" id="L293">            FreeColServer fcs = freeColClient.getFreeColServer();</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">            if (fcs != null) {</span>
+                try {
+<span class="nc" id="L296">                    fcs.saveGame(FreeColDirectories.getDebugRunSaveFile(),</span>
+<span class="nc" id="L297">                                 freeColClient.getClientOptions(), null);</span>
+<span class="nc" id="L298">                } catch (IOException e) {}</span>
+            }
+<span class="nc" id="L300">            freeColClient.quit();</span>
+        }
+<span class="nc" id="L302">        return true;</span>
+    }
+    
+    /**
+     * Signal that a debug run should complete at the next suitable
+     * opportunity.  Currently called from the server.
+     */
+    public static void signalEndDebugRun() {
+<span class="nc bnc" id="L310" title="All 2 branches missed.">        if (debugRunTurns &gt; 0) setDebugRunTurns(0);</span>
+<span class="nc" id="L311">    }</span>
+    
+    /**
+     * Should elements for debugging the rendering be displayed?
+     */
+    public static boolean debugRendering() {
+<span class="nc" id="L317">        return debugRendering;</span>
+    }
+    
+    /**
+     * Displays elements for debugging the rendering.
+     *
+     * @param _debugRendering If true, displays elements for debugging the rendering.
+     */
+    public static void setDebugRendering(boolean _debugRendering) {
+<span class="nc" id="L326">        debugRendering = _debugRendering;</span>
+<span class="nc" id="L327">    }</span>
+
+    /**
+     * Should the map viewer display tile coordinates?
+     *
+     * @return True if the map viewer should display coordinates.
+     */
+    public static boolean debugDisplayCoordinates() {
+<span class="nc" id="L335">        return displayCoordinates;</span>
+    }
+
+    /**
+     * Set the display tile coordinates state.
+     *
+     * @param display Whether to display or not.
+     */
+    public static void setDebugDisplayCoordinates(boolean display) {
+<span class="nc" id="L344">        displayCoordinates = display;</span>
+<span class="nc" id="L345">    }</span>
+
+    /**
+     * Should the map viewer display colony values for a player?
+     *
+     * @return The {@code Player} to display colony values for,
+     *     or null if not to display.
+     */
+    public static Player debugDisplayColonyValuePlayer() {
+<span class="nc" id="L354">        return displayColonyValuePlayer;</span>
+    }
+
+    /**
+     * Set the player to display colony values for.
+     *
+     * @param display The new {@code Player} to display for.
+     */
+    public static void setDebugDisplayColonyValuePlayer(Player display) {
+<span class="nc" id="L363">        displayColonyValuePlayer = display;</span>
+<span class="nc" id="L364">    }</span>
+
+    /**
+     * Should the map viewer show AI missions?
+     *
+     * @return True if the map viewer should show AI missions?
+     */
+    public static boolean debugShowMission() {
+<span class="nc" id="L372">        return showMission;</span>
+    }
+
+    /**
+     * Set the display of AI missions state.
+     *
+     * @param display Whether to display or not.
+     */
+    public static void setDebugShowMission(boolean display) {
+<span class="nc" id="L381">        showMission = display;</span>
+<span class="nc" id="L382">    }</span>
+
+    /**
+     * Should the map viewer show full AI mission info?
+     *
+     * @return True if the map viewer should show full AI mission info.
+     */
+    public static boolean debugShowMissionInfo() {
+<span class="nc" id="L390">        return showMissionInfo;</span>
+    }
+
+    /**
+     * Set the display of full AI mission info state.
+     *
+     * @param display Whether to display or not.
+     */
+    public static void setDebugShowMissionInfo(boolean display) {
+<span class="nc" id="L399">        showMissionInfo = display;</span>
+<span class="nc" id="L400">    }</span>
+    
+    /**
+     * Displays the {@link DefensiveMap} for a given player.
+     */
+    public static void setDebugShowDefenceMapForPlayer(Player defenceMapPlayer) {
+<span class="nc" id="L406">        FreeColDebugger.defenceMapPlayer = defenceMapPlayer;        </span>
+<span class="nc" id="L407">    }</span>
+    
+    public static Player debugShowDefenceMapForPlayer() {
+<span class="nc" id="L410">        return defenceMapPlayer;</span>
+    }
+
+    /**
+     * Handler for log records that include a crash.
+     */
+    public static void handleCrash() {
+<span class="nc bnc" id="L417" title="All 2 branches missed.">        if (debugRunSave != null) signalEndDebugRun();</span>
+<span class="nc" id="L418">    }</span>
+
+    /**
+     * Emergency run time log to use when the normal logging is failing.
+     * It might as well be here.
+     *
+     * @param msg The message to log.
+     */
+    public static void debugLog(String msg) {
+<span class="nc" id="L427">        PrintStream print = debugStream.get();</span>
+<span class="nc bnc" id="L428" title="All 2 branches missed.">        if (print == null) {</span>
+<span class="nc" id="L429">            String tmp = System.getenv(&quot;TMPDIR&quot;);</span>
+<span class="nc bnc" id="L430" title="All 2 branches missed.">            if (tmp == null) tmp = &quot;/tmp&quot;;</span>
+<span class="nc" id="L431">            final Path path = Paths.get(tmp, &quot;freecol.debug&quot;);</span>
+            try {
+<span class="nc" id="L433">                OutputStream fos</span>
+<span class="nc" id="L434">                    = Files.newOutputStream(path, CREATE, APPEND);</span>
+<span class="nc" id="L435">                print = new PrintStream(fos, true, &quot;UTF-8&quot;);</span>
+<span class="nc" id="L436">            } catch (IOException ex) {</span>
+                ; // ignored
+<span class="nc" id="L438">            }</span>
+<span class="nc" id="L439">            debugStream.set(print);</span>
+        }
+<span class="nc bnc" id="L441" title="All 2 branches missed.">        if (print != null) print.println(msg);</span>
+<span class="nc" id="L442">    }</span>
+
+    /**
+     * Miscellaneous debug helper to get a string representation of
+     * the current call stack.
+     *
+     * @return A stack trace as a string.
+     */
+    public static String stackTraceToString() {
+<span class="nc" id="L451">        return stackTraceToString(Thread.currentThread());</span>
+    }
+
+    /**
+     * Miscellaneous debug helper to get a string representation of
+     * the stack of a given thread.
+     *
+     * @param thread The {@code Thread} to print.
+     * @return A stack trace as a string.
+     */
+    private static String stackTraceToString(Thread thread) {
+<span class="nc" id="L462">        LogBuilder lb = new LogBuilder(512);</span>
+<span class="nc" id="L463">        addStackTrace(lb, thread);</span>
+<span class="nc" id="L464">        return lb.toString();</span>
+    }
+
+    /**
+     * Helper that adds a stack trace for the current thread to a log builder.
+     *
+     * @param lb The {@code LogBuilder} to add to.
+     */
+    public static void addStackTrace(LogBuilder lb) {
+<span class="nc" id="L473">        addStackTrace(lb, Thread.currentThread());</span>
+<span class="nc" id="L474">    }</span>
+
+    /**
+     * Helper that adds a stack trace to a log builder.
+     *
+     * @param lb The {@code LogBuilder} to add to.
+     * @param thread The {@code Thread} to print.
+     */
+    private static void addStackTrace(LogBuilder lb, Thread thread) {
+<span class="nc bnc" id="L483" title="All 2 branches missed.">        for (StackTraceElement s : thread.getStackTrace()) {</span>
+<span class="nc" id="L484">            lb.add(s.toString(), &quot;\n&quot;);</span>
+        }
+<span class="nc" id="L486">        lb.shrink(&quot;\n&quot;);</span>
+<span class="nc" id="L487">    }</span>
+
+    /**
+     * Log a warning with a stack trace.
+     *
+     * @param logger The {@code Logger} to log to.
+     * @param warn The warning message.
+     */
+    public static void trace(Logger logger, String warn) {
+<span class="nc" id="L496">        LogBuilder lb = new LogBuilder(512);</span>
+<span class="nc" id="L497">        lb.add(warn, &quot;\n&quot;);</span>
+<span class="nc" id="L498">        addStackTrace(lb);</span>
+<span class="nc bnc" id="L499" title="All 2 branches missed.">        if (logger == null) {</span>
+<span class="nc" id="L500">            System.err.println(lb.toString());</span>
+        } else {
+<span class="nc" id="L502">            logger.warning(lb.toString());</span>
+        }
+<span class="nc" id="L504">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

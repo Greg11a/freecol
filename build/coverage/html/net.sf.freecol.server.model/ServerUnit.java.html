@@ -1,0 +1,1142 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServerUnit.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.model</a> &gt; <span class="el_source">ServerUnit.java</span></div><h1>ServerUnit.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+
+package net.sf.freecol.server.model;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+import java.util.logging.Logger;
+
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.i18n.NameCache;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.CombatModel;
+import net.sf.freecol.common.model.Europe;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.GoodsContainer;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.HighSeas;
+import net.sf.freecol.common.model.HistoryEvent;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.LostCityRumour;
+import net.sf.freecol.common.model.LostCityRumour.RumourType;
+import net.sf.freecol.common.model.Map;
+import net.sf.freecol.common.model.ModelMessage;
+import net.sf.freecol.common.model.Modifier;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Stance;
+import net.sf.freecol.common.model.Region;
+import net.sf.freecol.common.model.Resource;
+import net.sf.freecol.common.model.ResourceType;
+import net.sf.freecol.common.model.Role;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Tension;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.TileImprovement;
+import net.sf.freecol.common.model.TileImprovementType;
+import net.sf.freecol.common.model.TileType;
+import net.sf.freecol.common.model.Turn;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitChangeType;
+import net.sf.freecol.common.model.UnitTypeChange;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.model.WorkLocation;
+import net.sf.freecol.common.networking.ChangeSet;
+import net.sf.freecol.common.networking.ChangeSet.See;
+import net.sf.freecol.common.networking.FountainOfYouthMessage;
+import net.sf.freecol.common.networking.NewLandNameMessage;
+import net.sf.freecol.common.networking.NewRegionNameMessage;
+import net.sf.freecol.common.option.GameOptions;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.common.util.RandomChoice;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import static net.sf.freecol.common.util.RandomUtils.*;
+
+
+/**
+ * Server version of a unit.
+ */
+public class ServerUnit extends Unit implements TurnTaker {
+
+<span class="fc" id="L86">    private static final Logger logger = Logger.getLogger(ServerUnit.class.getName());</span>
+
+
+    /**
+     * Trivial constructor for Game.newInstance.
+     *
+     * @param game The {@code Game} in which this unit belongs.
+     * @param id The object identifier.
+     */
+    public ServerUnit(Game game, String id) {
+<span class="fc" id="L96">        super(game, id);</span>
+<span class="fc" id="L97">    }</span>
+
+    /**
+     * Creates a new ServerUnit.
+     *
+     * -vis: Visibility issues depending on location.
+     * -til: Changes appearance if unit goes into a colony.
+     *
+     * @param game The {@code Game} in which this unit belongs.
+     * @param location The {@code Location} to place this at.
+     * @param owner The {@code Player} owning this unit.
+     * @param type The type of the unit.
+     */
+    public ServerUnit(Game game, Location location, Player owner,
+                      UnitType type) {
+<span class="fc" id="L112">        this(game, location, owner, type, type.getDefaultRole());</span>
+<span class="fc" id="L113">    }</span>
+
+    /**
+     * Create a new ServerUnit from a template.
+     *
+     * Note all FCGOTs are looked up in the specification by id,
+     * allowing the template to derive from a different specification
+     * as might happen when loading a scenario map.
+     *
+     * -vis: Visibility issues depending on location.
+     * -til: Changes appearance if unit goes into a colony.
+     *
+     * @param game The {@code Game} in which this unit belongs.
+     * @param location The {@code Location} to place this at.
+     * @param template A {@code Unit} to copy from.
+     */
+    public ServerUnit(Game game, Location location, Unit template) {
+<span class="nc" id="L130">        this(game, location,</span>
+<span class="nc" id="L131">            game.getPlayerByNationId(template.getOwner().getNationId()),</span>
+<span class="nc" id="L132">            game.getSpecification().getUnitType(template.getType().getId()),</span>
+<span class="nc" id="L133">            game.getSpecification().getDefaultRole());</span>
+
+<span class="nc" id="L135">        final Specification spec = getSpecification();</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (template.getName() != null) setName(template.getName());</span>
+<span class="nc" id="L137">        setNationality(template.getNationality());</span>
+<span class="nc" id="L138">        setEthnicity(template.getEthnicity());</span>
+<span class="nc" id="L139">        workLeft = template.getWorkLeft();</span>
+<span class="nc" id="L140">        workType = spec.getGoodsType(template.getWorkType().getId());</span>
+<span class="nc" id="L141">        movesLeft = template.getMovesLeft();</span>
+<span class="nc" id="L142">        hitPoints = template.getType().getHitPoints();</span>
+<span class="nc" id="L143">        changeRole(spec.getRole(template.getRole().getId()),</span>
+<span class="nc" id="L144">                   template.getRoleCount());</span>
+<span class="nc" id="L145">        setStateUnchecked(template.getState());</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (getType().canCarryGoods()) {</span>
+<span class="nc" id="L147">            setGoodsContainer(new GoodsContainer(game, this));</span>
+        }
+<span class="nc" id="L149">        this.visibleGoodsCount = -1;</span>
+<span class="nc" id="L150">    }</span>
+
+    /**
+     * Creates a new ServerUnit.
+     *
+     * -vis: Visibility issues depending on location.
+     * -til: Changes appearance if unit goes into a colony.
+     *
+     * @param game The {@code Game} in which this unit belongs.
+     * @param location The {@code Location} to place this at.
+     * @param owner The {@code Player} owning this unit.
+     * @param type The type of the unit.
+     * @param role The role of the unit.
+     */
+    public ServerUnit(Game game, Location location, Player owner,
+                      UnitType type, Role role) {
+<span class="fc" id="L166">        super(game);</span>
+
+<span class="fc" id="L168">        this.owner = owner;</span>
+<span class="fc" id="L169">        this.type = type;</span>
+<span class="fc" id="L170">        this.state = UnitState.ACTIVE; // placeholder</span>
+<span class="fc" id="L171">        this.role = getSpecification().getDefaultRole(); // placeholder</span>
+<span class="fc" id="L172">        this.location = null;</span>
+<span class="fc" id="L173">        this.entryLocation = null;</span>
+<span class="fc" id="L174">        this.workLeft = -1;</span>
+<span class="fc" id="L175">        this.workType = null;</span>
+<span class="fc" id="L176">        this.movesLeft = getInitialMovesLeft();</span>
+<span class="fc" id="L177">        this.experienceType = null;</span>
+<span class="fc" id="L178">        this.experience = 0;</span>
+<span class="fc" id="L179">        this.workImprovement = null;</span>
+<span class="fc" id="L180">        this.student = this.teacher = null;</span>
+<span class="fc" id="L181">        this.turnsOfTraining = 0;</span>
+<span class="fc" id="L182">        this.indianSettlement = null;</span>
+<span class="fc" id="L183">        this.destination = null;</span>
+<span class="fc" id="L184">        this.tradeRoute = null;</span>
+<span class="fc" id="L185">        this.currentStop = -1;</span>
+<span class="fc" id="L186">        this.treasureAmount = 0;</span>
+<span class="fc" id="L187">        this.attrition = 0;</span>
+<span class="fc" id="L188">        this.visibleGoodsCount = -1;</span>
+
+        // Check for creation change
+<span class="fc" id="L191">        UnitTypeChange uc = getUnitChange(UnitChangeType.CREATION);</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        if (uc != null) this.type = uc.to;</span>
+
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (this.type.hasAbility(Ability.PERSON)) {</span>
+<span class="fc" id="L195">            this.nationality = owner.getNationId();</span>
+<span class="fc" id="L196">            this.ethnicity = nationality;</span>
+        } else {
+<span class="fc" id="L198">            this.nationality = null;</span>
+<span class="fc" id="L199">            this.ethnicity = null;</span>
+        }
+<span class="fc" id="L201">        this.hitPoints = this.type.getHitPoints();</span>
+
+        // Fix up role, state and location now other values are present.
+<span class="fc" id="L204">        changeRole(role, role.getMaximumCount());</span>
+<span class="fc" id="L205">        setStateUnchecked(state);</span>
+<span class="fc" id="L206">        setLocation(location);//-vis(owner),-til</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        if (getType().canCarryGoods()) {</span>
+<span class="fc" id="L208">            setGoodsContainer(new GoodsContainer(game, this));</span>
+        }
+
+<span class="fc" id="L211">        this.owner.addUnit(this);</span>
+<span class="fc" id="L212">    }</span>
+
+
+    /**
+     * Completes a tile improvement.
+     *
+     * +til: Resolves the change of appearance.
+     *
+     * @param random A pseudo-random number source.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    private void csImproveTile(Random random, ChangeSet cs) {
+<span class="fc" id="L224">        Tile tile = getTile();</span>
+<span class="fc" id="L225">        tile.cacheUnseen();//+til</span>
+<span class="fc" id="L226">        AbstractGoods deliver = getWorkImprovement().getType()</span>
+<span class="fc" id="L227">            .getProduction(tile.getType());</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        if (deliver != null) { // Deliver goods if any</span>
+<span class="fc" id="L229">            final Turn turn = getGame().getTurn();</span>
+<span class="fc" id="L230">            int amount = deliver.getAmount();</span>
+<span class="fc" id="L231">            amount = (int)this.apply(amount, turn,</span>
+<span class="fc" id="L232">                Modifier.TILE_TYPE_CHANGE_PRODUCTION, deliver.getType());</span>
+<span class="fc" id="L233">            Settlement settlement = tile.getOwningSettlement();</span>
+<span class="pc bpc" id="L234" title="1 of 4 branches missed.">            if (settlement != null &amp;&amp; owner.owns(settlement)) {</span>
+<span class="fc" id="L235">                amount = (int)settlement.apply(amount, turn,</span>
+<span class="fc" id="L236">                    Modifier.TILE_TYPE_CHANGE_PRODUCTION, deliver.getType());</span>
+<span class="fc" id="L237">                settlement.addGoods(deliver.getType(), amount);</span>
+            }
+        }
+
+        // Finish up
+<span class="fc" id="L242">        TileImprovement ti = getWorkImprovement();</span>
+<span class="fc" id="L243">        TileType changeType = ti.getChange(tile.getType());</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (changeType != null) {</span>
+            // Changes like clearing a forest need to be completed,
+            // whereas for changes like road building the improvement
+            // is already added and now complete.
+<span class="fc" id="L248">            tile.changeType(changeType);//-til</span>
+        }
+
+        // Does a resource get exposed?
+<span class="fc" id="L252">        TileImprovementType tileImprovementType = ti.getType();</span>
+<span class="fc" id="L253">        int exposeResource = tileImprovementType.getExposeResourcePercent();</span>
+<span class="pc bpc" id="L254" title="1 of 4 branches missed.">        if (exposeResource &gt; 0 &amp;&amp; !tile.hasResource()) {</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">            if (randomInt(logger, &quot;Expose resource&quot;, random, 100)</span>
+                &lt; exposeResource) {
+<span class="fc" id="L257">                ResourceType resType = RandomChoice</span>
+<span class="fc" id="L258">                    .getWeightedRandom(logger, &quot;Resource type&quot;,</span>
+<span class="fc" id="L259">                                       tile.getType().getResourceTypes(),</span>
+                                       random);
+<span class="fc" id="L261">                int minValue = resType.getMinValue();</span>
+<span class="fc" id="L262">                int maxValue = resType.getMaxValue();</span>
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">                int value = minValue + ((minValue == maxValue) ? 0</span>
+<span class="pc" id="L264">                    : randomInt(logger, &quot;Resource quantity&quot;,</span>
+                                random, maxValue - minValue + 1));
+<span class="fc" id="L266">                tile.addResource(new Resource(getGame(), tile,</span>
+                                              resType, value));//-til
+            }
+        }
+
+        // Expend equipment.
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (changeRoleCount(-ti.getType().getExpendedAmount())) {</span>
+            // FIXME: assumes tools, make more generic, use
+            // ti.getType().getRequiredRole().getRequiredGoods()
+<span class="fc" id="L275">            final Player owner = getOwner();</span>
+<span class="fc" id="L276">            StringTemplate locName</span>
+<span class="fc" id="L277">                = getLocation().getLocationLabelFor(owner);</span>
+<span class="fc" id="L278">            String messageId = getType() + &quot;.noMoreTools&quot;;</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">            if (!Messages.containsKey(messageId)) {</span>
+<span class="nc" id="L280">                messageId = &quot;model.unit.noMoreTools&quot;;</span>
+            }
+<span class="fc" id="L282">            cs.addMessage(owner,</span>
+                new ModelMessage(ModelMessage.MessageType.WARNING,
+                                 messageId, this)
+<span class="fc" id="L285">                    .addStringTemplate(&quot;%unit%&quot;, getLabel())</span>
+<span class="fc" id="L286">                    .addStringTemplate(&quot;%location%&quot;, locName));</span>
+        }
+
+        // Cancel other co-located improvements of the same type
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        for (Unit unit : transform(tile.getUnits(),</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">                u -&gt; (u.getWorkImprovement() != null</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">                    &amp;&amp; u.getWorkImprovement().getType() == ti.getType()</span>
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">                    &amp;&amp; u.getState() == UnitState.IMPROVING))) {</span>
+<span class="fc" id="L294">            unit.setWorkLeft(-1);</span>
+<span class="fc" id="L295">            unit.setWorkImprovement(null);</span>
+<span class="fc" id="L296">            unit.setState(UnitState.ACTIVE);</span>
+<span class="fc" id="L297">            unit.setMovesLeft(0);</span>
+<span class="fc" id="L298">        }</span>
+<span class="fc" id="L299">    }</span>
+
+    /**
+     * Embark a unit.
+     *
+     * @param carrier The {@code Unit} to embark on.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    public void csEmbark(Unit carrier, ChangeSet cs) {
+<span class="fc" id="L308">        final Player owner = getOwner();</span>
+
+<span class="fc" id="L310">        Location oldLocation = getLocation();</span>
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">        Colony colony = (oldLocation instanceof WorkLocation) ? getColony()</span>
+<span class="fc" id="L312">            : null;</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">        if (colony != null) oldLocation.getTile().cacheUnseen();//+til</span>
+<span class="fc" id="L314">        setLocation(carrier);//-vis: only if on a different tile</span>
+                             //-til if moving from colony
+<span class="fc" id="L316">        setMovesLeft(0);</span>
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">        cs.add(See.only(owner), (colony != null) ? colony</span>
+<span class="fc" id="L318">            : (FreeColGameObject)oldLocation);</span>
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">        if (carrier.getLocation() != oldLocation) {</span>
+<span class="fc" id="L320">            cs.add(See.only(owner), carrier);</span>
+        }
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">        if (oldLocation instanceof Tile) {</span>
+<span class="fc" id="L323">            Tile tile = carrier.getTile();</span>
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">            if (tile != oldLocation) {</span>
+<span class="fc" id="L325">                cs.addMove(See.only(owner), this, oldLocation, tile);</span>
+<span class="fc" id="L326">                owner.invalidateCanSeeTiles();//+vis(owner)</span>
+            }
+<span class="fc" id="L328">            cs.addDisappear(owner, (Tile)oldLocation, this);</span>
+        }
+<span class="fc" id="L330">    }</span>
+
+    /**
+     * Repair a unit.
+     *
+     * @param cs A {@code ChangeSet} to update.
+     */
+    public void csRepairUnit(ChangeSet cs) {
+<span class="nc" id="L338">        final Player owner =  getOwner();</span>
+<span class="nc" id="L339">        setHitPoints(getHitPoints() + 1);</span>
+<span class="nc bnc" id="L340" title="All 2 branches missed.">        if (!isDamaged()) {</span>
+<span class="nc" id="L341">            Location loc = Location.upLoc(getLocation());</span>
+<span class="nc" id="L342">            cs.addMessage(owner,</span>
+                new ModelMessage(ModelMessage.MessageType.UNIT_REPAIRED,
+                                 &quot;model.unit.unitRepaired&quot;,
+                                 this, (FreeColGameObject)loc)
+<span class="nc" id="L346">                    .addStringTemplate(&quot;%unit%&quot;, getLabel())</span>
+<span class="nc" id="L347">                    .addStringTemplate(&quot;%repairLocation%&quot;,</span>
+<span class="nc" id="L348">                        loc.getLocationLabelFor(owner)));</span>
+<span class="nc" id="L349">            setState(UnitState.ACTIVE);</span>
+        }
+<span class="nc" id="L351">        cs.addPartial(See.only(owner), this,</span>
+<span class="nc" id="L352">            &quot;hitPoints&quot;, String.valueOf(this.getHitPoints()));</span>
+<span class="nc" id="L353">    }</span>
+
+    /**
+     * If a unit moves, check if an opposing naval unit slows it down.
+     * Note that the unit moves are reduced here.
+     *
+     * @param newTile The {@code Tile} the unit is moving to.
+     * @param random A pseudo-random number source.
+     * @return Either an enemy unit that causes a slowdown, or null if none.
+     */
+    private Unit getSlowedBy(Tile newTile, Random random) {
+<span class="fc" id="L364">        final Player player = getOwner();</span>
+<span class="fc" id="L365">        final Game game = getGame();</span>
+<span class="fc" id="L366">        final CombatModel combatModel = game.getCombatModel();</span>
+<span class="fc" id="L367">        final boolean pirate = hasAbility(Ability.PIRACY);</span>
+<span class="fc" id="L368">        Unit attacker = null;</span>
+<span class="fc" id="L369">        double attackPower = 0, totalAttackPower = 0;</span>
+
+<span class="fc bfc" id="L371" title="All 4 branches covered.">        if (!isNaval() || getMovesLeft() &lt;= 0) return null;</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">        for (Tile tile : newTile.getSurroundingTiles(1)) {</span>
+            // Ships in settlements do not slow enemy ships, but:
+            // FIXME: should a fortress slow a ship?
+            Player enemy;
+<span class="fc bfc" id="L376" title="All 2 branches covered.">            if (tile.isLand()</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">                || tile.getColony() != null</span>
+<span class="pc bpc" id="L378" title="1 of 2 branches missed.">                || tile.getFirstUnit() == null</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">                || (enemy = tile.getFirstUnit().getOwner()) == player) continue;</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">            for (Unit enemyUnit : transform(tile.getUnits(), u -&gt;</span>
+<span class="nc bnc" id="L381" title="All 4 branches missed.">                    (u.isNaval()</span>
+<span class="nc bnc" id="L382" title="All 2 branches missed.">                        &amp;&amp; (pirate || u.hasAbility(Ability.PIRACY)</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">                            || (u.isOffensiveUnit()</span>
+<span class="nc bnc" id="L384" title="All 2 branches missed.">                                &amp;&amp; player.atWarWith(enemy)))))) {</span>
+<span class="nc" id="L385">                double power = combatModel.getOffencePower(enemyUnit, this);</span>
+<span class="nc" id="L386">                totalAttackPower += power;</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">                if (power &gt; attackPower) {</span>
+<span class="nc" id="L388">                    attacker = enemyUnit;</span>
+<span class="nc" id="L389">                    attackPower = power;</span>
+                }
+<span class="nc" id="L391">            }</span>
+<span class="nc" id="L392">        }</span>
+<span class="pc bpc" id="L393" title="1 of 2 branches missed.">        if (attacker != null) {</span>
+<span class="nc" id="L394">            double defencePower = combatModel.getDefencePower(attacker, this);</span>
+<span class="nc" id="L395">            double totalProbability = totalAttackPower + defencePower;</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">            if (randomInt(logger, &quot;Slowed&quot;, random,</span>
+<span class="nc" id="L397">                    (int)Math.round(totalProbability + 1)) &lt; totalAttackPower) {</span>
+<span class="nc" id="L398">                int diff = Math.max(0,</span>
+<span class="nc" id="L399">                    (int)Math.round(totalAttackPower - defencePower));</span>
+<span class="nc" id="L400">                int moves = Math.min(9, 3 + diff / 3);</span>
+<span class="nc" id="L401">                setMovesLeft(getMovesLeft() - moves);</span>
+<span class="nc" id="L402">                logger.info(getId() + &quot; slowed by &quot; + attacker.getId()</span>
+<span class="nc" id="L403">                    + &quot; by &quot; + Integer.toString(moves) + &quot; moves.&quot;);</span>
+<span class="nc" id="L404">            } else {</span>
+<span class="nc" id="L405">                attacker = null;</span>
+            }
+        }
+<span class="fc" id="L408">        return attacker;</span>
+    }
+
+    /**
+     * Explores a lost city, finding a native burial ground.
+     *
+     * @param cs A {@code ChangeSet} to add changes to.
+     */
+    private void csNativeBurialGround(ChangeSet cs) {
+<span class="nc" id="L417">        final Player owner = getOwner();</span>
+<span class="nc" id="L418">        final Tile tile = getTile();</span>
+<span class="nc" id="L419">        final Player indianPlayer = tile.getOwner();</span>
+<span class="nc" id="L420">        ((ServerPlayer)owner).csContact(indianPlayer, cs);</span>
+<span class="nc" id="L421">        ((ServerPlayer)indianPlayer).csModifyTension(owner,</span>
+<span class="nc" id="L422">            Tension.Level.HATEFUL.getLimit(), cs);//+til</span>
+<span class="nc" id="L423">        ((ServerPlayer)owner).csChangeStance(Stance.WAR, indianPlayer, true, cs);</span>
+<span class="nc" id="L424">        cs.addMessage(owner,</span>
+            new ModelMessage(ModelMessage.MessageType.LOST_CITY_RUMOUR,
+<span class="nc" id="L426">                             RumourType.BURIAL_GROUND.getDescriptionKey(),</span>
+                             owner, this)
+<span class="nc" id="L428">                .addStringTemplate(&quot;%nation%&quot;, indianPlayer.getNationLabel()));</span>
+<span class="nc" id="L429">    }</span>
+
+    /**
+     * Explore a lost city.
+     *
+     * @param random A pseudo-random number source.
+     * @param cs A {@code ChangeSet} to add changes to.
+     * @return True if the unit survives.
+     */
+    private boolean csExploreLostCityRumour(Random random, ChangeSet cs) {
+<span class="nc" id="L439">        final Player owner = getOwner();</span>
+<span class="nc" id="L440">        Tile tile = getTile();</span>
+<span class="nc" id="L441">        LostCityRumour lostCity = tile.getLostCityRumour();</span>
+<span class="nc bnc" id="L442" title="All 2 branches missed.">        if (lostCity == null) return true;</span>
+
+<span class="nc" id="L444">        Game game = getGame();</span>
+<span class="nc" id="L445">        Specification spec = game.getSpecification();</span>
+<span class="nc" id="L446">        int difficulty = spec.getInteger(GameOptions.RUMOUR_DIFFICULTY);</span>
+<span class="nc" id="L447">        int dx = 10 - difficulty;</span>
+        UnitType unitType;
+<span class="nc" id="L449">        Unit newUnit = null;</span>
+<span class="nc" id="L450">        List&lt;UnitType&gt; treasureUnitTypes</span>
+<span class="nc" id="L451">            = spec.getUnitTypesWithAbility(Ability.CARRY_TREASURE);</span>
+
+<span class="nc" id="L453">        RumourType rumour = lostCity.getType();</span>
+<span class="nc bnc" id="L454" title="All 2 branches missed.">        if (rumour == null) {</span>
+<span class="nc" id="L455">            rumour = lostCity.chooseType(this, random);</span>
+        }
+        // Filter out failing cases that could only occur if the
+        // type was explicitly set in debug mode.
+<span class="nc bnc" id="L459" title="All 3 branches missed.">        switch (rumour) {</span>
+        case BURIAL_GROUND: case MOUNDS:
+<span class="nc bnc" id="L461" title="All 4 branches missed.">            if (tile.getOwner() == null || !tile.getOwner().isIndian()) {</span>
+<span class="nc" id="L462">                rumour = RumourType.NOTHING;</span>
+            }
+            break;
+        case LEARN:
+<span class="nc bnc" id="L466" title="All 2 branches missed.">            if (getUnitChange(UnitChangeType.LOST_CITY) != null) {</span>
+<span class="nc" id="L467">                rumour = RumourType.NOTHING;</span>
+            }
+            break;
+        default:
+            break;
+        }
+
+        // Mounds are a special case that degrade to other cases.
+<span class="nc bnc" id="L475" title="All 2 branches missed.">        boolean mounds = rumour == RumourType.MOUNDS;</span>
+<span class="nc bnc" id="L476" title="All 2 branches missed.">        if (mounds) {</span>
+<span class="nc" id="L477">            boolean done = false;</span>
+<span class="nc" id="L478">            boolean nothing = false;</span>
+<span class="nc bnc" id="L479" title="All 2 branches missed.">            while (!done) {</span>
+<span class="nc" id="L480">                rumour = lostCity.chooseType(this, random);</span>
+<span class="nc bnc" id="L481" title="All 5 branches missed.">                switch (rumour) {</span>
+                case NOTHING: // Do not accept nothing-result the first time.
+<span class="nc bnc" id="L483" title="All 2 branches missed.">                    if (nothing) {</span>
+<span class="nc" id="L484">                        done = true;</span>
+                    } else {
+<span class="nc" id="L486">                        nothing = true;</span>
+                    }
+<span class="nc" id="L488">                    break;</span>
+                case EXPEDITION_VANISHES: case TRIBAL_CHIEF:
+<span class="nc" id="L490">                    done = true;</span>
+<span class="nc" id="L491">                    break;</span>
+                case RUINS:
+<span class="nc" id="L493">                    done = true;</span>
+                    // Misiulo confirms that in Col1 deSoto does *not*
+                    // protect against a burial ground at the same
+                    // time as a ruins find!
+<span class="nc" id="L497">                    if (randomInt(logger, &quot;Ruins+Burial&quot;, random, 100)</span>
+<span class="nc bnc" id="L498" title="All 2 branches missed.">                        &gt;= spec.getPercentage(GameOptions.BAD_RUMOUR)) break;</span>
+                    // Fall through
+                case BURIAL_GROUND:
+<span class="nc bnc" id="L501" title="All 2 branches missed.">                    done = tile.getOwner() != null</span>
+<span class="nc bnc" id="L502" title="All 2 branches missed.">                        &amp;&amp; tile.getOwner().isIndian();</span>
+<span class="nc" id="L503">                    break;</span>
+                default:
+                    ; // unacceptable result for mounds
+                }
+            }
+        }
+
+<span class="nc" id="L510">        logger.info(&quot;Unit &quot; + getId() + &quot; is exploring rumour &quot; + rumour);</span>
+<span class="nc" id="L511">        boolean result = true;</span>
+<span class="nc" id="L512">        String key = rumour.getDescriptionKey();</span>
+<span class="nc bnc" id="L513" title="All 10 branches missed.">        switch (rumour) {</span>
+        case BURIAL_GROUND:
+<span class="nc" id="L515">            csNativeBurialGround(cs);</span>
+<span class="nc" id="L516">            break;</span>
+        case EXPEDITION_VANISHES:
+<span class="nc" id="L518">            cs.addMessage(owner,</span>
+                new ModelMessage(ModelMessage.MessageType.LOST_CITY_RUMOUR,
+                                 key, owner));
+<span class="nc" id="L521">            result = false;</span>
+<span class="nc" id="L522">            break;</span>
+        case NOTHING:
+<span class="nc" id="L524">            cs.addMessage(owner,</span>
+<span class="nc" id="L525">                lostCity.getNothingMessage(owner, mounds, random));</span>
+<span class="nc" id="L526">            break;</span>
+        case LEARN:
+<span class="nc" id="L528">            StringTemplate oldName = getLabel();</span>
+<span class="nc" id="L529">            UnitTypeChange uc = getRandomMember(logger, &quot;Choose learn&quot;,</span>
+<span class="nc" id="L530">                spec.getUnitChanges(UnitChangeType.LOST_CITY, getType()),</span>
+                random);
+<span class="nc" id="L532">            changeType(uc.to);//-vis(serverPlayer)</span>
+<span class="nc" id="L533">            owner.invalidateCanSeeTiles();//+vis(serverPlayer)</span>
+<span class="nc" id="L534">            cs.addMessage(owner,</span>
+                new ModelMessage(ModelMessage.MessageType.LOST_CITY_RUMOUR,
+                                 key, owner, this)
+<span class="nc" id="L537">                    .addStringTemplate(&quot;%unit%&quot;, oldName)</span>
+<span class="nc" id="L538">                    .addNamed(&quot;%type%&quot;, getType()));</span>
+<span class="nc" id="L539">            break;</span>
+        case TRIBAL_CHIEF:
+<span class="nc" id="L541">            int chiefAmount = randomInt(logger, &quot;Chief base amount&quot;,</span>
+                                        random, dx * 10) + dx * 5;
+<span class="nc" id="L543">            owner.modifyGold(chiefAmount);</span>
+<span class="nc" id="L544">            cs.addPartial(See.only(owner), owner,</span>
+<span class="nc" id="L545">                &quot;gold&quot;, String.valueOf(owner.getGold()),</span>
+<span class="nc" id="L546">                &quot;score&quot;, String.valueOf(owner.getScore()));</span>
+<span class="nc bnc" id="L547" title="All 2 branches missed.">            if (mounds) key = rumour.getAlternateDescriptionKey(&quot;mounds&quot;);</span>
+<span class="nc" id="L548">            cs.addMessage(owner,</span>
+                new ModelMessage(ModelMessage.MessageType.LOST_CITY_RUMOUR,
+                                 key, owner, this)
+<span class="nc" id="L551">                    .addAmount(&quot;%money%&quot;, chiefAmount));</span>
+<span class="nc" id="L552">            owner.invalidateCanSeeTiles();//+vis(serverPlayer)</span>
+<span class="nc" id="L553">            break;</span>
+        case COLONIST:
+<span class="nc" id="L555">            List&lt;UnitType&gt; foundTypes</span>
+<span class="nc" id="L556">                = spec.getUnitTypesWithAbility(Ability.FOUND_IN_LOST_CITY);</span>
+<span class="nc" id="L557">            unitType = getRandomMember(logger, &quot;Choose found&quot;,</span>
+                                       foundTypes, random);
+<span class="nc" id="L559">            newUnit = new ServerUnit(game, tile, owner,</span>
+                                     unitType);//-vis: safe, scout on tile
+<span class="nc" id="L561">            cs.addMessage(owner,</span>
+                new ModelMessage(ModelMessage.MessageType.LOST_CITY_RUMOUR,
+                                 key, owner, newUnit));
+<span class="nc" id="L564">            break;</span>
+        case CIBOLA:
+<span class="nc" id="L566">            String cityName = NameCache.getNextCityOfCibola();</span>
+<span class="nc bnc" id="L567" title="All 2 branches missed.">            if (cityName != null) {</span>
+<span class="nc" id="L568">                int treasureAmount = randomInt(logger,</span>
+                    &quot;Base treasure amount&quot;, random, dx * 600) + dx * 300;
+<span class="nc" id="L570">                unitType = getRandomMember(logger, &quot;Choose train&quot;,</span>
+                                           treasureUnitTypes, random);
+<span class="nc" id="L572">                newUnit = new ServerUnit(game, tile, owner,</span>
+                                         unitType);//-vis: safe, scout on tile
+<span class="nc" id="L574">                newUnit.setTreasureAmount(treasureAmount);</span>
+<span class="nc" id="L575">                cs.addMessage(owner,</span>
+                    new ModelMessage(ModelMessage.MessageType.LOST_CITY_RUMOUR,
+                                     key, owner, newUnit)
+<span class="nc" id="L578">                        .addName(&quot;%city%&quot;, cityName)</span>
+<span class="nc" id="L579">                        .addAmount(&quot;%money%&quot;, treasureAmount));</span>
+<span class="nc" id="L580">                cs.addGlobalHistory(game,</span>
+<span class="nc" id="L581">                    new HistoryEvent(game.getTurn(),</span>
+                        HistoryEvent.HistoryEventType.CITY_OF_GOLD, owner)
+<span class="nc" id="L583">                    .addStringTemplate(&quot;%nation%&quot;, owner.getNationLabel())</span>
+<span class="nc" id="L584">                    .addName(&quot;%city%&quot;, cityName)</span>
+<span class="nc" id="L585">                    .addAmount(&quot;%treasure%&quot;, treasureAmount));</span>
+<span class="nc" id="L586">                break;</span>
+            }
+            // Fall through, found all the cities of gold.
+        case RUINS:
+<span class="nc" id="L590">            int ruinsAmount = randomInt(logger, &quot;Base ruins amount&quot;, random,</span>
+                                        dx * 2) * 300 + 50;
+<span class="nc bnc" id="L592" title="All 2 branches missed.">            if (ruinsAmount &lt; 500) { // FIXME: remove magic number</span>
+<span class="nc" id="L593">                owner.modifyGold(ruinsAmount);</span>
+<span class="nc" id="L594">                cs.addPartial(See.only(owner), owner,</span>
+<span class="nc" id="L595">                    &quot;gold&quot;, String.valueOf(owner.getGold()),</span>
+<span class="nc" id="L596">                    &quot;score&quot;, String.valueOf(owner.getScore()));</span>
+            } else {
+<span class="nc" id="L598">                unitType = getRandomMember(logger, &quot;Choose train&quot;,</span>
+                                           treasureUnitTypes, random);
+<span class="nc" id="L600">                newUnit = new ServerUnit(game, tile, owner,</span>
+                                         unitType);//-vis: safe, scout on tile
+<span class="nc" id="L602">                newUnit.setTreasureAmount(ruinsAmount);</span>
+            }
+<span class="nc bnc" id="L604" title="All 2 branches missed.">            if (mounds) key = rumour.getAlternateDescriptionKey(&quot;mounds&quot;);</span>
+<span class="nc" id="L605">            cs.addMessage(owner,</span>
+                new ModelMessage(ModelMessage.MessageType.LOST_CITY_RUMOUR,
+                                 key, owner,
+<span class="nc bnc" id="L608" title="All 2 branches missed.">                                 ((newUnit != null) ? newUnit : this))</span>
+<span class="nc" id="L609">                    .addAmount(&quot;%money%&quot;, ruinsAmount));</span>
+<span class="nc" id="L610">            break;</span>
+        case FOUNTAIN_OF_YOUTH:
+<span class="nc" id="L612">            ServerEurope europe = (ServerEurope)owner.getEurope();</span>
+<span class="nc bnc" id="L613" title="All 2 branches missed.">            if (europe == null) {</span>
+                // FoY should now be disabled for non-colonial
+                // players, but leave this in for now as it is harmless.
+<span class="nc" id="L616">                cs.addMessage(owner,</span>
+                    new ModelMessage(ModelMessage.MessageType.LOST_CITY_RUMOUR,
+<span class="nc" id="L618">                                     rumour.getAlternateDescriptionKey(&quot;noEurope&quot;),</span>
+                                     owner, this));
+            } else {
+<span class="nc bnc" id="L621" title="All 2 branches missed.">                if (owner.isAI()) { // FIXME: let the AI select</span>
+<span class="nc" id="L622">                    europe.generateFountainRecruits(dx, random);</span>
+<span class="nc" id="L623">                    cs.add(See.only(owner), europe);</span>
+                } else {
+                    // Remember, and ask player to select
+<span class="nc" id="L626">                    ((ServerPlayer)owner).setRemainingEmigrants(dx);</span>
+<span class="nc" id="L627">                    cs.add(See.only(owner),</span>
+                           new FountainOfYouthMessage(dx));
+                }
+<span class="nc" id="L630">                cs.addMessage(owner,</span>
+                     new ModelMessage(ModelMessage.MessageType.LOST_CITY_RUMOUR,
+                                      key, owner, this));
+<span class="nc" id="L633">                cs.addAttribute(See.only(owner),</span>
+                                &quot;sound&quot;, &quot;sound.event.fountainOfYouth&quot;);
+            }
+<span class="nc" id="L636">            break;</span>
+        case NO_SUCH_RUMOUR: case MOUNDS:
+        default:
+<span class="nc" id="L639">            logger.warning(&quot;Bogus rumour type: &quot; + rumour);</span>
+            break;
+        }
+<span class="nc" id="L642">        tile.cacheUnseen();//+til</span>
+<span class="nc" id="L643">        tile.removeLostCityRumour();//-til</span>
+<span class="nc" id="L644">        return result;</span>
+    }
+
+    /**
+     * Check for new contacts at a tile.
+     *
+     * @param newTile The {@code Tile} to check.
+     * @param firstLanding True if this is the special &quot;first landing&quot;
+     * @param cs A {@code ChangeSet} to update.
+     */
+    public void csNewContactCheck(Tile newTile, boolean firstLanding,
+                                  ChangeSet cs) {
+<span class="fc" id="L656">        final Player owner = this.getOwner();</span>
+<span class="fc" id="L657">        Set&lt;ServerPlayer&gt; pending = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L658" title="All 2 branches covered.">        for (Tile t : transform(newTile.getSurroundingTiles(1, 1),</span>
+<span class="pc bpc" id="L659" title="2 of 4 branches missed.">                                nt -&gt; nt != null &amp;&amp; nt.isLand())) {</span>
+<span class="fc" id="L660">            Settlement settlement = t.getSettlement();</span>
+<span class="fc" id="L661">            Unit unit = null;</span>
+<span class="fc bfc" id="L662" title="All 2 branches covered.">            ServerPlayer other = (settlement != null)</span>
+<span class="fc" id="L663">                ? (ServerPlayer)settlement.getOwner()</span>
+<span class="fc bfc" id="L664" title="All 2 branches covered.">                : ((unit = t.getFirstUnit()) != null)</span>
+<span class="fc" id="L665">                ? (ServerPlayer)unit.getOwner()</span>
+<span class="fc" id="L666">                : null;</span>
+<span class="pc bpc" id="L667" title="1 of 4 branches missed.">            if (other == null</span>
+                || other == owner
+<span class="pc bpc" id="L669" title="1 of 2 branches missed.">                || pending.contains(other)) continue; // No contact</span>
+<span class="fc bfc" id="L670" title="All 2 branches covered.">            if (((ServerPlayer)owner).csContact(other, cs)) {</span>
+                // First contact.  Note contact pending because
+                // European first contact now requires a diplomacy
+                // interaction to complete before leaving UNCONTACTED
+                // state.
+<span class="fc" id="L675">                pending.add(other);</span>
+<span class="fc bfc" id="L676" title="All 2 branches covered.">                if (owner.isEuropean()) {</span>
+<span class="pc bpc" id="L677" title="1 of 2 branches missed.">                    if (other.isIndian()) {</span>
+<span class="pc bpc" id="L678" title="1 of 4 branches missed.">                        Tile offer = (firstLanding &amp;&amp; other.owns(newTile))</span>
+<span class="fc" id="L679">                            ? newTile</span>
+<span class="fc" id="L680">                            : null;</span>
+<span class="fc" id="L681">                        ((ServerPlayer)owner).csNativeFirstContact(other, offer, cs);</span>
+<span class="fc" id="L682">                    } else {</span>
+<span class="nc" id="L683">                        ((ServerPlayer)owner).csEuropeanFirstContact(this,</span>
+                            settlement, unit, cs);
+                    }
+                } else {
+<span class="pc bpc" id="L687" title="1 of 2 branches missed.">                    if (other.isIndian()) {</span>
+                        ; // Do nothing
+                    } else {
+<span class="fc" id="L690">                        other.csNativeFirstContact(owner, null, cs);</span>
+                    }
+                }
+            }
+
+            // Initialize alarm for native settlements or units and
+            // notify of contact.
+<span class="fc" id="L697">            Player contactPlayer = owner;</span>
+<span class="fc bfc" id="L698" title="All 2 branches covered.">            IndianSettlement is = (settlement instanceof IndianSettlement)</span>
+<span class="fc" id="L699">                ? (IndianSettlement)settlement</span>
+<span class="fc" id="L700">                : null;</span>
+<span class="fc bfc" id="L701" title="All 4 branches covered.">            if (is != null</span>
+                || (unit != null
+<span class="pc bpc" id="L703" title="1 of 4 branches missed.">                    &amp;&amp; (is = unit.getHomeIndianSettlement()) != null)</span>
+                || (unit != null
+<span class="fc bfc" id="L705" title="All 2 branches covered.">                    &amp;&amp; (contactPlayer = unit.getOwner()).isEuropean()</span>
+<span class="pc bpc" id="L706" title="1 of 2 branches missed.">                    &amp;&amp; (is = getHomeIndianSettlement()) != null</span>
+<span class="nc bnc" id="L707" title="All 2 branches missed.">                    &amp;&amp; is.getTile() != null)) {</span>
+<span class="fc" id="L708">                Tile copied = is.getTile().getTileToCache();</span>
+<span class="pc bpc" id="L709" title="1 of 2 branches missed.">                if (contactPlayer.hasExplored(is.getTile())</span>
+<span class="fc bfc" id="L710" title="All 2 branches covered.">                    &amp;&amp; is.setContacted(contactPlayer)) {//-til</span>
+<span class="fc" id="L711">                    is.getTile().cacheUnseen(copied);//+til</span>
+<span class="fc" id="L712">                    cs.add(See.only(contactPlayer), is);</span>
+                    // First European contact with native settlement.
+<span class="fc" id="L714">                    StringTemplate nation = is.getOwner().getNationLabel();</span>
+<span class="fc" id="L715">                    cs.addMessage(contactPlayer,</span>
+                        new ModelMessage(ModelMessage.MessageType.FOREIGN_DIPLOMACY,
+                            &quot;model.unit.nativeSettlementContact&quot;,
+                            this, is)
+<span class="fc" id="L719">                        .addStringTemplate(&quot;%nation%&quot;, nation)</span>
+<span class="fc" id="L720">                        .addName(&quot;%settlement%&quot;, is.getName()));</span>
+<span class="fc" id="L721">                    logger.finest(&quot;First contact between &quot;</span>
+<span class="fc" id="L722">                        + contactPlayer.getId()</span>
+                        + &quot; and &quot; + is + &quot; at &quot; + newTile);
+                }                   
+            }
+<span class="fc" id="L726">            csActivateSentries(t, cs);</span>
+<span class="fc" id="L727">        }</span>
+<span class="fc" id="L728">    }</span>
+
+    /**
+     * Activate sentried units on a tile.
+     *
+     * @param tile The {@code Tile} to activate sentries on.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    private void csActivateSentries(Tile tile, ChangeSet cs) {
+<span class="pc bpc" id="L737" title="1 of 2 branches missed.">        for (Unit u : transform(tile.getUnits(),</span>
+<span class="fc" id="L738">                                matchKey(UnitState.SENTRY, Unit::getState))) {</span>
+<span class="nc" id="L739">            u.setState(UnitState.ACTIVE);</span>
+<span class="nc" id="L740">            cs.add(See.perhaps(), u);</span>
+<span class="nc" id="L741">        }</span>
+<span class="fc" id="L742">    }</span>
+
+    /**
+     * Move a unit.
+     *
+     * @param newTile The {@code Tile} to move to.
+     * @param random A pseudo-random number source.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    public void csMove(Tile newTile, Random random, ChangeSet cs) {
+<span class="fc" id="L752">        final Player owner = getOwner();</span>
+
+        // Plan to update tiles that could not be seen before but will
+        // now be within the line-of-sight.
+<span class="fc" id="L756">        final Location oldLocation = getLocation();</span>
+<span class="pc bpc" id="L757" title="1 of 2 branches missed.">        if (oldLocation == null) {</span>
+            // This &quot;can not happen&quot;, but if it did what follows would crash.
+            // Probably best to log and return in the hope of not breaking it worse.
+<span class="nc" id="L760">            logger.warning(&quot;Unit with null location: &quot; + this.toString());</span>
+<span class="nc" id="L761">            return;</span>
+        }
+<span class="fc" id="L763">        Set&lt;Tile&gt; oldTiles = getVisibleTileSet();</span>
+<span class="fc" id="L764">        Set&lt;Tile&gt; newTiles = ((ServerPlayer)owner).collectNewTiles(newTile, getLineOfSight());</span>
+
+        // Update unit state.
+<span class="fc" id="L767">        setState(UnitState.ACTIVE);</span>
+<span class="fc" id="L768">        setStateToAllChildren(UnitState.SENTRY);</span>
+<span class="pc bpc" id="L769" title="1 of 2 branches missed.">        if (oldLocation instanceof HighSeas) {</span>
+            ; // Do not try to calculate move cost from Europe!
+<span class="pc bpc" id="L771" title="1 of 2 branches missed.">        } else if (oldLocation instanceof Unit) {</span>
+<span class="nc" id="L772">            setMovesLeft(0); // Disembark always consumes all moves.</span>
+        } else {
+<span class="pc bpc" id="L774" title="1 of 2 branches missed.">            if (getMoveCost(newTile) &lt;= 0) {</span>
+<span class="nc" id="L775">                logger.warning(&quot;Move of unit: &quot; + getId()</span>
+<span class="nc" id="L776">                    + &quot; from: &quot; + oldLocation.getTile().getId()</span>
+<span class="nc" id="L777">                    + &quot; to: &quot; + newTile.getId()</span>
+<span class="nc" id="L778">                    + &quot; has bogus cost: &quot; + getMoveCost(newTile));</span>
+<span class="nc" id="L779">                setMovesLeft(0);</span>
+            }
+<span class="fc" id="L781">            setMovesLeft(getMovesLeft() - getMoveCost(newTile));</span>
+        }
+
+        // Do the move and explore a rumour if needed.
+<span class="pc bpc" id="L785" title="1 of 2 branches missed.">        if (oldLocation instanceof WorkLocation) {</span>
+<span class="nc" id="L786">            oldLocation.getTile().cacheUnseen();//+til</span>
+        }
+<span class="fc" id="L788">        setLocation(newTile);//-vis(serverPlayer),-til if in colony</span>
+<span class="pc bpc" id="L789" title="3 of 4 branches missed.">        if (newTile.hasLostCityRumour() &amp;&amp; owner.isEuropean()</span>
+<span class="nc bnc" id="L790" title="All 2 branches missed.">            &amp;&amp; !csExploreLostCityRumour(random, cs)) {</span>
+<span class="nc" id="L791">            this.csRemove(See.perhaps().always(owner),</span>
+                oldLocation, cs);//-vis(serverPlayer)
+        }
+<span class="fc" id="L794">        owner.invalidateCanSeeTiles();//+vis(serverPlayer)</span>
+
+        // Update tiles that are now invisible.
+<span class="fc" id="L797">        removeInPlace(oldTiles, t -&gt; owner.canSee(t));</span>
+<span class="fc bfc" id="L798" title="All 2 branches covered.">        if (!oldTiles.isEmpty()) cs.add(See.only(owner), oldTiles);</span>
+
+        // Unless moving in from off-map, update the old location and
+        // make sure the move is always visible even if the unit
+        // dies (including the animation).  However, dead units
+        // make no discoveries.  Always update the new tile.
+<span class="pc bpc" id="L804" title="1 of 2 branches missed.">        if (oldLocation.getTile() != null) {</span>
+<span class="fc" id="L805">            cs.addMove(See.perhaps().always(owner), this,</span>
+                       oldLocation, newTile);
+<span class="fc" id="L807">            cs.add(See.perhaps().always(owner),</span>
+                   (FreeColGameObject)oldLocation);
+        } else {
+<span class="nc" id="L810">            cs.add(See.only(owner), (FreeColGameObject)oldLocation);</span>
+        }
+<span class="fc" id="L812">        cs.add(See.perhaps().always(owner), newTile);</span>
+<span class="pc bpc" id="L813" title="1 of 2 branches missed.">        if (isDisposed()) return;</span>
+<span class="fc" id="L814">        ((ServerPlayer)owner).csSeeNewTiles(newTiles, cs);</span>
+
+<span class="fc bfc" id="L816" title="All 2 branches covered.">        if (newTile.isLand()) {</span>
+            Settlement settlement;
+            int d;
+            // Claim land for tribe?
+<span class="fc bfc" id="L820" title="All 2 branches covered.">            if ((newTile.getOwner() == null</span>
+<span class="fc bfc" id="L821" title="All 2 branches covered.">                    || (newTile.getOwner().isEuropean()</span>
+<span class="pc bpc" id="L822" title="1 of 2 branches missed.">                        &amp;&amp; newTile.getOwningSettlement() == null))</span>
+<span class="fc bfc" id="L823" title="All 2 branches covered.">                &amp;&amp; owner.isIndian()</span>
+<span class="pc bpc" id="L824" title="1 of 2 branches missed.">                &amp;&amp; (settlement = getHomeIndianSettlement()) != null</span>
+<span class="nc" id="L825">                &amp;&amp; ((d = newTile.getDistanceTo(settlement.getTile()))</span>
+<span class="nc" id="L826">                    &lt; (settlement.getRadius()</span>
+<span class="nc bnc" id="L827" title="All 2 branches missed.">                        + settlement.getType().getExtraClaimableRadius()))</span>
+<span class="nc bnc" id="L828" title="All 2 branches missed.">                &amp;&amp; randomInt(logger, &quot;Claim tribal land&quot;, random, d + 1) == 0) {</span>
+<span class="nc" id="L829">                newTile.cacheUnseen();//+til</span>
+<span class="nc" id="L830">                newTile.changeOwnership(owner, settlement);//-til</span>
+            }
+
+            // Check for first landing
+<span class="fc" id="L834">            String newLand = null;</span>
+<span class="pc bpc" id="L835" title="1 of 2 branches missed.">            boolean firstLanding = !owner.isNewLandNamed();</span>
+<span class="pc bpc" id="L836" title="1 of 4 branches missed.">            if (firstLanding &amp;&amp; owner.isEuropean()) {</span>
+<span class="fc" id="L837">                newLand = owner.getNameForNewLand();</span>
+                // Set the default value now to prevent multiple attempts.
+                // The user setNewLandName can override.
+<span class="fc" id="L840">                owner.setNewLandName(newLand);</span>
+<span class="fc" id="L841">                cs.add(See.only(owner),</span>
+                       new NewLandNameMessage(this, newLand));
+<span class="fc" id="L843">                logger.finest(&quot;First landing for &quot; + owner</span>
+                    + &quot; at &quot; + newTile + &quot; with &quot; + this);
+            }
+
+            // Check for new contacts.
+<span class="fc" id="L848">            csNewContactCheck(newTile, firstLanding, cs);</span>
+<span class="fc" id="L849">        } else { // water</span>
+<span class="fc bfc" id="L850" title="All 2 branches covered.">            for (Tile t : transform(newTile.getSurroundingTiles(1, 1),</span>
+<span class="pc bpc" id="L851" title="1 of 4 branches missed.">                    nt -&gt; (nt != null &amp;&amp; !nt.isLand()</span>
+<span class="fc bfc" id="L852" title="All 2 branches covered.">                        &amp;&amp; nt.getFirstUnit() != null</span>
+<span class="pc bpc" id="L853" title="1 of 2 branches missed.">                        &amp;&amp; nt.getFirstUnit().getOwner() != owner))) {</span>
+<span class="fc" id="L854">                csActivateSentries(t, cs);</span>
+<span class="fc" id="L855">            }</span>
+        }
+
+        // Disembark in colony.
+<span class="pc bpc" id="L859" title="3 of 6 branches missed.">        if (isCarrier() &amp;&amp; !isEmpty() &amp;&amp; newTile.getColony() != null</span>
+<span class="nc bnc" id="L860" title="All 2 branches missed.">            &amp;&amp; getSpecification().getBoolean(GameOptions.DISEMBARK_IN_COLONY)) {</span>
+<span class="nc bnc" id="L861" title="All 2 branches missed.">            for (Unit u : getUnitList()) {</span>
+<span class="nc" id="L862">                ((ServerUnit)u).csMove(newTile, random, cs);</span>
+<span class="nc" id="L863">            }</span>
+<span class="nc" id="L864">            setMovesLeft(0);</span>
+        }
+                
+        // Check for slowing units.
+<span class="fc" id="L868">        Unit slowedBy = getSlowedBy(newTile, random);</span>
+<span class="pc bpc" id="L869" title="1 of 2 branches missed.">        if (slowedBy != null) {</span>
+<span class="nc" id="L870">            StringTemplate enemy = slowedBy.getApparentOwnerName();</span>
+<span class="nc" id="L871">            cs.addMessage(owner,</span>
+                new ModelMessage(ModelMessage.MessageType.FOREIGN_DIPLOMACY,
+                                 &quot;model.unit.slowed&quot;, this, slowedBy)
+<span class="nc" id="L874">                    .addStringTemplate(&quot;%unit%&quot;,</span>
+<span class="nc" id="L875">                        getLabel(UnitLabelType.NATIONAL))</span>
+<span class="nc" id="L876">                    .addStringTemplate(&quot;%enemyUnit%&quot;,</span>
+<span class="nc" id="L877">                        slowedBy.getLabel(UnitLabelType.PLAIN))</span>
+<span class="nc" id="L878">                    .addStringTemplate(&quot;%enemyNation%&quot;, enemy));</span>
+        }
+
+<span class="fc" id="L881">        csCheckDiscoverRegion(newTile, cs);</span>
+<span class="fc" id="L882">    }</span>
+
+    /**
+     * Check for a new region.
+     *
+     * @param tile The {@code Tile} to check at.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    public void csCheckDiscoverRegion(Tile tile, ChangeSet cs) {
+<span class="fc" id="L891">        final Region region = tile.getDiscoverableRegion();</span>
+<span class="fc" id="L892">        final Player owner = this.getOwner();</span>
+<span class="pc bpc" id="L893" title="3 of 4 branches missed.">        if (region != null &amp;&amp; owner.isEuropean()</span>
+<span class="nc bnc" id="L894" title="All 2 branches missed.">            &amp;&amp; region.checkDiscover(this)) {</span>
+<span class="nc" id="L895">            cs.add(See.only(owner),</span>
+                new NewRegionNameMessage(region, tile, this,
+<span class="nc" id="L897">                    owner.getNameForRegion(region)));</span>
+        }
+<span class="fc" id="L899">    }</span>
+        
+    /**
+     * Visits a native settlement, possibly scouting it fully if
+     * as a result of a scout actually asking to speak to the chief,
+     * or for other settlement-contacting events such as missionary
+     * actions, demanding tribute, learning skills and trading if the
+     * settlementActionsContactChief game option is enabled.  It is
+     * still unclear what Col1 did here.
+     *
+     * @param serverPlayer The {@code ServerPlayer} that is contacting
+     *     the settlement.
+     * @param is The {@code IndianSettlement} to contact.
+     * @param scout Positive if this contact is due to a scout asking to
+     *     speak to the chief, zero if it is another unit, negative if
+     *     this is from the greeting dialog generation.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    public void csVisit(ServerPlayer serverPlayer, IndianSettlement is,
+                        int scout, ChangeSet cs) {
+<span class="fc" id="L919">        final Player owner = is.getOwner();</span>
+
+<span class="pc bpc" id="L921" title="1 of 2 branches missed.">        if (serverPlayer.csContact(owner, cs)) {</span>
+<span class="fc" id="L922">            serverPlayer.csNativeFirstContact(owner, null, cs);</span>
+        }
+<span class="fc" id="L924">        is.setVisited(serverPlayer);</span>
+<span class="pc bpc" id="L925" title="2 of 4 branches missed.">        if (scout &gt; 0 || (scout == 0 &amp;&amp; getGame().getSpecification()</span>
+<span class="pc bpc" id="L926" title="1 of 2 branches missed.">                .getBoolean(GameOptions.SETTLEMENT_ACTIONS_CONTACT_CHIEF))) {</span>
+<span class="nc" id="L927">            is.setScouted(serverPlayer);</span>
+        }
+        // Force the settlement tile to become uncached.  Should not
+        // be necessary but this might mitigate BR#3128.
+<span class="fc" id="L931">        final Tile tile = is.getTile();</span>
+<span class="fc" id="L932">        tile.seeTile(serverPlayer);</span>
+<span class="fc" id="L933">        csCheckDiscoverRegion(tile, cs);</span>
+<span class="fc" id="L934">    }</span>
+
+    /**
+     * Remove this unit from the game.
+     *
+     * @param see The visibility of the change.
+     * @param loc The {@code Location} of the change.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    public void csRemove(See see, Location loc, ChangeSet cs) {
+<span class="fc" id="L944">        IndianSettlement is = changeHomeIndianSettlement(null);</span>
+<span class="fc bfc" id="L945" title="All 2 branches covered.">        if (is != null) cs.add(See.only(getOwner()), is);</span>
+<span class="fc" id="L946">        cs.addRemove(see, loc, this);</span>
+<span class="fc" id="L947">        this.dispose();</span>
+<span class="fc" id="L948">    }</span>
+
+
+    // Implement TurnTaker
+
+    /**
+     * New turn for this unit.
+     *
+     * @param random A {@code Random} number source.
+     * @param lb A {@code LogBuilder} to log to.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    @Override
+    public void csNewTurn(Random random, LogBuilder lb, ChangeSet cs) {
+<span class="fc" id="L962">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L963">        final Player owner = getOwner();</span>
+<span class="fc" id="L964">        final Location loc = getLocation();</span>
+        
+<span class="fc" id="L966">        boolean locDirty = false;</span>
+<span class="fc" id="L967">        boolean unitDirty = false;</span>
+<span class="fc" id="L968">        lb.add(this);</span>
+
+        // Attrition.  Do it first as the unit might die.
+<span class="pc bpc" id="L971" title="1 of 4 branches missed.">        if (getType().hasMaximumAttrition() &amp;&amp; loc instanceof Tile</span>
+<span class="fc bfc" id="L972" title="All 2 branches covered.">            &amp;&amp; !((Tile)loc).hasSettlement()) {</span>
+<span class="fc" id="L973">            int attrition = getAttrition() + 1;</span>
+<span class="fc" id="L974">            setAttrition(attrition);</span>
+<span class="fc bfc" id="L975" title="All 2 branches covered.">            if (attrition &gt; getType().getMaximumAttrition()) {</span>
+<span class="fc" id="L976">                cs.addMessage(owner,</span>
+                    new ModelMessage(ModelMessage.MessageType.UNIT_LOST,
+                                     &quot;model.unit.attrition&quot;, this)
+<span class="fc" id="L979">                        .addStringTemplate(&quot;%unit%&quot;, getLabel())</span>
+<span class="fc" id="L980">                        .addStringTemplate(&quot;%location%&quot;,</span>
+<span class="fc" id="L981">                            loc.getLocationLabelFor(owner)));</span>
+<span class="fc" id="L982">                cs.add(See.perhaps(), (Tile)loc);</span>
+<span class="fc" id="L983">                this.csRemove(See.perhaps().always(owner),</span>
+                              loc, cs);//-vis(owner)
+<span class="fc" id="L985">                owner.invalidateCanSeeTiles();//+vis(owner)</span>
+<span class="fc" id="L986">                lb.add(&quot;, &quot;);</span>
+<span class="fc" id="L987">                return;</span>
+            }
+<span class="fc" id="L989">        } else {</span>
+<span class="fc" id="L990">            setAttrition(0);</span>
+        }
+
+        // Check for experience-promotion.
+        GoodsType produce;
+        UnitType learn;
+        UnitTypeChange uc;
+<span class="fc bfc" id="L997" title="All 2 branches covered.">        if (isInColony()</span>
+<span class="fc bfc" id="L998" title="All 2 branches covered.">            &amp;&amp; (produce = getWorkType()) != null</span>
+<span class="pc bpc" id="L999" title="1 of 2 branches missed.">            &amp;&amp; (learn = spec.getExpertForProducing(produce)) != null</span>
+<span class="fc bfc" id="L1000" title="All 2 branches covered.">            &amp;&amp; learn != getType()</span>
+<span class="pc bpc" id="L1001" title="1 of 4 branches missed.">            &amp;&amp; (uc = getUnitChange(UnitChangeType.EXPERIENCE,learn)) != null</span>
+            &amp;&amp; uc.probability &gt; 0) {
+<span class="fc" id="L1003">            int maximumExperience = getType().getMaximumExperience();</span>
+<span class="fc" id="L1004">            int maxValue = (100 * maximumExperience) / uc.probability;</span>
+<span class="pc bpc" id="L1005" title="1 of 2 branches missed.">            if (maxValue &gt; 0</span>
+<span class="fc" id="L1006">                &amp;&amp; randomInt(logger, &quot;Experience&quot;, random, maxValue)</span>
+<span class="fc bfc" id="L1007" title="All 2 branches covered.">                &lt; Math.min(getExperience(), maximumExperience)) {</span>
+<span class="fc" id="L1008">                StringTemplate oldName = getLabel();</span>
+<span class="fc" id="L1009">                changeType(learn);//-vis: safe within colony</span>
+<span class="fc" id="L1010">                cs.addMessage(owner,</span>
+                    new ModelMessage(ModelMessage.MessageType.UNIT_IMPROVED,
+<span class="fc" id="L1012">                                     &quot;model.unit.experience&quot;, getColony(), this)</span>
+<span class="fc" id="L1013">                        .addStringTemplate(&quot;%oldName%&quot;, oldName)</span>
+<span class="fc" id="L1014">                        .addStringTemplate(&quot;%unit%&quot;, getLabel())</span>
+<span class="fc" id="L1015">                        .addName(&quot;%colony%&quot;, getColony().getName()));</span>
+<span class="fc" id="L1016">                lb.add(&quot; experience upgrade to &quot;, getType());</span>
+<span class="fc" id="L1017">                unitDirty = true;</span>
+            }
+        }
+
+        // Update moves left.
+<span class="pc bpc" id="L1022" title="1 of 2 branches missed.">        if (isInMission()) {</span>
+<span class="nc" id="L1023">            getTile().updateIndianSettlement(owner);</span>
+<span class="nc" id="L1024">            setMovesLeft(0);</span>
+<span class="pc bpc" id="L1025" title="1 of 2 branches missed.">        } else if (isDamagedAndUnderForcedRepair()) {</span>
+<span class="nc" id="L1026">            setMovesLeft(0);</span>
+        } else {
+<span class="fc" id="L1028">            setMovesLeft(getInitialMovesLeft());</span>
+        }
+
+<span class="fc bfc" id="L1031" title="All 2 branches covered.">        if (getWorkLeft() &gt; 0) {</span>
+<span class="fc" id="L1032">            unitDirty = true;</span>
+<span class="pc bpc" id="L1033" title="1 of 2 branches missed.">            switch (getState()) {</span>
+            case IMPROVING:
+                // Has the improvement been completed already? Do nothing.
+<span class="fc" id="L1036">                TileImprovement ti = getWorkImprovement();</span>
+<span class="pc bpc" id="L1037" title="1 of 2 branches missed.">                if (ti == null // Another unit on the tile completed it first</span>
+<span class="pc bpc" id="L1038" title="1 of 2 branches missed.">                    || ti.isComplete()) {</span>
+<span class="nc" id="L1039">                    setState(UnitState.ACTIVE);</span>
+<span class="nc" id="L1040">                    setWorkLeft(-1);</span>
+                } else {
+                    // Otherwise do work
+<span class="pc bpc" id="L1043" title="1 of 2 branches missed.">                    int amount = (getType().hasAbility(Ability.EXPERT_PIONEER))</span>
+<span class="pc" id="L1044">                        ? 2 : 1;</span>
+<span class="fc" id="L1045">                    int turns = ti.getTurnsToComplete();</span>
+<span class="fc bfc" id="L1046" title="All 2 branches covered.">                    if ((turns -= amount) &lt; 0) turns = 0;</span>
+<span class="fc" id="L1047">                    ti.setTurnsToComplete(turns);</span>
+<span class="fc" id="L1048">                    setWorkLeft(turns);</span>
+<span class="fc bfc" id="L1049" title="All 4 branches covered.">                    if (ti.isRoad() &amp;&amp; ti.isComplete()) {</span>
+<span class="fc" id="L1050">                        ti.updateRoadConnections(true);</span>
+<span class="pc bpc" id="L1051" title="1 of 2 branches missed.">                        for (Tile t : transform(loc.getTile().getSurroundingTiles(1,1),</span>
+                                                Tile::hasRoad)) {
+<span class="nc" id="L1053">                            cs.add(See.perhaps(), t);</span>
+<span class="nc" id="L1054">                        }</span>
+<span class="fc" id="L1055">                        locDirty = true;</span>
+                    }
+                }
+<span class="fc" id="L1058">                break;</span>
+            default:
+<span class="nc" id="L1060">                setWorkLeft(getWorkLeft() - 1);</span>
+                break;
+            }
+
+<span class="pc bpc" id="L1064" title="3 of 4 branches missed.">            if (loc instanceof HighSeas &amp;&amp; getOwner().isREF()) {</span>
+                // Swift travel to America for the REF
+<span class="nc" id="L1066">                setWorkLeft(0);</span>
+            }
+        }
+
+<span class="pc bpc" id="L1070" title="1 of 2 branches missed.">        if (getState() == UnitState.SKIPPED) {</span>
+<span class="nc" id="L1071">            setState(UnitState.ACTIVE);</span>
+<span class="nc" id="L1072">            unitDirty = true;</span>
+        }
+
+<span class="fc bfc" id="L1075" title="All 2 branches covered.">        if (getWorkLeft() &lt;= 0) {</span>
+<span class="pc bpc" id="L1076" title="1 of 2 branches missed.">            if (getLocation() instanceof HighSeas) {</span>
+<span class="nc" id="L1077">                final Europe europe = owner.getEurope();</span>
+<span class="nc" id="L1078">                final Location dst = getDestination();</span>
+<span class="nc" id="L1079">                Location result = resolveDestination();</span>
+<span class="nc bnc" id="L1080" title="All 2 branches missed.">                if (result == europe) {</span>
+<span class="nc" id="L1081">                    lb.add(&quot; arrives in Europe&quot;);</span>
+<span class="nc bnc" id="L1082" title="All 2 branches missed.">                    if (getTradeRoute() == null) {</span>
+<span class="nc" id="L1083">                        setDestination(null);</span>
+<span class="nc" id="L1084">                        cs.addMessage(owner,</span>
+                            new ModelMessage(ModelMessage.MessageType.UNIT_ARRIVED,
+                                             &quot;model.unit.arriveInEurope&quot;,
+                                             europe, this)
+<span class="nc" id="L1088">                                .addNamed(&quot;%europe%&quot;, europe));</span>
+                    }
+<span class="nc" id="L1090">                    setState(UnitState.ACTIVE);</span>
+<span class="nc" id="L1091">                    setLocation(europe);//-vis: safe/Europe</span>
+<span class="nc" id="L1092">                    cs.add(See.only(owner), owner.getHighSeas());</span>
+<span class="nc" id="L1093">                    locDirty = true;</span>
+                } else {
+<span class="nc bnc" id="L1095" title="All 2 branches missed.">                    if (!(result instanceof Tile)) {</span>
+<span class="nc" id="L1096">                        logger.warning(&quot;Unit has unsupported destination: &quot;</span>
+                            + dst + &quot; -&gt; &quot; + result);
+<span class="nc" id="L1098">                        result = getFullEntryLocation();</span>
+                    }
+<span class="nc" id="L1100">                    Tile tile = result.getTile().getSafeTile(owner, random);</span>
+<span class="nc" id="L1101">                    lb.add(&quot; arrives in America at &quot;, tile);</span>
+<span class="nc bnc" id="L1102" title="All 2 branches missed.">                    if (dst != null) {</span>
+<span class="nc" id="L1103">                        lb.add(&quot; sailing for &quot;, dst);</span>
+<span class="nc bnc" id="L1104" title="All 2 branches missed.">                        if (dst instanceof Map) setDestination(null);</span>
+                    }
+<span class="nc" id="L1106">                    csMove(tile, random, cs);</span>
+<span class="nc" id="L1107">                    locDirty = unitDirty = false; // loc update present</span>
+                }
+<span class="nc" id="L1109">            } else {</span>
+<span class="pc bpc" id="L1110" title="2 of 4 branches missed.">                switch (getState()) {</span>
+                case ACTIVE: case FORTIFIED: case SENTRY: case IN_COLONY:
+<span class="fc" id="L1112">                    break; // These states are stable</span>
+                case IMPROVING:
+<span class="fc" id="L1114">                    csImproveTile(random, cs);</span>
+<span class="fc" id="L1115">                    setWorkImprovement(null);</span>
+<span class="fc" id="L1116">                    locDirty = true;</span>
+<span class="fc" id="L1117">                    break;</span>
+                case FORTIFYING:
+<span class="nc" id="L1119">                    setState(UnitState.FORTIFIED);</span>
+<span class="nc" id="L1120">                    unitDirty = true;</span>
+<span class="nc" id="L1121">                    break;</span>
+                case SKIPPED: default:
+<span class="nc" id="L1123">                    lb.add(&quot; work completed, bad state: &quot;, getState());</span>
+<span class="nc" id="L1124">                    setState(UnitState.ACTIVE);</span>
+<span class="nc" id="L1125">                    unitDirty = true;</span>
+                    break;
+                }
+            }
+        }
+
+<span class="fc bfc" id="L1131" title="All 2 branches covered.">        if (locDirty) {</span>
+<span class="fc" id="L1132">            cs.add(See.perhaps(), (FreeColGameObject)getLocation());</span>
+<span class="fc bfc" id="L1133" title="All 2 branches covered.">        } else if (unitDirty) {</span>
+<span class="fc" id="L1134">            cs.add(See.perhaps(), this);</span>
+        } else {
+<span class="fc" id="L1136">            cs.addPartial(See.only(owner), this,</span>
+<span class="fc" id="L1137">                &quot;movesLeft&quot;, String.valueOf(this.getMovesLeft()));</span>
+        }
+<span class="fc" id="L1139">        lb.add(&quot;, &quot;);</span>
+<span class="fc" id="L1140">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

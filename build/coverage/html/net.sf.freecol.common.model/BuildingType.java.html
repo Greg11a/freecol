@@ -1,0 +1,722 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BuildingType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">BuildingType.java</span></div><h1>BuildingType.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import static net.sf.freecol.common.model.Constants.INFINITY;
+import static net.sf.freecol.common.model.Constants.UNDEFINED;
+import static net.sf.freecol.common.util.CollectionUtils.first;
+import static net.sf.freecol.common.util.CollectionUtils.map;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import javax.swing.JList;
+import javax.swing.ListModel;
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Colony.NoBuildReason;
+import net.sf.freecol.common.model.UnitLocation.NoAddReason;
+import net.sf.freecol.common.model.production.BuildingProductionCalculator;
+import net.sf.freecol.common.model.production.WorkerAssignment;
+
+
+/**
+ * Encapsulates data common to all instances of a particular kind of
+ * {@link Building}, such as the number of workplaces, and the types
+ * of goods it produces and consumes.
+ */
+public final class BuildingType extends BuildableType
+        implements BaseProduction {
+
+    public static final String TAG = &quot;building-type&quot;;
+
+    /** The level of building. */
+<span class="fc" id="L56">    private int level = 1;</span>
+
+    /** The number of work places a unit can work in buildings of this type. */
+<span class="fc" id="L59">    private int workPlaces = 3;</span>
+
+    /** The minimum unit skill to work in buildings of this type. */
+<span class="fc" id="L62">    private int minSkill = UNDEFINED;</span>
+    /** The maximum unit skill to work in buildings of this type. */
+<span class="fc" id="L64">    private int maxSkill = INFINITY;</span>
+
+    /** Upkeep per turn for buildings ot this type. */
+<span class="fc" id="L67">    private int upkeep = 0;</span>
+
+    /** Consumption order. */
+<span class="fc" id="L70">    private int priority = Consumer.BUILDING_PRIORITY;</span>
+
+    /** Maximum production from the &quot;experts have connections&quot; option. */
+<span class="fc" id="L73">    private int expertConnectionProduction = 0;</span>
+
+    /**
+     * A multiplier for any unit goods-specific bonus for this building type.
+     */
+<span class="fc" id="L78">    private float competenceFactor = 1.0f;</span>
+
+    /** The multiplier for the colony rebel bonus for this building type. */
+<span class="fc" id="L81">    private float rebelFactor = 1.0f;</span>
+
+    /** The building type this upgrades from. */
+<span class="fc" id="L84">    private BuildingType upgradesFrom = null;</span>
+
+    /** The building type this upgrades to. */
+<span class="fc" id="L87">    private BuildingType upgradesTo = null;</span>
+
+    /** The possible production types of this building type. */
+<span class="fc" id="L90">    private final List&lt;ProductionType&gt; productionTypes = new ArrayList&lt;&gt;();</span>
+
+
+    /**
+     * Creates a new {@code BuildingType} instance.
+     *
+     * @param id The object identifier.
+     * @param specification The {@code Specification} to refer to.
+     */
+    public BuildingType(String id, Specification specification) {
+<span class="fc" id="L100">        super(id, specification);</span>
+<span class="fc" id="L101">    }</span>
+
+
+    /**
+     * Get the level of this BuildingType.
+     *
+     * @return The building level.
+     */
+    public int getLevel() {
+<span class="fc" id="L110">        return level;</span>
+    }
+
+    /**
+     * Gets the number of workplaces, that is the maximum number of
+     * Units that can work in this BuildingType.
+     *
+     * @return The number of work places.
+     */
+    public int getWorkPlaces() {
+<span class="fc" id="L120">        return workPlaces;</span>
+    }
+
+    public int getMinimumSkill() {
+<span class="nc" id="L124">        return this.minSkill;</span>
+    }
+    public int getMaximumSkill() {
+<span class="nc" id="L127">        return this.maxSkill;</span>
+    }
+
+    /**
+     * Gets the amount of gold necessary to maintain a Building of
+     * this type for one turn.
+     *
+     * @return The per turn upkeep for this building type.
+     */
+    public int getUpkeep() {
+<span class="fc" id="L137">        return upkeep;</span>
+    }
+
+    /**
+     * Get the maximum production for the Experts-With-Connections option.
+     *
+     * @return The production amount.
+     */
+    public int getExpertConnectionProduction() {
+<span class="nc" id="L146">        return this.expertConnectionProduction;</span>
+    }
+
+    /**
+     * Get a work location specific factor to multiply any unit goods specific
+     * bonuses by.
+     *
+     * @return The competence factor.
+     */
+    public float getCompetenceFactor() {
+<span class="fc" id="L156">        return this.competenceFactor;</span>
+    }
+
+    /**
+     * Get a work location specific factor to multiply the colony
+     * rebel bonus by.
+     *
+     * @return The rebel factor.
+     */
+    public float getRebelFactor() {
+<span class="fc" id="L166">        return this.rebelFactor;</span>
+    }
+
+    /**
+     * The consumption priority of a Building of this type. The higher
+     * the priority, the earlier will the Consumer be allowed to
+     * consume the goods it requires.
+     *
+     * @return The consumption priority.
+     */
+    public int getPriority() {
+<span class="fc" id="L177">        return priority;</span>
+    }
+
+    /**
+     * Gets the reason why a given unit type can not be added to a
+     * building of this type.
+     *
+     * @param unitType The {@code UnitType} to test.
+     * @return The reason why adding would fail.
+     */
+    public NoAddReason getNoAddReason(UnitType unitType) {
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        return (workPlaces == 0) ? NoAddReason.CAPACITY_EXCEEDED</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">                : (!unitType.hasSkill()) ? NoAddReason.MISSING_SKILL</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                : (unitType.getSkill() &lt; minSkill) ? NoAddReason.MINIMUM_SKILL</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                : (unitType.getSkill() &gt; maxSkill) ? NoAddReason.MAXIMUM_SKILL</span>
+<span class="fc" id="L192">                : NoAddReason.NONE;</span>
+    }
+
+    /**
+     * Can a unit of a given type be added to a Building of this type?
+     *
+     * @param unitType The {@code UnitType} to check.
+     * @return True if the unit type can be added.
+     */
+    public boolean canAdd(UnitType unitType) {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        return getNoAddReason(unitType) == NoAddReason.NONE;</span>
+    }
+
+    /**
+     * Gets the type of the building type, which is trivially just this
+     * object.
+     *
+     * @return This.
+     */
+    public FreeColSpecObjectType getType() {
+<span class="fc" id="L212">        return this;</span>
+    }
+
+    /**
+     * Gets the BuildingType this BuildingType upgrades from.
+     *
+     * @return The {@code BuildingType} that upgrades to this one.
+     */
+    public BuildingType getUpgradesFrom() {
+<span class="fc" id="L221">        return upgradesFrom;</span>
+    }
+
+    /**
+     * Get the BuildingType this BuildingType upgrades to.
+     *
+     * @return The {@code BuildingType} to upgrade to from this one.
+     */
+    public BuildingType getUpgradesTo() {
+<span class="fc" id="L230">        return upgradesTo;</span>
+    }
+
+    /**
+     * Gets the first level of this BuildingType.
+     *
+     * @return The base {@code BuildingType}.
+     */
+    public BuildingType getFirstLevel() {
+<span class="fc" id="L239">        BuildingType buildingType = this;</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        while (buildingType.getUpgradesFrom() != null) {</span>
+<span class="fc" id="L241">            buildingType = buildingType.getUpgradesFrom();</span>
+        }
+<span class="fc" id="L243">        return buildingType;</span>
+    }
+
+    /**
+     * Is this building type automatically built in any colony?
+     *
+     * @return True if this building type is automatically built.
+     */
+    public boolean isAutomaticBuild() {
+<span class="pc bpc" id="L252" title="1 of 4 branches missed.">        return !needsGoodsToBuild() &amp;&amp; getUpgradesFrom() == null;</span>
+    }
+
+    /**
+     * Get the production type list.
+     *
+     * @return The {@code ProductionType} list.
+     */
+    protected List&lt;ProductionType&gt; getProductionTypes() {
+<span class="nc" id="L261">        return this.productionTypes;</span>
+    }
+    
+    /**
+     * Set the production type list.
+     *
+     * @param productionTypes The new {@code ProductionType} list.
+     */
+    protected void setProductionTypes(List&lt;ProductionType&gt; productionTypes) {
+<span class="nc" id="L270">        this.productionTypes.clear();</span>
+<span class="nc" id="L271">        this.productionTypes.addAll(productionTypes);</span>
+<span class="nc" id="L272">    }</span>
+
+    /**
+     * Add a production type to this building type.
+     *
+     * @param productionType The {@code ProductionType} to add.
+     */
+    public void addProductionType(ProductionType productionType) {
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">        if (productionType != null) productionTypes.add(productionType);</span>
+<span class="fc" id="L281">    }</span>
+
+    /**
+     * Get the production types provided by this building type at the
+     * current difficulty level.
+     *
+     * @param unattended Whether the production is unattended.
+     * @return A list of {@code ProductionType}s.
+     */
+    public List&lt;ProductionType&gt; getAvailableProductionTypes(boolean unattended) {
+<span class="fc" id="L291">        return getAvailableProductionTypes(unattended, null);</span>
+    }
+
+    /**
+     * Gets the production types available at the current difficulty
+     * level.
+     *
+     * FIXME: TileType.getAvailableProductionTypes(boolean) uses the
+     * GameOptions.TILE_PRODUCTION option.  Should we implement a
+     * corresponding one for BuildingTypes?
+     *
+     * @param unattended Whether the production is unattended.
+     * @param level The production level (NYI).
+     * @return A list of {@code ProductionType}s.
+     */
+    public List&lt;ProductionType&gt; getAvailableProductionTypes(boolean unattended,
+                                                            String level) {
+<span class="fc" id="L308">        return transform(productionTypes,</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">                pt -&gt; pt.getUnattended() == unattended</span>
+<span class="pc bpc" id="L310" title="1 of 2 branches missed.">                        &amp;&amp; pt.appliesTo(level));</span>
+    }
+
+    /**
+     * Gets the type of goods produced by this BuildingType.
+     *
+     * @return The produced {@code GoodsType}.
+     */
+    public GoodsType getProducedGoodsType() {
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        if (productionTypes.isEmpty()) return null;</span>
+<span class="fc" id="L320">        AbstractGoods ag = first(first(productionTypes).getOutputs());</span>
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">        return (ag == null) ? null : ag.getType();</span>
+    }
+
+    /**
+     * Is this a defence-related building type?  Such buildings
+     * (stockade et al) are visible to other players.
+     *
+     * @return True if this is a defence related building.
+     */
+    public boolean isDefenceType() {
+<span class="fc" id="L331">        return containsModifierKey(Modifier.DEFENCE);</span>
+    }
+
+    /**
+     * Can a tile of this type produce a given goods type?
+     *
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType An optional {@code UnitType} that is to do
+     *     the work, if null the unattended production is considered.
+     * @return True if this tile type produces the goods.
+     */
+    public boolean canProduce(GoodsType goodsType, UnitType unitType) {
+<span class="pc bpc" id="L343" title="1 of 4 branches missed.">        return goodsType != null</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">                &amp;&amp; ProductionType.canProduce(goodsType,</span>
+<span class="fc" id="L345">                getAvailableProductionTypes(unitType == null));</span>
+    }
+
+    /**
+     * Get the amount of goods of a given goods type the given unit
+     * type could produce on a tile of this tile type.
+     * 
+     * No production bonuses, like rebel colony bonus, is added.
+     * Sufficient input goods are assumed.
+     *
+     * @param goodsType The {@code GoodsType} to produce.
+     * @param unitType An optional {@code UnitType} that is to do
+     *     the work, if null the unattended production is considered.
+     * @return The amount of goods produced.
+     */
+    public int getPotentialProduction(GoodsType goodsType,
+                                      UnitType unitType) {
+<span class="fc" id="L362">        final BuildingProductionCalculator bpc = new BuildingProductionCalculator(null, new FeatureContainer(), 0);</span>
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">        final ProductionType productionType = ProductionType.getBestProductionType(goodsType, getAvailableProductionTypes(unitType == null));</span>
+        
+<span class="fc" id="L365">        final int MORE_THAN_ENOUGH_INPUT_GOODS = 1000;</span>
+<span class="fc" id="L366">        final int MORE_THAN_ENOUGH_WAREHOUSE_CAPACITY = 10000;</span>
+<span class="fc" id="L367">        final List&lt;AbstractGoods&gt; inputGoods = productionType.getInputList().stream()</span>
+<span class="fc" id="L368">                .map(ag -&gt; new AbstractGoods(ag.getType(), MORE_THAN_ENOUGH_INPUT_GOODS))</span>
+<span class="fc" id="L369">                .collect(Collectors.toList());</span>
+        
+        // Allows tests to be run without having a game started:
+<span class="pc bpc" id="L372" title="3 of 4 branches missed.">        final Turn turn = (getGame() != null &amp;&amp; getGame().getTurn() != null) ? getGame().getTurn() : new Turn(1);</span>
+        
+<span class="fc" id="L374">        final ProductionInfo pi = bpc.getAdjustedProductionInfo(this,</span>
+                turn,
+<span class="fc" id="L376">                List.of(new WorkerAssignment(unitType, productionType)),</span>
+                inputGoods,
+<span class="fc" id="L378">                List.of(),</span>
+                MORE_THAN_ENOUGH_WAREHOUSE_CAPACITY);
+        
+<span class="fc" id="L381">        return pi.getProduction().stream()</span>
+<span class="fc" id="L382">                .filter(a -&gt; a.getType().equals(goodsType))</span>
+<span class="fc" id="L383">                .map(AbstractGoods::getAmount)</span>
+<span class="fc" id="L384">                .findFirst()</span>
+<span class="fc" id="L385">                .orElse(0);</span>
+    }
+        
+    /**
+     * {@inheritDoc}
+     */
+    public NoBuildReason canBeBuiltInColony(Colony colony,
+        List&lt;BuildableType&gt; assumeBuilt) {
+<span class="fc" id="L393">        Building colonyBuilding = colony.getBuilding(this);</span>
+<span class="fc bfc" id="L394" title="All 2 branches covered.">        if (colonyBuilding == null) {</span>
+            // the colony has no similar building yet
+<span class="fc" id="L396">            BuildingType from = this.getUpgradesFrom();</span>
+<span class="pc bpc" id="L397" title="1 of 4 branches missed.">            if (from != null &amp;&amp; !assumeBuilt.contains(from)) {</span>
+                // we are trying to build an advanced factory, we
+                // should build lower level shop first
+<span class="fc" id="L400">                return Colony.NoBuildReason.WRONG_UPGRADE;</span>
+            }
+<span class="fc" id="L402">        } else {</span>
+            // a building of the same family already exists
+<span class="fc" id="L404">            BuildingType from = colonyBuilding.getType().getUpgradesTo();</span>
+<span class="pc bpc" id="L405" title="1 of 4 branches missed.">            if (from != this &amp;&amp; !assumeBuilt.contains(from)) {</span>
+                // the existing building's next upgrade is not the
+                // new one we want to build
+<span class="fc" id="L408">                return Colony.NoBuildReason.WRONG_UPGRADE;</span>
+            }
+        }
+<span class="fc" id="L411">        return Colony.NoBuildReason.NONE;</span>
+    }
+
+    @Override
+    public int getMinimumIndex(Colony colony, JList&lt;BuildableType&gt; buildQueueList, int UNABLE_TO_BUILD) {
+<span class="nc" id="L416">        ListModel&lt;BuildableType&gt; buildQueue = buildQueueList.getModel();</span>
+<span class="nc" id="L417">        BuildingType upgradesFrom = this.getUpgradesFrom();</span>
+<span class="nc bnc" id="L418" title="All 2 branches missed.">        if (upgradesFrom == null) return 0;</span>
+<span class="nc" id="L419">        Building building = colony.getBuilding(this);</span>
+<span class="nc bnc" id="L420" title="All 2 branches missed.">        BuildingType buildingType = (building == null) ? null</span>
+<span class="nc" id="L421">                : building.getType();</span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">        if (buildingType == upgradesFrom) return 0;</span>
+<span class="nc bnc" id="L423" title="All 2 branches missed.">        for (int index = 0; index &lt; buildQueue.getSize(); index++) {</span>
+<span class="nc bnc" id="L424" title="All 2 branches missed.">            if (upgradesFrom.equals(buildQueue.getElementAt(index))) {</span>
+<span class="nc" id="L425">                return index + 1;</span>
+            }
+        }
+<span class="nc" id="L428">        return UNABLE_TO_BUILD;</span>
+    }
+
+    @Override
+    public int getMaximumIndex(Colony colony, JList&lt;BuildableType&gt; buildQueueList, int UNABLE_TO_BUILD) {
+<span class="nc" id="L433">        ListModel&lt;BuildableType&gt; buildQueue = buildQueueList.getModel();</span>
+<span class="nc" id="L434">        final int buildQueueLastPos = buildQueue.getSize();</span>
+
+<span class="nc" id="L436">        boolean canBuild = false;</span>
+<span class="nc bnc" id="L437" title="All 2 branches missed.">        if (colony.canBuild(this)) {</span>
+<span class="nc" id="L438">            canBuild = true;</span>
+        }
+
+<span class="nc" id="L441">        BuildingType upgradesFrom = this.getUpgradesFrom();</span>
+<span class="nc" id="L442">        BuildingType upgradesTo = this.getUpgradesTo();</span>
+        // does not depend on nothing, but still cannot be built
+<span class="nc bnc" id="L444" title="All 4 branches missed.">        if (!canBuild &amp;&amp; upgradesFrom == null) {</span>
+<span class="nc" id="L445">            return UNABLE_TO_BUILD;</span>
+        }
+
+        // if can be built and does not have any upgrade,
+        // then it can be built at any time
+<span class="nc bnc" id="L450" title="All 4 branches missed.">        if (canBuild &amp;&amp; upgradesTo == null) {</span>
+<span class="nc" id="L451">            return buildQueueLastPos;</span>
+        }
+
+        // if can be built, does not depend on anything, mark
+        // upgrades from as found
+<span class="nc" id="L456">        boolean foundUpgradesFrom = canBuild;</span>
+<span class="nc bnc" id="L457" title="All 2 branches missed.">        for (int index = 0; index &lt; buildQueue.getSize(); index++) {</span>
+<span class="nc" id="L458">            BuildableType toBuild = buildQueue.getElementAt(index);</span>
+
+<span class="nc bnc" id="L460" title="All 2 branches missed.">            if (toBuild == this) continue;</span>
+
+<span class="nc bnc" id="L462" title="All 4 branches missed.">            if (!canBuild &amp;&amp; !foundUpgradesFrom</span>
+<span class="nc bnc" id="L463" title="All 2 branches missed.">                    &amp;&amp; upgradesFrom.equals(toBuild)) {</span>
+<span class="nc" id="L464">                foundUpgradesFrom = true;</span>
+                // nothing else to upgrade this building to
+<span class="nc bnc" id="L466" title="All 2 branches missed.">                if (upgradesTo == null) return buildQueueLastPos;</span>
+            }
+            // found a building it upgrades to, cannot go to or
+            // beyond this position
+<span class="nc bnc" id="L470" title="All 4 branches missed.">            if (foundUpgradesFrom &amp;&amp; upgradesTo != null</span>
+<span class="nc bnc" id="L471" title="All 2 branches missed.">                    &amp;&amp; upgradesTo.equals(toBuild)) return index;</span>
+
+            // Don't go past a unit this building can build.
+<span class="nc bnc" id="L474" title="All 2 branches missed.">            if (this.hasAbility(Ability.BUILD, toBuild)) {</span>
+<span class="nc" id="L475">                return index;</span>
+            }
+        }
+<span class="nc" id="L478">        return buildQueueLastPos;</span>
+    }
+
+    /**
+     * Gets the production modifiers for the given type of goods and
+     * unit type.
+     *
+     * We use UnitType.getModifiers but modify this according to the
+     * competence factor of this building type.  Note that we do not modify
+     * *multiplicative* modifiers, as this would capture the master blacksmith
+     * doubling.
+     *
+     * @param id The String identifier
+     * @param turn The turn number of type {@link Turn}
+     * @param unitType The optional {@code UnitType} to produce them.
+     * @return A stream of the applicable modifiers.
+     */
+    public Stream&lt;Modifier&gt; getCompetenceModifiers(String id,
+        UnitType unitType, Turn turn) {
+<span class="fc" id="L497">        final float competence = getCompetenceFactor();</span>
+<span class="fc bfc" id="L498" title="All 2 branches covered.">        return (competence == 1.0f) // Floating comparison OK!</span>
+<span class="fc" id="L499">            ? unitType.getModifiers(id, getType(), turn)</span>
+<span class="fc" id="L500">            : map(unitType.getModifiers(id, getType(), turn),</span>
+                m -&gt; {
+<span class="fc bfc" id="L502" title="All 2 branches covered.">                    return (m.getType() == Modifier.ModifierType.ADDITIVE)</span>
+<span class="fc" id="L503">                        ? Modifier.makeModifier(m).setValue(m.getValue() * competence)</span>
+<span class="fc" id="L504">                        : m;</span>
+                });
+    }
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int compareTo(FreeColObject other) {
+<span class="nc" id="L515">        int cmp = 0;</span>
+<span class="nc bnc" id="L516" title="All 2 branches missed.">        if (other instanceof BuildingType) {</span>
+<span class="nc" id="L517">            BuildingType bt = (BuildingType)other;</span>
+            // BuildingTypes are simply sorted according to the order in
+            // which they are defined in the specification.
+<span class="nc" id="L520">            cmp = getIndex() - bt.getIndex();</span>
+        }
+<span class="nc bnc" id="L522" title="All 2 branches missed.">        if (cmp == 0) cmp = super.compareTo(other);</span>
+<span class="nc" id="L523">        return cmp;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L531">        BuildingType o = copyInCast(other, BuildingType.class);</span>
+<span class="nc bnc" id="L532" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L533">        this.level = o.getLevel();</span>
+<span class="nc" id="L534">        this.workPlaces = o.getWorkPlaces();</span>
+<span class="nc" id="L535">        this.minSkill = o.getMinimumSkill();</span>
+<span class="nc" id="L536">        this.maxSkill = o.getMaximumSkill();</span>
+<span class="nc" id="L537">        this.upkeep = o.getUpkeep();</span>
+<span class="nc" id="L538">        this.priority = o.getPriority();</span>
+<span class="nc" id="L539">        this.expertConnectionProduction = o.getExpertConnectionProduction();</span>
+<span class="nc" id="L540">        this.competenceFactor = o.getCompetenceFactor();</span>
+<span class="nc" id="L541">        this.rebelFactor = o.getRebelFactor();</span>
+<span class="nc" id="L542">        this.upgradesFrom = o.getUpgradesFrom();</span>
+<span class="nc" id="L543">        this.upgradesTo = o.getUpgradesTo();</span>
+<span class="nc" id="L544">        this.setProductionTypes(o.getProductionTypes());        </span>
+<span class="nc" id="L545">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String COMPETENCE_FACTOR_TAG = &quot;competence-factor&quot;;
+    private static final String EXPERTS_WITH_CONNECTION_PRODUCTION_TAG
+            = &quot;experts-with-connections-production&quot;;
+    private static final String MAXIMUM_SKILL_TAG = &quot;maximum-skill&quot;;
+    private static final String MINIMUM_SKILL_TAG = &quot;minimum-skill&quot;;
+    private static final String PRIORITY_TAG = &quot;priority&quot;;
+    private static final String PRODUCTION_TAG = &quot;production&quot;;
+    private static final String REBEL_FACTOR_TAG = &quot;rebel-factor&quot;;
+    private static final String UPGRADES_FROM_TAG = &quot;upgrades-from&quot;;
+    private static final String UPKEEP_TAG = &quot;upkeep&quot;;
+    private static final String WORKPLACES_TAG = &quot;workplaces&quot;;
+    // @compat 0.11.3
+    private static final String OLD_MAX_SKILL_TAG = &quot;maxSkill&quot;;
+    private static final String OLD_MIN_SKILL_TAG = &quot;minSkill&quot;;
+    private static final String OLD_UPGRADES_FROM_TAG = &quot;upgradesFrom&quot;;
+    // end @compat 0.11.3
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L574">        super.writeAttributes(xw);</span>
+
+<span class="fc bfc" id="L576" title="All 2 branches covered.">        if (upgradesFrom != null) {</span>
+<span class="fc" id="L577">            xw.writeAttribute(UPGRADES_FROM_TAG, upgradesFrom);</span>
+        }
+
+<span class="fc" id="L580">        xw.writeAttribute(WORKPLACES_TAG, workPlaces);</span>
+
+<span class="fc bfc" id="L582" title="All 2 branches covered.">        if (minSkill != UNDEFINED) {</span>
+<span class="fc" id="L583">            xw.writeAttribute(MINIMUM_SKILL_TAG, minSkill);</span>
+        }
+
+<span class="fc bfc" id="L586" title="All 2 branches covered.">        if (maxSkill &lt; INFINITY) {</span>
+<span class="fc" id="L587">            xw.writeAttribute(MAXIMUM_SKILL_TAG, maxSkill);</span>
+        }
+
+<span class="fc bfc" id="L590" title="All 2 branches covered.">        if (upkeep &gt; 0) {</span>
+<span class="fc" id="L591">            xw.writeAttribute(UPKEEP_TAG, upkeep);</span>
+        }
+
+<span class="fc bfc" id="L594" title="All 2 branches covered.">        if (priority != Consumer.BUILDING_PRIORITY) {</span>
+<span class="fc" id="L595">            xw.writeAttribute(PRIORITY_TAG, priority);</span>
+        }
+
+<span class="fc" id="L598">        xw.writeAttribute(EXPERTS_WITH_CONNECTION_PRODUCTION_TAG,</span>
+                this.expertConnectionProduction);
+
+<span class="fc" id="L601">        xw.writeAttribute(COMPETENCE_FACTOR_TAG, this.competenceFactor);</span>
+
+<span class="fc" id="L603">        xw.writeAttribute(REBEL_FACTOR_TAG, this.rebelFactor);</span>
+<span class="fc" id="L604">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L611">        super.writeChildren(xw);</span>
+
+<span class="fc bfc" id="L613" title="All 2 branches covered.">        for (ProductionType productionType : productionTypes) {</span>
+<span class="fc" id="L614">            productionType.toXML(xw);</span>
+<span class="fc" id="L615">        }</span>
+<span class="fc" id="L616">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L624">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L626">        final Specification spec = getSpecification();</span>
+
+<span class="fc" id="L628">        BuildingType parent = xr.getAlreadyInitializedType(spec, EXTENDS_TAG,</span>
+                BuildingType.class, this);
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L632" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_UPGRADES_FROM_TAG)) {</span>
+<span class="nc" id="L633">            upgradesFrom = xr.getType(spec, OLD_UPGRADES_FROM_TAG,</span>
+                    BuildingType.class, (BuildingType)null);
+        } else
+        // end @compat 0.11.3
+<span class="fc" id="L637">            upgradesFrom = xr.getType(spec, UPGRADES_FROM_TAG,</span>
+                                      BuildingType.class, (BuildingType)null);
+<span class="fc bfc" id="L639" title="All 2 branches covered.">        if (upgradesFrom == null) {</span>
+<span class="fc" id="L640">            level = 1;</span>
+        } else {
+<span class="fc" id="L642">            upgradesFrom.upgradesTo = this;</span>
+<span class="fc" id="L643">            level = upgradesFrom.level + 1;</span>
+        }
+
+<span class="fc" id="L646">        workPlaces = xr.getAttribute(WORKPLACES_TAG, parent.workPlaces);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L649" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_MIN_SKILL_TAG)) {</span>
+<span class="nc" id="L650">            minSkill = xr.getAttribute(OLD_MIN_SKILL_TAG, parent.minSkill);</span>
+        } else
+        // end @compat 0.11.3
+<span class="fc" id="L653">            minSkill = xr.getAttribute(MINIMUM_SKILL_TAG, parent.minSkill);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L656" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_MAX_SKILL_TAG)) {</span>
+<span class="nc" id="L657">            maxSkill = xr.getAttribute(OLD_MAX_SKILL_TAG, parent.maxSkill);</span>
+        } else
+        // end @compat 0.11.3
+<span class="fc" id="L660">            maxSkill = xr.getAttribute(MAXIMUM_SKILL_TAG, parent.maxSkill);</span>
+
+<span class="fc" id="L662">        upkeep = xr.getAttribute(UPKEEP_TAG, parent.upkeep);</span>
+
+<span class="fc" id="L664">        priority = xr.getAttribute(PRIORITY_TAG, parent.priority);</span>
+
+<span class="fc" id="L666">        this.expertConnectionProduction</span>
+<span class="fc" id="L667">                = xr.getAttribute(EXPERTS_WITH_CONNECTION_PRODUCTION_TAG,</span>
+                parent.expertConnectionProduction);
+
+<span class="fc" id="L670">        this.competenceFactor = xr.getAttribute(COMPETENCE_FACTOR_TAG,</span>
+                parent.competenceFactor);
+
+<span class="fc" id="L673">        this.rebelFactor = xr.getAttribute(REBEL_FACTOR_TAG,</span>
+                parent.rebelFactor);
+
+<span class="fc bfc" id="L676" title="All 2 branches covered.">        if (parent != this) { // Handle &quot;extends&quot; for super-type fields</span>
+<span class="fc bfc" id="L677" title="All 2 branches covered.">            if (!xr.hasAttribute(REQUIRED_POPULATION_TAG)) {</span>
+<span class="fc" id="L678">                setRequiredPopulation(parent.getRequiredPopulation());</span>
+            }
+
+<span class="fc" id="L681">            addFeatures(parent);</span>
+<span class="pc bpc" id="L682" title="1 of 2 branches missed.">            if (parent.isAbstractType()) {</span>
+<span class="nc" id="L683">                getFeatureContainer().replaceSource(parent, this);</span>
+            }
+        }
+<span class="fc" id="L686">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L693">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L694">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L696" title="All 2 branches covered.">        if (PRODUCTION_TAG.equals(tag)) {</span>
+<span class="fc bfc" id="L697" title="All 2 branches covered.">            if (xr.getAttribute(DELETE_TAG, false)) {</span>
+<span class="fc" id="L698">                productionTypes.clear();</span>
+<span class="fc" id="L699">                xr.closeTag(PRODUCTION_TAG);</span>
+
+            } else {
+<span class="fc" id="L702">                addProductionType(new ProductionType(xr, spec));</span>
+            }
+
+        } else {
+<span class="fc" id="L706">            super.readChild(xr);</span>
+        }
+
+        // @compat 0.11.6
+<span class="fc bfc" id="L710" title="All 2 branches covered.">        if (this.expertConnectionProduction == 0</span>
+<span class="pc bpc" id="L711" title="1 of 2 branches missed.">            &amp;&amp; hasAbility(Ability.EXPERTS_USE_CONNECTIONS)) {</span>
+<span class="nc" id="L712">            this.expertConnectionProduction = 4;</span>
+        }
+        // end @compat 0.11.6
+<span class="fc" id="L715">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L720">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

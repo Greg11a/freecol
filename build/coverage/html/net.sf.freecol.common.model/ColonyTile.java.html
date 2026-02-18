@@ -1,0 +1,560 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ColonyTile.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">ColonyTile.java</span></div><h1>ColonyTile.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import static net.sf.freecol.common.util.CollectionUtils.sum;
+import static net.sf.freecol.common.util.CollectionUtils.toList;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Player.NoClaimReason;
+import net.sf.freecol.common.model.production.TileProductionCalculator;
+import net.sf.freecol.common.model.production.WorkerAssignment;
+
+
+/**
+ * Represents a work location on a tile. Each ColonyTile except the
+ * colony center tile provides a work place for a single unit and
+ * produces a single type of goods. The colony center tile generally
+ * produces two different of goods, one food type and one new world
+ * raw material.
+ */
+public class ColonyTile extends WorkLocation {
+
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="fc" id="L49">    private static final Logger logger = Logger.getLogger(ColonyTile.class.getName());</span>
+
+    public static final String TAG = &quot;colonyTile&quot;;
+
+    public static final String UNIT_CHANGE = &quot;UNIT_CHANGE&quot;;
+
+    /** The maximum number of units a ColonyTile can hold. */
+    public static final int UNIT_CAPACITY = 1;
+
+
+    /**
+     * The tile to work.  This is accessed through getWorkTile().
+     * Beware!  Do not confuse this with getTile(), which returns
+     * the colony center tile (because every work location belongs to
+     * the enclosing colony).
+     */
+    protected Tile workTile;
+
+
+    /**
+     * Constructor for ServerColonyTile.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param colony The {@code Colony} this object belongs to.
+     * @param workTile The tile in which this {@code ColonyTile}
+     *                 represents a {@code WorkLocation} for.
+     */
+    protected ColonyTile(Game game, Colony colony, Tile workTile) {
+<span class="fc" id="L77">        super(game);</span>
+        
+<span class="fc" id="L79">        this.colony = colony;</span>
+<span class="fc" id="L80">        this.workTile = workTile;</span>
+<span class="fc" id="L81">        updateProductionType();</span>
+<span class="fc" id="L82">    }</span>
+
+    /**
+     * Create a new {@code ColonyTile} with the given identifier.
+     * The object should later be initialized by calling either
+     * {@link #readFromXML(FreeColXMLReader)}.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param id The object identifier.
+     */
+    public ColonyTile(Game game, String id) {
+<span class="fc" id="L93">        super(game, id);</span>
+<span class="fc" id="L94">    }</span>
+
+
+    /**
+     * Is this the tile where the {@code Colony} is located?
+     *
+     * @return True if this is the colony center tile.
+     */
+    public boolean isColonyCenterTile() {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        return this.workTile == getTile();</span>
+    }
+
+    /**
+     * Gets the work tile, that is the actual tile being worked.
+     *
+     * @return The {@code Tile} in which this
+     *     {@code ColonyTile} represents a
+     *     {@code WorkLocation} for.
+     */
+    public Tile getWorkTile() {
+<span class="fc" id="L114">        return workTile;</span>
+    }
+
+    /**
+     * Sets the work tile.  Needed to fix copied colonies.  Do not use
+     * otherwise!
+     *
+     * @param workTile The new work {@code Tile}.
+     */
+    public void setWorkTile(Tile workTile) {
+<span class="fc" id="L124">        this.workTile = workTile;</span>
+<span class="fc" id="L125">    }</span>
+
+    /**
+     * Gets a unit who is occupying the tile.
+     *
+     * @return A {@code Unit} who is occupying the work tile, if any.
+     * @see #isOccupied()
+     */
+    public Unit getOccupyingUnit() {
+<span class="nc" id="L134">        return workTile.getOccupyingUnit();</span>
+    }
+
+    /**
+     * Is there a fortified enemy unit on the work tile?
+     * Production can not occur on occupied tiles.
+     *
+     * @return True if an fortified enemy unit is in the tile.
+     */
+    public boolean isOccupied() {
+<span class="nc" id="L144">        return workTile.isOccupied();</span>
+    }
+
+    /**
+     * Gets the basic production information for the colony tile,
+     * ignoring any colony limits (which for now, should be
+     * irrelevant).
+     *
+     * In the original game, the following special rules apply to
+     * colony center tiles:
+     * - All tile improvements contribute to the production of food
+     * - Only natural tile improvements, such as rivers, contribute
+     *   to the production of other types of goods.
+     * - Artificial tile improvements, such as plowing, are ignored.
+     *
+     * @return The raw production of this colony tile.
+     * @see ProductionCache#update
+     */
+    public ProductionInfo getBasicProductionInfo() {
+<span class="fc" id="L163">        final TileProductionCalculator tpc = new TileProductionCalculator(getOwner(),</span>
+<span class="fc" id="L164">                colony.getProductionBonus());</span>
+        
+<span class="fc" id="L166">        final UnitType workerUnitType = getUnits().findFirst()</span>
+<span class="fc" id="L167">                .map(Unit::getType)</span>
+<span class="fc" id="L168">                .orElse(null);</span>
+        
+<span class="fc" id="L170">        return tpc.getBasicProductionInfo(workTile,</span>
+<span class="fc" id="L171">                getGame().getTurn(),</span>
+<span class="fc" id="L172">                new WorkerAssignment(workerUnitType, getProductionType()),</span>
+<span class="fc" id="L173">                isColonyCenterTile());</span>
+    }
+
+    /**
+     * Would a given tile improvement be beneficial to this colony tile?
+     *
+     * @param ti The {@code TileImprovementType} to assess.
+     * @return A measure of improvement (negative is a bad idea).
+     */
+    public int improvedBy(TileImprovementType ti) {
+<span class="nc" id="L183">        final Tile tile = getWorkTile();</span>
+<span class="nc" id="L184">        final Colony colony = getColony();</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (tile == null  // Colony has not claimed the tile</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">            || tile.getOwningSettlement() != colony // Not our tile</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">            || tile.hasTileImprovement(ti)) // Pointless work</span>
+<span class="nc" id="L188">            return 0;</span>
+
+<span class="nc" id="L190">        final TileType oldType = tile.getType();</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (!ti.isTileTypeAllowed(oldType)) return 0; // Impossible</span>
+        
+<span class="nc" id="L193">        final ProductionType productionType = getProductionType();</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        if (productionType == null) return 0; // Not using the tile</span>
+
+<span class="nc" id="L196">        final Resource resource = tile.getResource();</span>
+<span class="nc" id="L197">        final TileType newType = ti.getChange(oldType);</span>
+
+        // Unattended production is the hard case.
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (productionType.getUnattended()) {</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">            if (newType == null) {</span>
+                // Tile type stays the same, return the sum of any food bonues.
+<span class="nc" id="L203">                return sum(getSpecification().getFoodGoodsTypeList(),</span>
+<span class="nc" id="L204">                           gt -&gt; ti.getBonus(gt));</span>
+            }
+
+            // Tile type change.
+<span class="nc" id="L208">            final List&lt;AbstractGoods&gt; newProd</span>
+<span class="nc" id="L209">                = toList(newType.getPossibleProduction(true));</span>
+<span class="nc" id="L210">            int food = sum(newProd, AbstractGoods::isFoodType,</span>
+                           AbstractGoods::getAmount);
+            // Get the current food production.  Otherwise for goods
+            // that are being passively produced and consumed, check
+            // if production remains in surplus following a negative change.
+<span class="nc bnc" id="L215" title="All 2 branches missed.">            for (AbstractGoods ag : getProduction()) {</span>
+<span class="nc" id="L216">                final GoodsType goodsType = ag.getType();</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">                if (goodsType.isFoodType()) {</span>
+<span class="nc" id="L218">                    food -= ag.getAmount();</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">                } else if (colony.isConsuming(goodsType)) {</span>
+<span class="nc" id="L220">                    int change = -ag.getAmount()</span>
+<span class="nc" id="L221">                        + sum(newProd, AbstractGoods.matches(goodsType),</span>
+                              AbstractGoods::getAmount);
+<span class="nc bnc" id="L223" title="All 2 branches missed.">                    if (change &lt; 0</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">                        &amp;&amp; change + colony.getNetProductionOf(goodsType) &lt; 0) {</span>
+                        // The change drives the net production (more?)
+                        // negative.  Do not do this.
+<span class="nc" id="L227">                        return change;</span>
+                    }
+                }
+<span class="nc" id="L230">            }</span>
+<span class="nc" id="L231">            return food;</span>
+        }
+
+        // Units present?
+<span class="nc" id="L235">        final Unit unit = getFirstUnit();</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">        if (unit == null) return 0;</span>
+
+        // See what the change would do to their work.
+<span class="nc" id="L239">        final GoodsType work = getCurrentWorkType();</span>
+<span class="nc" id="L240">        final UnitType unitType = unit.getType();</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        return (work == null) // No work, improvement does nothing</span>
+<span class="nc" id="L242">            ? 0</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">            : (newType == null) // No tile change, but return the new bonus</span>
+<span class="nc" id="L244">            ? ti.getBonus(work)</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">            : (resource == null) // The tile change impact on the work</span>
+<span class="nc" id="L246">            ? newType.getPotentialProduction(work, unitType)</span>
+<span class="nc" id="L247">                - oldType.getPotentialProduction(work, unitType)</span>
+            // The production impact with the new resource in place
+<span class="nc" id="L249">            : newType.getPotentialProduction(work, unitType)</span>
+<span class="nc" id="L250">                - resource.applyBonus(work, unitType,</span>
+<span class="nc" id="L251">                    oldType.getPotentialProduction(work, unitType));</span>
+    }
+        
+    /**
+     * Evaluate this work location for a given player.
+     *
+     * @param player The {@code Player} to evaluate for.
+     * @return A value for the player.
+     */
+    @Override
+    public int evaluateFor(Player player) {
+<span class="nc" id="L262">        return super.evaluateFor(player)</span>
+<span class="nc" id="L263">            + sum(getProductionInfo().getProduction(),</span>
+<span class="nc" id="L264">                  ag -&gt; ag.evaluateFor(player));</span>
+    }
+
+
+    // Interface Location
+    // Inheriting
+    //   FreeColObject.getId
+    //   WorkLocation.getTile (Beware this returns the colony center tile!),
+    //   UnitLocation.getLocationLabelFor
+    //   UnitLocation.contains
+    //   UnitLocation.canAdd
+    //   WorkLocation.remove
+    //   UnitLocation.getUnitCount
+    //   UnitLocation.getUnitList
+    //   UnitLocation.getGoodsContainer
+    //   final WorkLocation getSettlement
+    //   final WorkLocation getColony
+    //   final int getRank
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getLocationLabel() {
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        return (workTile == null) ? null</span>
+<span class="nc" id="L289">            : workTile.getColonyTileLocationLabel(getColony());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location up() {
+<span class="nc" id="L297">        return getColony();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toShortString() {
+<span class="fc" id="L305">        return getColony().getName()</span>
+<span class="fc" id="L306">            + &quot;-&quot; + getWorkTile().getType().getSuffix()</span>
+<span class="fc" id="L307">            + &quot;-&quot; + getTile().getDirection(getWorkTile());</span>
+    }
+
+
+    // Interface UnitLocation
+    // Inherits:
+    //   UnitLocation.getSpaceTaken
+    //   UnitLocation.moveToFront
+    //   UnitLocation.clearUnitList
+    //   UnitLocation.equipForRole
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public NoAddReason getNoAddReason(Locatable locatable) {
+<span class="fc" id="L323">        NoAddReason reason = super.getNoAddReason(locatable);</span>
+<span class="fc bfc" id="L324" title="All 2 branches covered.">        return (reason != NoAddReason.NONE) ? reason : getNoWorkReason();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getUnitCapacity() {
+<span class="fc bfc" id="L332" title="All 2 branches covered.">        return (isColonyCenterTile()) ? 0 : UNIT_CAPACITY;</span>
+    }
+
+
+    // Interface WorkLocation
+
+    @Override
+    protected boolean goodSuggestionCheck(UnitType unitType, Unit unit, GoodsType goodsType) {
+<span class="nc" id="L340">        final Tile tile = getWorkTile();</span>
+<span class="nc" id="L341">        final Player owner = getOwner();</span>
+<span class="nc bnc" id="L342" title="All 4 branches missed.">        return owner.owns(tile) || owner.canClaimForSettlement(tile);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getLabel() {
+<span class="nc bnc" id="L350" title="All 2 branches missed.">        return (workTile == null) ? null : workTile.getLabel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isAvailable() {
+<span class="pc bpc" id="L358" title="3 of 4 branches missed.">        return isCurrent() || getOwner().canClaimForSettlement(getWorkTile());</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isCurrent() {
+<span class="fc bfc" id="L366" title="All 2 branches covered.">        return getWorkTile().getOwningSettlement() == getColony();</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public NoAddReason getNoWorkReason() {
+<span class="fc" id="L374">        Tile tile = getWorkTile();</span>
+        NoClaimReason claim;
+
+<span class="fc bfc" id="L377" title="All 2 branches covered.">        return (isColonyCenterTile())</span>
+<span class="fc" id="L378">            ? NoAddReason.COLONY_CENTER</span>
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">            : (!getColony().hasAbility(Ability.PRODUCE_IN_WATER)</span>
+<span class="fc bfc" id="L380" title="All 2 branches covered.">                &amp;&amp; !tile.isLand())</span>
+<span class="fc" id="L381">            ? NoAddReason.MISSING_ABILITY</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">            : (tile.getOwningSettlement() == getColony())</span>
+<span class="fc" id="L383">            ? NoAddReason.NONE</span>
+<span class="fc bfc" id="L384" title="All 2 branches covered.">            : ((claim = getOwner().canClaimForSettlementReason(tile))</span>
+                == NoClaimReason.NONE)
+<span class="fc" id="L386">            ? NoAddReason.CLAIM_REQUIRED</span>
+<span class="pc bpc" id="L387" title="3 of 6 branches missed.">            : (claim == NoClaimReason.TERRAIN</span>
+                || claim == NoClaimReason.RUMOUR
+                || claim == NoClaimReason.WATER)
+<span class="nc" id="L390">            ? NoAddReason.MISSING_ABILITY</span>
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">            : (claim == NoClaimReason.SETTLEMENT)</span>
+<span class="nc bnc" id="L392" title="All 2 branches missed.">            ? ((getOwner().owns(tile.getSettlement()))</span>
+<span class="nc" id="L393">                ? NoAddReason.ANOTHER_COLONY</span>
+<span class="nc" id="L394">                : NoAddReason.OWNED_BY_ENEMY)</span>
+<span class="pc bpc" id="L395" title="1 of 2 branches missed.">            : (claim == NoClaimReason.OCCUPIED)</span>
+<span class="nc" id="L396">            ? NoAddReason.OCCUPIED_BY_ENEMY</span>
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">            : (claim == NoClaimReason.WORKED)</span>
+<span class="nc" id="L398">            ? NoAddReason.ANOTHER_COLONY</span>
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">            : (claim == NoClaimReason.EUROPEANS)</span>
+<span class="nc" id="L400">            ? NoAddReason.OWNED_BY_ENEMY</span>
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">            : (claim == NoClaimReason.NATIVES)</span>
+<span class="fc" id="L402">            ? NoAddReason.CLAIM_REQUIRED</span>
+<span class="nc" id="L403">            : NoAddReason.WRONG_TYPE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public int getLevel() {
+<span class="nc" id="L410">        return 0; // Level not meaningful for colony tiles</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canAutoProduce() {
+<span class="fc" id="L418">        return isColonyCenterTile();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canProduce(GoodsType goodsType, UnitType unitType) {
+<span class="fc" id="L426">        final Tile workTile = getWorkTile();</span>
+<span class="pc bpc" id="L427" title="1 of 4 branches missed.">        return workTile != null &amp;&amp; workTile.canProduce(goodsType, unitType);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getBaseProduction(ProductionType productionType,
+                                 GoodsType goodsType, UnitType unitType) {
+<span class="fc" id="L436">        Tile tile = getWorkTile();</span>
+<span class="pc bpc" id="L437" title="1 of 2 branches missed.">        return (tile == null) ? 0</span>
+<span class="fc" id="L438">            : tile.getBaseProduction(productionType, goodsType, unitType);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Stream&lt;Modifier&gt; getProductionModifiers(GoodsType goodsType,
+                                                   UnitType unitType) {
+<span class="fc" id="L447">        return new TileProductionCalculator(getOwner(), getColony().getProductionBonus())</span>
+<span class="fc" id="L448">                .getProductionModifiers(getGame().getTurn(), workTile, goodsType, unitType, List.of());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;ProductionType&gt; getAvailableProductionTypes(boolean unattended) {
+<span class="pc bpc" id="L456" title="2 of 4 branches missed.">        return (workTile == null || workTile.getType() == null</span>
+<span class="fc bfc" id="L457" title="All 2 branches covered.">            || unattended != isColonyCenterTile())</span>
+<span class="fc" id="L458">            ? Collections.&lt;ProductionType&gt;emptyList()</span>
+<span class="fc" id="L459">            : workTile.getType().getAvailableProductionTypes(unattended);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public float getCompetenceFactor() {
+<span class="nc" id="L467">        return 1.0f;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public float getRebelFactor() {
+<span class="nc" id="L475">        return 1.0f;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StringTemplate getClaimTemplate() {
+<span class="nc bnc" id="L483" title="All 2 branches missed.">        return (isColonyCenterTile()) ? super.getClaimTemplate()</span>
+<span class="nc" id="L484">            : (StringTemplate.template(&quot;model.colonyTile.claim&quot;)</span>
+<span class="nc" id="L485">                .addNamed(&quot;%direction%&quot;, getTile().getDirection(workTile)));</span>
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L496">        ColonyTile o = copyInCast(other, ColonyTile.class);</span>
+<span class="nc bnc" id="L497" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L498">        final Game game = getGame();</span>
+<span class="nc" id="L499">        this.workTile = game.updateRef(o.getWorkTile());</span>
+<span class="nc" id="L500">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColObject getDisplayObject() {
+<span class="nc" id="L508">        return getTile().getDisplayObject();</span>
+    }
+
+
+    // Serialization
+
+    private static final String WORK_TILE_TAG = &quot;workTile&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L522">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L524">        xw.writeAttribute(WORK_TILE_TAG, workTile);</span>
+<span class="fc" id="L525">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L532">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L534">        workTile = xr.makeFreeColObject(getGame(), WORK_TILE_TAG,</span>
+                                        Tile.class, true);
+<span class="fc" id="L536">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L541">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L551">        StringBuilder sb = new StringBuilder(64);</span>
+<span class="fc" id="L552">        Colony c = getColony();</span>
+<span class="fc" id="L553">        sb.append('[').append(getId())</span>
+<span class="fc" id="L554">            .append(' ').append(getWorkTile())</span>
+<span class="pc bpc" id="L555" title="1 of 2 branches missed.">            .append('/').append((c == null) ? &quot;NO-COLONY&quot; : c.getName())</span>
+<span class="fc" id="L556">            .append(']');</span>
+<span class="fc" id="L557">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

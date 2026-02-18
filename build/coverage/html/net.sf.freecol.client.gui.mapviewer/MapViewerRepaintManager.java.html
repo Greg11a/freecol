@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MapViewerRepaintManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.mapviewer</a> &gt; <span class="el_source">MapViewerRepaintManager.java</span></div><h1>MapViewerRepaintManager.java</h1><pre class="source lang-java linenums">package net.sf.freecol.client.gui.mapviewer;
+
+import java.awt.Dimension;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.Transparency;
+import java.awt.geom.Area;
+import java.awt.image.BufferedImage;
+import java.awt.image.VolatileImage;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
+
+import javax.swing.SwingUtilities;
+
+import net.sf.freecol.client.gui.Canvas;
+import net.sf.freecol.client.gui.SwingGUI;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.util.Utils;
+
+/**
+ * Internal class that handles buffers and dirty state of {@link MapViewer}.
+ * 
+ * Methods in this class should only be used by {@link SwingGUI}, {@link Canvas}
+ * or {@link MapViewer}.
+ */
+<span class="nc" id="L30">public class MapViewerRepaintManager {</span>
+
+<span class="nc" id="L32">    private VolatileImage backBufferImage = null;</span>
+<span class="nc" id="L33">    private BufferedImage nonAnimationBufferImage = null;</span>
+
+<span class="nc" id="L35">    private Rectangle dirtyRegion = new Rectangle(0, 0, -1, -1);</span>
+<span class="nc" id="L36">    private Tile focus = null;</span>
+<span class="nc" id="L37">    private Point focusPoint = null;</span>
+<span class="nc" id="L38">    private boolean repaintsBlocked = false;</span>
+<span class="nc" id="L39">    private final Set&lt;Tile&gt; dirtyTiles = new HashSet&lt;&gt;();</span>
+
+<span class="nc" id="L41">    MapViewerRepaintManager() {</span>
+
+<span class="nc" id="L43">    }</span>
+
+
+    /**
+     * Prepares buffers for rendering.
+     * 
+     * @param mapViewerBounds The bounds used when determining the size of the
+     *      buffers, and also for checking if the focus has changed.
+     * @param focus A new {@code Tile} to focus on.
+     * @return {@code true} if the buffers have been reset -- meaning
+     *      prior content has been lost.
+     */
+    boolean prepareBuffers(MapViewerBounds mapViewerBounds, Tile focus) {
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc" id="L58">        final Dimension size = mapViewerBounds.getSize();</span>
+
+<span class="nc" id="L60">        final Tile oldFocus = this.focus;</span>
+<span class="nc" id="L61">        final Point oldFocusPoint = this.focusPoint;</span>
+
+<span class="nc" id="L63">        this.focus = focus;</span>
+<span class="nc" id="L64">        this.focusPoint = mapViewerBounds.tileToPoint(focus);</span>
+<span class="nc" id="L65">        this.repaintsBlocked = false;</span>
+
+<span class="nc bnc" id="L67" title="All 2 branches missed.">        if (isBuffersUninitialized(size)) {</span>
+<span class="nc" id="L68">            initializeBuffers(size);</span>
+<span class="nc" id="L69">            markAsDirty();</span>
+<span class="nc" id="L70">            dirtyTiles.clear();</span>
+<span class="nc" id="L71">            return true;</span>
+        }
+
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (isAllDirty()) {</span>
+<span class="nc" id="L75">            dirtyTiles.clear();</span>
+<span class="nc" id="L76">            return false;</span>
+        }
+
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (oldFocus == null) {</span>
+<span class="nc" id="L80">            markAsDirty();</span>
+<span class="nc" id="L81">            dirtyTiles.clear();</span>
+<span class="nc" id="L82">            return false;</span>
+        }
+        
+<span class="nc" id="L85">        updateDirtyRegionWithDirtyTiles(mapViewerBounds);</span>
+        
+<span class="nc" id="L87">        reuseNonDirtyAreasIfPossible(mapViewerBounds, oldFocus, oldFocusPoint);</span>
+        
+<span class="nc" id="L89">        return false;</span>
+    }
+
+
+    private void initializeBuffers(final Dimension size) {
+<span class="nc" id="L94">        backBufferImage = Utils.getGoodGraphicsDevice()</span>
+<span class="nc" id="L95">                .getDefaultConfiguration()</span>
+<span class="nc" id="L96">                .createCompatibleVolatileImage(size.width, size.height, Transparency.OPAQUE);</span>
+<span class="nc" id="L97">        nonAnimationBufferImage = Utils.getGoodGraphicsDevice()</span>
+<span class="nc" id="L98">                .getDefaultConfiguration()</span>
+<span class="nc" id="L99">                .createCompatibleImage(size.width, size.height, Transparency.TRANSLUCENT);</span>
+<span class="nc" id="L100">    }</span>
+
+    /**
+     * Gets the clip bounds that should be fully redrawn.
+     *
+     * @return The region to redraw.
+     */
+    Rectangle getDirtyClipBounds() {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc" id="L110">        return dirtyRegion;</span>
+    }
+
+    /**
+     * Check if the buffers for the entire map viewer is dirty.
+     * 
+     * @return {@code true} if no part of the buffer can be reused the next
+     *      time the map gets painted.
+     */
+    public boolean isAllDirty() {
+<span class="nc bnc" id="L120" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc bnc" id="L122" title="All 8 branches missed.">        return backBufferImage == null</span>
+                || dirtyRegion != null
+                &amp;&amp; dirtyRegion.x == 0
+                &amp;&amp; dirtyRegion.y == 0
+<span class="nc bnc" id="L126" title="All 2 branches missed.">                &amp;&amp; dirtyRegion.width == backBufferImage.getWidth()</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                &amp;&amp; dirtyRegion.height == backBufferImage.getHeight();</span>
+    }
+
+    /**
+     * Marks the given area as dirty for all layers.
+     * 
+     * This method should only be used if {@link paintImmediately}
+     * is called both before and after.
+     * 
+     * @param bounds The bounds that should be marked dirty.
+     */
+    public void markAsDirty(Rectangle bounds) {
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (dirtyRegion.isEmpty()) {</span>
+<span class="nc" id="L142">            this.dirtyRegion = bounds;</span>
+        } else {
+<span class="nc" id="L144">            this.dirtyRegion = this.dirtyRegion.union(bounds);</span>
+        }
+<span class="nc" id="L146">    }</span>
+    
+    /**
+     * Marks the given {@code Tile} as dirty for all layers.
+     * 
+     * @param dirtyTile The {@code Tile} that should be repainted.
+     */
+    public void markAsDirty(Tile dirtyTile) {
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc" id="L156">        Objects.requireNonNull(dirtyTile, &quot;dirtyTile&quot;);</span>
+<span class="nc" id="L157">        this.dirtyTiles.add(dirtyTile);</span>
+<span class="nc" id="L158">    }</span>
+    
+    /**
+     * Marks the given {@code Tile}s as dirty for all layers.
+     * 
+     * @param dirtyTiles The {@code Tile}s that should be repainted.
+     */
+    public void markAsDirty(Collection&lt;Tile&gt; dirtyTiles) {
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc" id="L168">        this.dirtyTiles.addAll(dirtyTiles);</span>
+<span class="nc" id="L169">    }</span>
+
+    /**
+     * Marks the entire area of all buffers as dirty. Please avoid calling this
+     * method as it causes full repaints.
+     */
+    public void markAsDirty() {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        if (backBufferImage == null) {</span>
+            /* The dirtyRegion will be defined by the next call to prepareBuffers */
+<span class="nc" id="L180">            this.dirtyRegion = null;</span>
+<span class="nc" id="L181">            return;</span>
+        }
+<span class="nc" id="L183">        this.dirtyRegion = new Rectangle(0, 0, backBufferImage.getWidth(), backBufferImage.getHeight());</span>
+<span class="nc" id="L184">    }</span>
+
+    /**
+     * Marks every buffer as clean.
+     * 
+     * WARNING: This method should only be called from {@code MapViewer} after painting
+     *          has completed.
+     */
+    void markAsClean() {
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc" id="L195">        this.dirtyRegion = new Rectangle(0, 0, -1, -1);</span>
+<span class="nc" id="L196">    }</span>
+
+    /**
+     * If available, a buffer that contains the entire map.
+     *
+     * @return The map buffer.
+     */
+    VolatileImage getBackBufferImage() {
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc" id="L206">        return backBufferImage;</span>
+    }
+
+    /**
+     * If available, a buffer that contains the non-animated parts
+     * of the map.
+     *
+     * @return The static map buffer.
+     */
+    BufferedImage getNonAnimationBufferImage() {
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc" id="L218">        return nonAnimationBufferImage;</span>
+    }
+
+    /**
+     * Stops the map viewer from being updated in the user interface
+     * by using the backbuffer for repaint requests.
+     * 
+     * WARNING: Always secure that this value is set back to
+     *          {@code false}, in reasonable time, and repaint the
+     *          entire map after doing so.
+     * 
+     * Please note that a resized frame will still force a repaint.
+     * 
+     * @param repaintsBlocked {@code true} blocks new repaints while
+     *      {@code false} allows repaints to be made again. 
+     */
+    public void setRepaintsBlocked(boolean repaintsBlocked) {
+<span class="nc bnc" id="L235" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc" id="L237">        this.repaintsBlocked = repaintsBlocked;</span>
+<span class="nc" id="L238">    }</span>
+
+    /**
+     * Checks if repaints are temporarily served using only the
+     * back buffer.
+     * 
+     * @see #setRepaintsBlocked(boolean)
+     *
+     * @param size A size to check for initialized buffers.
+     * @return True if repaints are blocked.
+     */
+    boolean isRepaintsBlocked(Dimension size) {
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        assert SwingUtilities.isEventDispatchThread();</span>
+        
+<span class="nc bnc" id="L252" title="All 4 branches missed.">        return repaintsBlocked &amp;&amp; !isBuffersUninitialized(size);</span>
+    }
+
+    private boolean isBuffersUninitialized(Dimension size) {
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        return backBufferImage == null</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">                || backBufferImage.getWidth() != size.width</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">                || backBufferImage.getHeight() != size.height;</span>
+    }
+    
+    /**
+     * Moves the contents of the buffers to a new location
+     * after changing focus tile.
+     *
+     * @param mapViewerBounds The bounds defining the focus.
+     * @param oldFocus The previous focus {@code Tile}.
+     * @param oldFocusPoint The previous focus {@code Point}.
+     */
+    private void reuseNonDirtyAreasIfPossible(
+            final MapViewerBounds mapViewerBounds,
+            final Tile oldFocus,
+            final Point oldFocusPoint) {
+<span class="nc" id="L273">        final Point repositionedOldFocusPoint = mapViewerBounds.tileToPoint(oldFocus);</span>
+
+<span class="nc" id="L275">        final int dx = repositionedOldFocusPoint.x - oldFocusPoint.x;</span>
+<span class="nc" id="L276">        final int dy = repositionedOldFocusPoint.y - oldFocusPoint.y;</span>
+<span class="nc bnc" id="L277" title="All 4 branches missed.">        if (dx != 0 || dy != 0) {</span>
+<span class="nc" id="L278">            updateDirtyRegion(mapViewerBounds, dx, dy);</span>
+        }
+
+<span class="nc bnc" id="L281" title="All 2 branches missed.">        if (!isAllDirty()) {</span>
+<span class="nc" id="L282">            moveContents(backBufferImage, dx, dy);</span>
+<span class="nc" id="L283">            nonAnimationBufferImage = moveContentsAndRecreateImage(nonAnimationBufferImage, dx, dy);</span>
+        }
+<span class="nc" id="L285">    }</span>
+
+    /**
+     * Updates the dirty region by moving it in the specified direction.
+     * 
+     * @param mapViewerBounds The bounds defining the focus.
+     * @param dx The number of pixels to move the contents of the buffers
+     *      for the x coordinate. The value can be negative.
+     * @param dy The number of pixels to move the contents of the buffers
+     *      for the y coordinate. The value can be negative.
+     */
+    private void updateDirtyRegion(final MapViewerBounds mapViewerBounds,
+                                   final int dx, final int dy) {
+<span class="nc" id="L298">        final Dimension size = mapViewerBounds.getSize();</span>
+        
+<span class="nc" id="L300">        final Rectangle alreadyPaintedBounds = new Rectangle(0, 0, size.width, size.height);</span>
+<span class="nc" id="L301">        alreadyPaintedBounds.translate(dx, dy);</span>
+
+<span class="nc" id="L303">        final Area dirtyArea = new Area(new Rectangle(0, 0, size.width, size.height));</span>
+<span class="nc" id="L304">        dirtyArea.subtract(new Area(alreadyPaintedBounds));</span>
+<span class="nc" id="L305">        final Rectangle newDirtyBounds = dirtyArea.getBounds();</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">        if (newDirtyBounds.width == 0) {</span>
+<span class="nc" id="L307">            newDirtyBounds.width = -1;</span>
+        }
+<span class="nc bnc" id="L309" title="All 2 branches missed.">        if (newDirtyBounds.height == 0) {</span>
+<span class="nc" id="L310">            newDirtyBounds.height = -1;</span>
+        }
+<span class="nc bnc" id="L312" title="All 4 branches missed.">        if (dirtyRegion != null &amp;&amp; !dirtyRegion.isEmpty()) {</span>
+<span class="nc" id="L313">            dirtyRegion = dirtyRegion.union(newDirtyBounds);</span>
+        } else {
+<span class="nc" id="L315">            dirtyRegion = newDirtyBounds;</span>
+        }
+        
+<span class="nc" id="L318">        dirtyRegion = dirtyRegion.intersection(new Rectangle(0, 0, size.width, size.height));</span>
+<span class="nc" id="L319">    }</span>
+
+    /**
+     * Move the content of an opaque {@code Image}.
+     *
+     * @param image The {@code Image} to move.
+     * @param dx The x-coordinate change.
+     * @param dy The y-coordinate change.
+     */
+    private static void moveContents(Image image, final int dx, final int dy) {
+<span class="nc" id="L329">        final Graphics2D g2d = (Graphics2D) image.getGraphics();</span>
+<span class="nc" id="L330">        g2d.copyArea(0, 0, image.getWidth(null), image.getHeight(null), dx, dy);</span>
+<span class="nc" id="L331">        g2d.dispose();</span>
+<span class="nc" id="L332">    }</span>
+
+    /**
+     * Move the content of a transparent {@code BufferedImage} by creating a
+     * new image.
+     * 
+     * Please use the more efficient {@link #moveContents(Image, int, int)}
+     * for opaque images.
+     *
+     * @param image The {@code Image} to move.
+     * @param dx The x-coordinate change.
+     * @param dy The y-coordinate change.
+     * @return The new image.
+     */
+    private static BufferedImage moveContentsAndRecreateImage(BufferedImage image, final int dx, final int dy) {
+<span class="nc" id="L347">        final BufferedImage result = Utils.getGoodGraphicsDevice()</span>
+<span class="nc" id="L348">                .getDefaultConfiguration()</span>
+<span class="nc" id="L349">                .createCompatibleImage(image.getWidth(), image.getHeight(), Transparency.TRANSLUCENT);</span>
+<span class="nc" id="L350">        final Graphics2D g2d = result.createGraphics();</span>
+<span class="nc" id="L351">        g2d.drawImage(image, dx, dy, null);</span>
+<span class="nc" id="L352">        g2d.dispose();</span>
+<span class="nc" id="L353">        return result;</span>
+    }
+    
+    private void updateDirtyRegionWithDirtyTiles(MapViewerBounds mapViewerBounds) {
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        for (Tile dirtyTile : dirtyTiles) {</span>
+<span class="nc" id="L358">            final Rectangle dirtyTileBounds = mapViewerBounds.calculateDrawnTileBounds(dirtyTile);</span>
+<span class="nc bnc" id="L359" title="All 2 branches missed.">            if (dirtyRegion.isEmpty()) {</span>
+<span class="nc" id="L360">                dirtyRegion = dirtyTileBounds;</span>
+            } else {
+<span class="nc" id="L362">                dirtyRegion = dirtyRegion.union(dirtyTileBounds);</span>
+            }
+<span class="nc" id="L364">        }</span>
+<span class="nc" id="L365">        dirtyTiles.clear();</span>
+<span class="nc" id="L366">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

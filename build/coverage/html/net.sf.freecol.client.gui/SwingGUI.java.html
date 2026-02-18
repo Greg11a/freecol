@@ -1,0 +1,2884 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SwingGUI.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui</a> &gt; <span class="el_source">SwingGUI.java</span></div><h1>SwingGUI.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui;
+
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.makeUnmodifiableList;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+import static net.sf.freecol.common.util.StringUtils.lastPart;
+
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.GraphicsDevice;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.image.BufferedImage;
+import java.beans.PropertyChangeEvent;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.function.Predicate;
+import java.util.logging.Level;
+import java.util.stream.Collectors;
+
+import javax.swing.ImageIcon;
+import javax.swing.JLabel;
+import javax.swing.JPopupMenu;
+import javax.swing.SwingUtilities;
+import javax.swing.filechooser.FileFilter;
+
+import net.miginfocom.layout.PlatformDefaults;
+import net.miginfocom.layout.UnitValue;
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.control.MapTransform;
+import net.sf.freecol.client.control.SoundController;
+import net.sf.freecol.client.gui.animation.Animation;
+import net.sf.freecol.client.gui.animation.Animations;
+// Special dialogs and panels
+import net.sf.freecol.client.gui.dialog.ClientOptionsDialog;
+import net.sf.freecol.client.gui.dialog.DeprecatedFreeColDialog;
+import net.sf.freecol.client.gui.dialog.Parameters;
+import net.sf.freecol.client.gui.mapviewer.GUIMessage;
+import net.sf.freecol.client.gui.mapviewer.MapAsyncPainter;
+import net.sf.freecol.client.gui.mapviewer.MapViewer;
+import net.sf.freecol.client.gui.mapviewer.MapViewerState;
+import net.sf.freecol.client.gui.mapviewer.TileViewer;
+import net.sf.freecol.client.gui.panel.ColonyPanel;
+import net.sf.freecol.client.gui.panel.CornerMapControls;
+import net.sf.freecol.client.gui.panel.FreeColImageBorder;
+import net.sf.freecol.client.gui.panel.FreeColPanel;
+import net.sf.freecol.client.gui.panel.InformationPanel;
+import net.sf.freecol.client.gui.panel.MapControls;
+import net.sf.freecol.client.gui.panel.MapEditorToolboxPanel;
+import net.sf.freecol.client.gui.panel.MapEditorTransformPanel;
+import net.sf.freecol.client.gui.panel.PurchasePanel;
+import net.sf.freecol.client.gui.panel.RecruitPanel;
+import net.sf.freecol.client.gui.panel.StartGamePanel;
+import net.sf.freecol.client.gui.panel.StatusPanel;
+import net.sf.freecol.client.gui.panel.TradeRouteInputPanel;
+import net.sf.freecol.client.gui.panel.TrainPanel;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.client.gui.panel.report.LabourData.UnitData;
+import net.sf.freecol.client.gui.plaf.FreeColLookAndFeel;
+import net.sf.freecol.client.gui.plaf.FreeColToolTipUI;
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.MemoryManager;
+import net.sf.freecol.common.debug.DebugUtils;
+import net.sf.freecol.common.debug.FreeColDebugger;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColDataFile;
+import net.sf.freecol.common.metaserver.ServerInfo;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.DiplomaticTrade;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Europe;
+import net.sf.freecol.common.model.FoundingFather;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.FreeColObject;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.HighScore;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.ModelMessage;
+import net.sf.freecol.common.model.Monarch.MonarchAction;
+import net.sf.freecol.common.model.PathNode;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.TradeRoute;
+import net.sf.freecol.common.model.TypeCountMap;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.model.WorkLocation;
+import net.sf.freecol.common.option.LanguageOption;
+import net.sf.freecol.common.option.LanguageOption.Language;
+import net.sf.freecol.common.option.Option;
+import net.sf.freecol.common.option.OptionGroup;
+import net.sf.freecol.common.resources.ImageCache;
+import net.sf.freecol.common.resources.ImageResource;
+import net.sf.freecol.common.resources.ResourceManager;
+import net.sf.freecol.common.util.Introspector;
+import net.sf.freecol.common.util.Utils;
+
+
+/**
+ * A wrapper providing functionality for the overall GUI using Java Swing.
+ */
+public class SwingGUI extends GUI {
+
+    /** A rough position to place dialogs and panels on the canvas. */
+<span class="nc" id="L141">    public static enum PopupPosition {</span>
+<span class="nc" id="L142">        ORIGIN,</span>
+<span class="nc" id="L143">        CENTERED,</span>
+<span class="nc" id="L144">        CENTERED_LEFT,</span>
+<span class="nc" id="L145">        CENTERED_RIGHT,</span>
+<span class="nc" id="L146">        LOWER_LEFT,</span>
+<span class="nc" id="L147">        LOWER_RIGHT,</span>
+<span class="nc" id="L148">        UPPER_LEFT,</span>
+<span class="nc" id="L149">        UPPER_RIGHT,</span>
+<span class="nc" id="L150">        LEFT,</span>
+<span class="nc" id="L151">        RIGHT,</span>
+        
+        /**
+         * Places centered even this means overlapping components.
+         */
+<span class="nc" id="L156">        CENTERED_FORCED</span>
+    }
+
+    /** European subpanel classes. */
+<span class="nc" id="L160">    private static final List&lt;Class&lt;? extends FreeColPanel&gt;&gt; EUROPE_CLASSES</span>
+<span class="nc" id="L161">        = makeUnmodifiableList(RecruitPanel.class,</span>
+                               PurchasePanel.class,
+                               TrainPanel.class);
+
+    /** Number of pixels that must be moved before a goto is enabled. */
+    private static final int DRAG_THRESHOLD = 16;
+
+    /** The graphics device to display to. */
+    private final GraphicsDevice graphicsDevice;
+
+    /** A persistent image cache. */
+    private final ImageCache imageCache;
+
+    /** The fixed/unscaled image library used by panels et al. */
+    private ImageLibrary fixedImageLibrary;
+    
+   /** The scaled image library used by the map. */
+    private ImageLibrary scaledImageLibrary;
+
+    /**
+     * This is the TileViewer instance used for tiles in panels.
+     * It uses the fixed ImageLibrary.
+     */
+    private TileViewer tileViewer;
+
+    /**
+     * The MapViewer instance used by canvas to paint the main map.
+     * This does need to be scaled.
+     */
+    private MapViewer mapViewer;
+
+    /** The various sorts of map controls. */
+    private MapControls mapControls;
+
+    /** The canvas that implements much of the functionality. */
+    private Canvas canvas;
+
+    /** The widgets wrapper that handles specific panels and dialogs. */
+    private Widgets widgets;
+
+    /** Where the map was drag-clicked. */
+    private Point dragPoint;
+
+    /** Has a goto operation started? */
+<span class="nc" id="L205">    private boolean gotoStarted = false;</span>
+
+
+    /**
+     * Create the GUI.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public SwingGUI(FreeColClient freeColClient) {
+<span class="nc" id="L214">        super(freeColClient);</span>
+
+<span class="nc" id="L216">        this.graphicsDevice = Utils.getGoodGraphicsDevice();</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        if (this.graphicsDevice == null) {</span>
+<span class="nc" id="L218">            FreeCol.fatal(logger, &quot;Could not find a GraphicsDevice!&quot;);</span>
+        }
+        
+<span class="nc" id="L221">        final float scaleFactor = determineScaleFactorUsingClientOptions(Utils.determineDpi(graphicsDevice));</span>
+<span class="nc" id="L222">        this.imageCache = new ImageCache();</span>
+<span class="nc" id="L223">        this.scaledImageLibrary = new ImageLibrary(constrainToMaxMapScale(scaleFactor), this.imageCache);</span>
+<span class="nc" id="L224">        this.fixedImageLibrary = new ImageLibrary(scaleFactor, this.imageCache);</span>
+<span class="nc" id="L225">        this.tileViewer = new TileViewer(freeColClient, fixedImageLibrary);</span>
+        // Defer remaining initializations, possibly to startGUI
+<span class="nc" id="L227">        this.mapViewer = null;</span>
+<span class="nc" id="L228">        this.mapControls = null;</span>
+<span class="nc" id="L229">        this.canvas = null;</span>
+<span class="nc" id="L230">        this.widgets = null;</span>
+<span class="nc" id="L231">        this.dragPoint = null;</span>
+        
+<span class="nc" id="L233">        configureMigLayout(scaleFactor);</span>
+        
+<span class="nc" id="L235">        logger.info(&quot;GUI constructed using scale factor &quot; + scaleFactor);</span>
+<span class="nc" id="L236">    }</span>
+
+
+    private void configureMigLayout(final float scaleFactor) {
+        /*
+         * We should avoid having platform dependent layout and behavior
+         * since this introduces platform specific bugs. Using the defaults
+         * in GNOME as the basis regardless of platform.
+         */
+<span class="nc" id="L245">        PlatformDefaults.setPlatform(PlatformDefaults.GNOME);</span>
+        
+        /*
+         * This scales the numbers without units using the current
+         * interface scaleFactor. We can use &quot;px&quot; as a unit when we want to
+         * provide a size regardless of the current scaling factor.
+         */
+<span class="nc" id="L252">        PlatformDefaults.setHorizontalScaleFactor(scaleFactor);</span>
+<span class="nc" id="L253">        PlatformDefaults.setVerticalScaleFactor(scaleFactor);</span>
+        
+<span class="nc" id="L255">        PlatformDefaults.setMinimumButtonWidth(new UnitValue(48, UnitValue.LPX, null));</span>
+<span class="nc" id="L256">    }</span>
+
+
+    // Internals
+
+    /**
+     * Perform a single animation.
+     *
+     * @param a The {@code Animation} to perform.
+     * @param unitLabel The unit label to animate.
+     */
+    private void animate(Animation a, JLabel unitLabel) {
+<span class="nc" id="L268">        final List&lt;Tile&gt; tiles = a.getTiles();</span>
+        // Calculate the union of the bounds for all the tiles in the
+        // animation, this is the area that will need to be repainted
+        // as the animation progresses 
+<span class="nc" id="L272">        Rectangle bounds = null;</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        for (Tile t : tiles) {</span>
+<span class="nc" id="L274">            Rectangle r = this.mapViewer.getMapViewerBounds().calculateDrawnTileBounds(t);</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            bounds = (bounds == null) ? r : bounds.union(r);</span>
+<span class="nc" id="L276">        }</span>
+
+        // Define a callback to wrap Canvas.paintImmediately(Rectangle)
+<span class="nc" id="L279">        final Canvas can = this.canvas;</span>
+<span class="nc" id="L280">        final Rectangle aBounds = bounds;</span>
+<span class="nc" id="L281">        final Animations.Procedure painter = new Animations.Procedure() {</span>
+                public void execute() {
+<span class="nc" id="L283">                    can.paintImmediately(aBounds);</span>
+<span class="nc" id="L284">                }</span>
+            };
+
+        // Delegate to the animation
+<span class="nc" id="L288">        a.executeWithLabel(unitLabel, painter);</span>
+<span class="nc" id="L289">    }</span>
+    
+    /**
+     * Perform some animations.
+     *
+     * @param animations The {@code Animation}s to perform.
+     */
+    private void animations(final List&lt;Animation&gt; animations) {
+<span class="nc bnc" id="L297" title="All 2 branches missed.">        if (animations.isEmpty()) return;</span>
+
+        // Special case for first animation, which should respect the
+        // ALWAYS_CENTER option.  We assume the others remain sufficiently
+        // visible because calling paintImmediately every time would be slow
+<span class="nc" id="L302">        final boolean center = getClientOptions()</span>
+<span class="nc" id="L303">            .getBoolean(ClientOptions.ALWAYS_CENTER);</span>
+<span class="nc" id="L304">        Tile first = animations.get(0).getTiles().get(0);</span>
+<span class="nc bnc" id="L305" title="All 4 branches missed.">        if (center &amp;&amp; first != getFocus()) {</span>
+<span class="nc" id="L306">            this.mapViewer.getMapViewerBounds().setFocus(first);</span>
+        }
+
+<span class="nc" id="L309">        invokeNowOrWait(() -&gt; {</span>
+            /*
+             * We might have switched active unit. In that case, we have to refocus
+             * after the animation has completed.
+             */
+<span class="nc bnc" id="L314" title="All 2 branches missed.">            final Tile originalFocus = mapViewer.getMapViewerState().getActiveUnit() != null ? mapViewer.getMapViewerBounds().getFocus() : null;</span>
+<span class="nc" id="L315">            final List&lt;Tile&gt; allTiles = animations</span>
+<span class="nc" id="L316">                    .stream()</span>
+<span class="nc" id="L317">                    .map(a -&gt; a.getTiles())</span>
+<span class="nc" id="L318">                    .flatMap(Collection::stream)</span>
+<span class="nc" id="L319">                    .collect(Collectors.toList());</span>
+            
+            // Insist that tiles are visible (assume changeFocus centers
+            // sufficiently well that if one is good the rest will be)
+<span class="nc bnc" id="L323" title="All 2 branches missed.">            for (Tile t : allTiles) {</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">                if (!this.mapViewer.getMapViewerBounds().onScreen(t)) {</span>
+<span class="nc" id="L325">                    this.mapViewer.getMapViewerBounds().setFocus(t);</span>
+<span class="nc" id="L326">                    break;</span>
+                }
+<span class="nc" id="L328">            }</span>
+            
+<span class="nc" id="L330">            final List&lt;JLabel&gt; animatedUnitLabels = new ArrayList&lt;&gt;();</span>
+            try {
+<span class="nc" id="L332">                animatedUnitLabels.addAll(prepareUnitLabelsForAnimation(animations));</span>
+
+                // Always completely update the screen before starting the animation
+                // as focus may have changed
+<span class="nc" id="L336">                this.mapViewer.getMapViewerRepaintManager().markAsDirty();</span>
+<span class="nc" id="L337">                paintImmediately();</span>
+                                
+<span class="nc bnc" id="L339" title="All 2 branches missed.">                for (int i=0; i&lt;animations.size(); i++) {</span>
+<span class="nc" id="L340">                    animate(animations.get(i), animatedUnitLabels.get(i));</span>
+                }
+            } finally {
+<span class="nc bnc" id="L343" title="All 4 branches missed.">                if (originalFocus != null &amp;&amp; mapViewer.getMapViewerBounds().setFocus(originalFocus)) {</span>
+<span class="nc" id="L344">                    repaint();</span>
+                }
+<span class="nc bnc" id="L346" title="All 2 branches missed.">                for (int i=0; i&lt;animations.size(); i++) {</span>
+<span class="nc" id="L347">                    final Unit unit = animations.get(i).getUnit();</span>
+<span class="nc" id="L348">                    final JLabel unitLabel = animatedUnitLabels.get(i);</span>
+<span class="nc" id="L349">                    releaseUnitOutForAnimation(unit, unitLabel);</span>
+                }
+            }
+<span class="nc" id="L352">        });</span>
+<span class="nc" id="L353">    }</span>
+
+
+    private void releaseUnitOutForAnimation(final Unit unit, final JLabel unitLabel) {
+<span class="nc" id="L357">        this.mapViewer.getMapViewerState().getUnitAnimator().releaseUnitOutForAnimation(unit);</span>
+<span class="nc bnc" id="L358" title="All 2 branches missed.">        if (!this.mapViewer.getMapViewerState().getUnitAnimator().isOutForAnimation(unit)) {</span>
+<span class="nc" id="L359">            this.canvas.animationLabel(unitLabel, false);</span>
+<span class="nc" id="L360">            mapViewer.getMapViewerRepaintManager().markAsDirty();</span>
+<span class="nc" id="L361">            repaint();</span>
+        }
+<span class="nc" id="L363">    }</span>
+
+    private List&lt;JLabel&gt; prepareUnitLabelsForAnimation(final List&lt;Animation&gt; animations) {
+<span class="nc" id="L366">        final List&lt;JLabel&gt; animatedUnitLabels = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L367" title="All 2 branches missed.">        for (Animation a : animations) {</span>
+            // Get the unit label, add to canvas if not already there, and
+            // update the animation with the locations for the label for each
+            // of the animation's tiles
+            
+<span class="nc" id="L372">            final Unit unit = a.getUnit();</span>
+<span class="nc bnc" id="L373" title="All 2 branches missed.">            boolean newLabel = !this.mapViewer.getMapViewerState().getUnitAnimator().isOutForAnimation(unit);</span>
+<span class="nc" id="L374">            JLabel unitLabel = this.mapViewer.getMapViewerState().getUnitAnimator().enterUnitOutForAnimation(unit);</span>
+<span class="nc" id="L375">            animatedUnitLabels.add(unitLabel);</span>
+<span class="nc" id="L376">            List&lt;Point&gt; points = transform(a.getTiles(), alwaysTrue(),</span>
+<span class="nc" id="L377">                    (t) -&gt; this.mapViewer.getMapViewerState().getUnitAnimator().getAnimationPosition(unitLabel, t));</span>
+<span class="nc" id="L378">            a.setPoints(points);</span>
+<span class="nc" id="L379">            unitLabel.setLocation(points.get(0)); // set location before adding</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">            if (newLabel) {</span>
+<span class="nc" id="L381">                this.canvas.animationLabel(unitLabel, true);</span>
+            }
+<span class="nc" id="L383">        }</span>
+<span class="nc" id="L384">        return animatedUnitLabels;</span>
+    }
+    
+    /**
+     * Gets the point at which the map was clicked for a drag.
+     *
+     * @return The Point where the mouse was initially clicked.
+     */
+    private Point getDragPoint() {
+<span class="nc" id="L393">        return this.dragPoint;</span>
+    }
+
+    /**
+     * Sets the point at which the map was clicked for a drag.
+     *
+     * @param x The mouse x position.
+     * @param y The mouse y position.
+     */
+    private void setDragPoint(int x, int y) {
+<span class="nc" id="L403">        this.dragPoint = new Point(x, y);</span>
+<span class="nc" id="L404">    }</span>
+    
+    private void clearDrag() {
+<span class="nc" id="L407">        this.dragPoint = null;</span>
+<span class="nc" id="L408">    }</span>
+
+    /**
+     * Is mouse movement differnce above the drag threshold?
+     *
+     * @param x The new mouse x position.
+     * @param y The new mouse y position.
+     * @return True if the mouse has been dragged.
+     */
+    public boolean isDrag(int x, int y) {
+<span class="nc" id="L418">        final Point drag = getDragPoint();</span>
+<span class="nc bnc" id="L419" title="All 2 branches missed.">        if (drag == null) return false;</span>
+<span class="nc" id="L420">        int deltaX = Math.abs(x - drag.x);</span>
+<span class="nc" id="L421">        int deltaY = Math.abs(y - drag.y);</span>
+<span class="nc bnc" id="L422" title="All 4 branches missed.">        return deltaX &gt;= DRAG_THRESHOLD || deltaY &gt;= DRAG_THRESHOLD;</span>
+    }
+
+    /**
+     * Change the view mode.
+     *
+     * Always stop the blinking cursor if leaving MOVE_UNITS mode,
+     * but leave turning it on to changeActiveUnit, as there is no
+     * point enabling it if the active unit is null.     
+     *
+     * @param newViewMode The new {@code ViewMode}.
+     * @return True if the view mode changed.
+     */
+    private boolean changeViewMode(ViewMode newViewMode) {
+<span class="nc" id="L436">        ViewMode oldViewMode = getViewMode();</span>
+<span class="nc bnc" id="L437" title="All 2 branches missed.">        if (newViewMode == oldViewMode) return false;</span>
+<span class="nc" id="L438">        this.mapViewer.getMapViewerState().setViewMode(newViewMode);</span>
+<span class="nc" id="L439">        return true;</span>
+    }
+
+    /**
+     * Change the active unit.
+     *
+     * If the unit changes, cancel any current gotos.
+     *
+     * @param newUnit The new active {@code Unit}.
+     * @return True if the active unit changed.
+     */
+    private boolean changeActiveUnit(Unit newUnit) {
+<span class="nc" id="L451">        final Unit oldUnit = getActiveUnit();</span>
+        
+<span class="nc bnc" id="L453" title="All 2 branches missed.">        if (newUnit != null</span>
+<span class="nc bnc" id="L454" title="All 2 branches missed.">        		&amp;&amp; newUnit.hasTile()</span>
+<span class="nc bnc" id="L455" title="All 2 branches missed.">        		&amp;&amp; !mapViewer.getMapViewerBounds().onScreen(newUnit.getTile())) {</span>
+<span class="nc" id="L456">        	this.mapViewer.getMapViewerBounds().setFocus(newUnit.getTile());</span>
+<span class="nc" id="L457">        	mapViewer.getMapViewerRepaintManager().markAsDirty(newUnit.getTile());</span>
+<span class="nc bnc" id="L458" title="All 2 branches missed.">        	if (this.mapControls != null) {</span>
+<span class="nc" id="L459">        	    this.mapControls.updateMinimap();</span>
+        	}
+<span class="nc" id="L461">        	repaint();</span>
+        }
+        
+<span class="nc bnc" id="L464" title="All 2 branches missed.">        if (newUnit == oldUnit) return false;</span>
+        
+<span class="nc" id="L466">        this.mapViewer.getMapViewerState().setActiveUnit(newUnit);</span>
+<span class="nc" id="L467">        clearGotoPath();</span>
+<span class="nc" id="L468">        return true;</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    public void setRangedAttackMode(boolean rangedAttackMode) {
+<span class="nc" id="L475">        final MapViewerState mvs = this.mapViewer.getMapViewerState();</span>
+<span class="nc bnc" id="L476" title="All 2 branches missed.">        if (mvs.isRangedAttackMode() == rangedAttackMode) {</span>
+<span class="nc" id="L477">            return;</span>
+        }
+<span class="nc" id="L479">        mvs.setRangedAttackMode(rangedAttackMode);</span>
+<span class="nc" id="L480">        refresh();</span>
+<span class="nc" id="L481">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    public void toggleRangedAttackMode() {
+<span class="nc bnc" id="L487" title="All 2 branches missed.">        setRangedAttackMode(!this.mapViewer.getMapViewerState().isRangedAttackMode());</span>
+<span class="nc" id="L488">    }</span>
+
+    /**
+     * Change the selected tile.
+     *
+     * Also moves the focus tile to the selected tile if it differs
+     * and either is not on screen, or with the focus override.
+     *
+     * When the selected tile moves, the cursor needs to be redrawn, so
+     * a refresh of the old (if any) and new (if any) tile occurs.
+     *
+     * @param newTile The new {@code Tile} to select.
+     * @param refocus If true force a refocus on all tile changes.
+     * @return True if the tile was changed.
+     */
+    private boolean changeSelectedTile(Tile newTile, boolean refocus) {
+<span class="nc" id="L504">        final Tile oldTile = getSelectedTile();</span>
+<span class="nc" id="L505">        final Tile oldFocus = getFocus();</span>
+<span class="nc bnc" id="L506" title="All 8 branches missed.">        refocus = newTile != null</span>
+            &amp;&amp; newTile != oldFocus
+            &amp;&amp; (oldFocus == null || refocus
+<span class="nc bnc" id="L509" title="All 2 branches missed.">                || !this.mapViewer.getMapViewerBounds().onScreen(newTile));</span>
+<span class="nc bnc" id="L510" title="All 2 branches missed.">        if (refocus) setFocus(newTile);</span>
+<span class="nc bnc" id="L511" title="All 2 branches missed.">        if (newTile == oldTile) return false;</span>
+<span class="nc" id="L512">        this.mapViewer.getMapViewerState().setSelectedTile(newTile);</span>
+<span class="nc bnc" id="L513" title="All 2 branches missed.">        if (oldTile != null) refreshTile(oldTile);</span>
+<span class="nc bnc" id="L514" title="All 2 branches missed.">        if (newTile != null) refreshTile(newTile);</span>
+<span class="nc" id="L515">        return true;</span>
+    }
+
+    /**
+     * Finish a view mode change.
+     *
+     * @param update Update the map controls if true.
+     */
+    private void changeDone(boolean update) {
+<span class="nc bnc" id="L524" title="All 4 branches missed.">        final boolean cursorShouldBlink = getViewMode() == ViewMode.MOVE_UNITS &amp;&amp; getActiveUnit() != null;</span>
+<span class="nc" id="L525">        mapViewer.getMapViewerState().setCursorBlinking(cursorShouldBlink);</span>
+            
+<span class="nc bnc" id="L527" title="All 2 branches missed.">        if (update) {</span>
+<span class="nc" id="L528">            updateMapControls();</span>
+<span class="nc" id="L529">            final Unit activeUnit = getActiveUnit();</span>
+<span class="nc bnc" id="L530" title="All 2 branches missed.">            if (activeUnit != null) {</span>
+<span class="nc" id="L531">                refreshTile(activeUnit.getTile());</span>
+            }
+        }
+<span class="nc" id="L534">        updateMenuBar();</span>
+<span class="nc" id="L535">    }</span>
+
+    /**
+     * Get the map scale.
+     *
+     * Used by:
+     *
+     * @return The scale for the (rescalable) map.
+     */
+    private final float getMapScale() {
+<span class="nc" id="L545">        ImageLibrary lib = this.scaledImageLibrary;</span>
+<span class="nc bnc" id="L546" title="All 2 branches missed.">        return (lib == null) ? 1.0f : lib.getScaleFactor();</span>
+    }
+
+    /**
+     * Get a rough position to place a dialog given a tile which we wish
+     * to remain visible.
+     *
+     * @param tile The {@code Tile} to expose.
+     * @return A suitable {@code PopupPosition}.
+     */
+    private PopupPosition getPopupPosition(Tile tile) {
+<span class="nc bnc" id="L557" title="All 2 branches missed.">        if (tile == null) return PopupPosition.CENTERED;</span>
+<span class="nc" id="L558">        int where = this.mapViewer.getMapViewerBounds().setOffsetFocus(tile);</span>
+<span class="nc" id="L559">        repaint();</span>
+<span class="nc bnc" id="L560" title="All 2 branches missed.">        return (where &gt; 0) ? PopupPosition.CENTERED_LEFT</span>
+<span class="nc bnc" id="L561" title="All 2 branches missed.">            : (where &lt; 0) ? PopupPosition.CENTERED_RIGHT</span>
+<span class="nc" id="L562">            : PopupPosition.CENTERED;</span>
+    }
+    
+    /**
+     * Update the path for the active unit.
+     */
+    private void updateUnitPath() {
+<span class="nc" id="L569">        final Unit active = getActiveUnit();</span>
+<span class="nc bnc" id="L570" title="All 2 branches missed.">        if (active == null) {</span>
+<span class="nc" id="L571">            setUnitPath(null);</span>
+<span class="nc" id="L572">            return;</span>
+        }
+
+<span class="nc" id="L575">        Location destination = active.getDestination();</span>
+<span class="nc" id="L576">        PathNode path = null;</span>
+<span class="nc bnc" id="L577" title="All 2 branches missed.">        if (destination != null</span>
+<span class="nc bnc" id="L578" title="All 2 branches missed.">            &amp;&amp; !((FreeColGameObject)destination).isDisposed()</span>
+<span class="nc bnc" id="L579" title="All 2 branches missed.">            &amp;&amp; !active.isAtLocation(destination)) {</span>
+            try {
+<span class="nc" id="L581">                path = active.findPath(destination);</span>
+<span class="nc" id="L582">            } catch (Exception e) {</span>
+<span class="nc" id="L583">                logger.log(Level.WARNING, &quot;Path fail&quot;, e);</span>
+<span class="nc" id="L584">                active.setDestination(null);</span>
+<span class="nc" id="L585">            }</span>
+        }
+<span class="nc" id="L587">        setUnitPath(path);</span>
+<span class="nc" id="L588">    }</span>
+
+    /**
+     * Starts a goto operation.
+     */
+    private void startGoto() {
+<span class="nc" id="L594">        this.gotoStarted = true;</span>
+<span class="nc" id="L595">        this.canvas.setCursor(Canvas.GO_CURSOR);</span>
+<span class="nc bnc" id="L596" title="All 2 branches missed.">        if (this.mapViewer.getMapViewerState().changeGotoPath(null)) {</span>
+<span class="nc" id="L597">            repaint();</span>
+        }
+<span class="nc" id="L599">    }</span>
+
+    /**
+     * Stops any ongoing goto operation.
+     *
+     * @return The old goto path if any.
+     */
+    private PathNode stopGoto() {
+<span class="nc bnc" id="L607" title="All 2 branches missed.">        PathNode ret = (this.gotoStarted) ? this.mapViewer.getMapViewerState().getGotoPath() : null;</span>
+<span class="nc" id="L608">        this.gotoStarted = false;</span>
+<span class="nc" id="L609">        this.canvas.setCursor(null);</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">        if (this.mapViewer.getMapViewerState().changeGotoPath(null)) {</span>
+<span class="nc" id="L611">            repaint();</span>
+        }
+<span class="nc" id="L613">        return ret;</span>
+    }
+
+    /**
+     * Update the current goto to a given tile.
+     *
+     * @param tile The new goto {@code Tile}.
+     */     
+    private void updateGotoTile(Tile tile) {
+<span class="nc" id="L622">        final Unit unit = getActiveUnit();</span>
+<span class="nc bnc" id="L623" title="All 4 branches missed.">        if (tile == null || unit == null) {</span>
+<span class="nc" id="L624">            clearGotoPath();</span>
+<span class="nc bnc" id="L625" title="All 2 branches missed.">        } else if (isGotoStarted()) {</span>
+            // Do nothing if the tile has not changed.
+<span class="nc" id="L627">            PathNode oldPath = this.mapViewer.getMapViewerState().getGotoPath();</span>
+<span class="nc bnc" id="L628" title="All 2 branches missed.">            Tile lastTile = (oldPath == null) ? null</span>
+<span class="nc" id="L629">                : oldPath.getLastNode().getTile();</span>
+<span class="nc bnc" id="L630" title="All 2 branches missed.">            if (lastTile == tile) return;</span>
+
+            // Do not show a path if it will be invalid, avoiding calling
+            // the expensive path finder if possible.
+<span class="nc bnc" id="L634" title="All 2 branches missed.">            PathNode newPath = (unit.getTile() == tile</span>
+<span class="nc bnc" id="L635" title="All 2 branches missed.">                || !tile.isExplored()</span>
+<span class="nc bnc" id="L636" title="All 2 branches missed.">                || !unit.getSimpleMoveType(tile).isLegal()) ? null</span>
+<span class="nc" id="L637">                : unit.findPath(tile);</span>
+<span class="nc bnc" id="L638" title="All 2 branches missed.">            if (this.mapViewer.getMapViewerState().changeGotoPath(newPath)) {</span>
+<span class="nc" id="L639">                repaint();</span>
+            }
+        }
+<span class="nc" id="L642">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void paintImmediately() {
+<span class="nc" id="L649">        this.canvas.paintImmediately(this.canvas.getBounds());</span>
+<span class="nc" id="L650">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MapAsyncPainter useMapAsyncPainter() {
+<span class="nc" id="L657">        canvas.updateRepaintTimer(true);</span>
+<span class="nc" id="L658">        return mapViewer.useMapAsyncPainter();</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void stopMapAsyncPainter() {
+<span class="nc" id="L666">        canvas.updateRepaintTimer(false);</span>
+<span class="nc" id="L667">        mapViewer.stopMapAsyncPainter();</span>
+<span class="nc" id="L668">    }</span>
+
+
+    /**
+     * Schedule a tile to be repainted.
+     *
+     * @param tile The {@code tile} to paint.
+     */
+    @Override
+    public void refreshTile(Tile tile) {
+<span class="nc bnc" id="L678" title="All 2 branches missed.">        if (tile != null) {</span>
+<span class="nc" id="L679">            mapViewer.getMapViewerRepaintManager().markAsDirty(tile);</span>
+            
+            /*
+             * XXX: Find a better way to support updating the &quot;modern&quot; settlement label:
+             */
+<span class="nc bnc" id="L684" title="All 2 branches missed.">            if (tile.hasSettlement()) {</span>
+<span class="nc" id="L685">                mapViewer.getMapViewerRepaintManager().markAsDirty(tile.getSurroundingTiles(1, 1));</span>
+            }
+            
+<span class="nc bnc" id="L688" title="All 2 branches missed.">            if (this.mapControls != null) {</span>
+<span class="nc" id="L689">                this.mapControls.updateMinimap();</span>
+            }
+            
+<span class="nc" id="L692">            this.canvas.repaint();</span>
+        }
+<span class="nc" id="L694">    }</span>
+
+    /**
+     * Reset the map zoom and refresh the canvas.
+     */
+    private void resetMapZoom() {
+<span class="nc bnc" id="L700" title="All 2 branches missed.">        if (this.scaledImageLibrary.getScaleFactor() != constrainToMaxMapScale(fixedImageLibrary.getScaleFactor())) {</span>
+<span class="nc" id="L701">            changeMapScale(fixedImageLibrary.getScaleFactor());</span>
+        }
+<span class="nc" id="L703">    }</span>
+   
+
+    // Implement GUI
+
+    // Simple accessors
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ImageLibrary getFixedImageLibrary() {
+<span class="nc" id="L715">        return this.fixedImageLibrary;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ImageLibrary getScaledImageLibrary() {
+<span class="nc" id="L723">        return this.scaledImageLibrary;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isWindowed() {
+<span class="nc" id="L731">        return this.canvas.isWindowed();</span>
+    }
+
+
+    // Invocation methods
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void invokeNowOrLater(Runnable runnable) {
+<span class="nc bnc" id="L742" title="All 2 branches missed.">        if (SwingUtilities.isEventDispatchThread()) {</span>
+<span class="nc" id="L743">            runnable.run();</span>
+        } else {
+<span class="nc" id="L745">            SwingUtilities.invokeLater(runnable);</span>
+        }
+<span class="nc" id="L747">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void invokeNowOrWait(Runnable runnable) {
+<span class="nc bnc" id="L754" title="All 2 branches missed.">        if (SwingUtilities.isEventDispatchThread()) {</span>
+<span class="nc" id="L755">            runnable.run();</span>
+        } else {
+            try {
+<span class="nc" id="L758">                SwingUtilities.invokeAndWait(runnable);</span>
+<span class="nc" id="L759">            } catch (Exception ex) {</span>
+<span class="nc" id="L760">                logger.log(Level.WARNING, &quot;Client GUI interaction&quot;, ex);</span>
+<span class="nc" id="L761">            }</span>
+        }
+<span class="nc" id="L763">    }</span>
+
+
+    // Initialization and teardown
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void changeWindowedMode() {
+<span class="nc" id="L773">        this.canvas.toggleFrame();</span>
+<span class="nc" id="L774">        refreshGuiUsingClientOptions();</span>
+<span class="nc" id="L775">    }</span>
+
+    /** 
+     * {@inheritDoc}
+     */
+    @Override
+    public void installLookAndFeel(String fontName) throws FreeColException {
+<span class="nc" id="L782">        final int dpi = Utils.determineDpi(graphicsDevice);</span>
+<span class="nc" id="L783">        final int fontSize = determineMainFontSizeUsingClientOptions(dpi);</span>
+<span class="nc" id="L784">        FontLibrary.setMainFontSize(fontSize);</span>
+<span class="nc" id="L785">        FreeColImageBorder.setScaleFactor(fixedImageLibrary.getScaleFactor());</span>
+<span class="nc" id="L786">        FreeColToolTipUI.setFontScaling(FontLibrary.getFontScaling());</span>
+        
+<span class="nc" id="L788">        FreeColLookAndFeel fclaf = new FreeColLookAndFeel();</span>
+<span class="nc" id="L789">        FreeColLookAndFeel.install(fclaf);</span>
+<span class="nc" id="L790">        Font font = FontLibrary.createMainFont(fontName);</span>
+<span class="nc bnc" id="L791" title="All 2 branches missed.">        if (font == null) {</span>
+<span class="nc" id="L792">            throw new FreeColException(&quot;Unable to create main font: &quot;</span>
+                + fontName);
+        }
+<span class="nc" id="L795">        FreeColLookAndFeel.setScaleFactor(fixedImageLibrary.getScaleFactor());</span>
+<span class="nc" id="L796">        FreeColLookAndFeel.installFont(font);</span>
+<span class="nc" id="L797">        Utility.initStyleContext(font);</span>
+<span class="nc" id="L798">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void quitGUI() {
+<span class="nc bnc" id="L805" title="All 2 branches missed.">        if (this.canvas != null) {</span>
+<span class="nc" id="L806">            this.canvas.quit();</span>
+        }
+<span class="nc" id="L808">    }</span>
+
+    /** 
+     * {@inheritDoc}
+     */
+    @Override
+    public void reconnectGUI(Unit active, Tile tile) {
+<span class="nc" id="L815">        this.canvas.requestFocusInWindow();</span>
+<span class="nc" id="L816">        this.canvas.initializeInGame();</span>
+<span class="nc" id="L817">        closeMenus();</span>
+<span class="nc" id="L818">        clearGotoPath();</span>
+<span class="nc" id="L819">        this.canvas.resetMenuBar();</span>
+<span class="nc" id="L820">        resetMapZoom(); // This should refresh the map</span>
+        // Update the view, somehow.  Try really hard to find a tile
+        // to focus on
+<span class="nc bnc" id="L823" title="All 2 branches missed.">        if (active != null) {</span>
+<span class="nc" id="L824">            changeView(active, false);</span>
+<span class="nc bnc" id="L825" title="All 2 branches missed.">            if (active.hasTile()) {</span>
+<span class="nc" id="L826">                tile = active.getTile();</span>
+<span class="nc bnc" id="L827" title="All 2 branches missed.">            } else if (active.getOwner().getFallbackTile() != null) {</span>
+<span class="nc" id="L828">                tile = active.getOwner().getFallbackTile();</span>
+<span class="nc" id="L829">                changeView(tile);</span>
+            }
+<span class="nc bnc" id="L831" title="All 2 branches missed.">        } else if (tile != null) {</span>
+<span class="nc" id="L832">            changeView(tile);</span>
+        } else {
+<span class="nc" id="L834">            changeView((Unit)null, false);</span>
+        }
+<span class="nc" id="L836">        this.mapViewer.getMapViewerBounds().setFocus(tile);</span>
+
+<span class="nc" id="L838">        enableMapControls(false);</span>
+<span class="nc bnc" id="L839" title="All 6 branches missed.">        enableMapControls(getGame() != null &amp;&amp; getGame().getMap() != null &amp;&amp; getClientOptions().getBoolean(ClientOptions.DISPLAY_MAP_CONTROLS));</span>
+
+<span class="nc" id="L841">        refresh();</span>
+<span class="nc" id="L842">    }</span>
+        
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void removeInGameComponents() {
+<span class="nc" id="L849">        changeActiveUnit(null);</span>
+<span class="nc" id="L850">        changeSelectedTile(null, false);</span>
+<span class="nc" id="L851">        this.canvas.removeInGameComponents();</span>
+<span class="nc" id="L852">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showOpeningVideo(final String userMsg, Runnable callback) {
+<span class="nc" id="L859">        final boolean play = getFreeColClient().getSoundController()</span>
+<span class="nc" id="L860">            .canPlaySound();</span>
+<span class="nc bnc" id="L861" title="All 2 branches missed.">        this.canvas.playVideo(&quot;video.opening&quot;, !play, callback);</span>
+<span class="nc" id="L862">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void startGUI(final Dimension desiredWindowSize) {
+<span class="nc" id="L869">        final FreeColClient fcc = getFreeColClient();</span>
+<span class="nc" id="L870">        final ClientOptions opts = getClientOptions();</span>
+<span class="nc" id="L871">        this.mapControls = new CornerMapControls(fcc);</span>
+        
+<span class="nc" id="L873">        final ActionListener al = (ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L874">            final Tile tile = mapViewer.getMapViewerState().getCursorTile();</span>
+<span class="nc bnc" id="L875" title="All 2 branches missed.">            if (tile != null) {</span>
+                //mapViewer.getMapViewerRepaintManager().markAsDirty(tile);
+                // Repaint as part of normal animation.
+                //this.canvas.repaint();
+            }
+<span class="nc" id="L880">        };</span>
+        
+<span class="nc" id="L882">        this.mapViewer = new MapViewer(fcc, this.scaledImageLibrary, al);</span>
+<span class="nc" id="L883">        this.canvas = new Canvas(getFreeColClient(), this.graphicsDevice,</span>
+                                 desiredWindowSize, this.mapViewer,
+                                 this.mapControls);
+<span class="nc" id="L886">        this.widgets = new Widgets(fcc, this.canvas);</span>
+        
+<span class="nc" id="L888">        refreshGuiUsingClientOptions();</span>
+
+        // Now that there is a canvas, prepare for language changes.
+<span class="nc" id="L891">        opts.getOption(ClientOptions.LANGUAGE, LanguageOption.class)</span>
+<span class="nc" id="L892">            .addPropertyChangeListener((PropertyChangeEvent e) -&gt; {</span>
+<span class="nc" id="L893">                Language language = (Language)e.getNewValue();</span>
+<span class="nc" id="L894">                logger.info(&quot;Set language to: &quot; + language);</span>
+<span class="nc bnc" id="L895" title="All 2 branches missed.">                if (Messages.AUTOMATIC.equalsIgnoreCase(language.getKey())) {</span>
+<span class="nc" id="L896">                    showInformationPanel(&quot;info.autodetectLanguageSelected&quot;);</span>
+                } else {
+<span class="nc" id="L898">                    Locale l = language.getLocale();</span>
+<span class="nc" id="L899">                    Messages.loadMessageBundle(l);</span>
+<span class="nc" id="L900">                    Messages.loadModMessageBundle(l);</span>
+<span class="nc" id="L901">                    showInformationPanel(StringTemplate</span>
+<span class="nc" id="L902">                        .template(&quot;info.newLanguageSelected&quot;)</span>
+<span class="nc" id="L903">                        .addName(&quot;%language%&quot;, l.getDisplayName()));</span>
+                }
+<span class="nc" id="L905">            });</span>
+        // No longer doing anything special for pmoffscreen et al as
+        // changing these in-game does not change the now initialized
+        // graphics pipeline.
+<span class="nc" id="L909">        this.mapViewer.getMapViewerState().setCursorBlinking(true);</span>
+<span class="nc" id="L910">        logger.info(&quot;GUI started.&quot;);</span>
+<span class="nc" id="L911">    }</span>
+    
+    @Override
+    public Dimension getMapViewDimension() {
+<span class="nc" id="L915">        return canvas.getSize();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void startMapEditorGUI() {
+<span class="nc" id="L923">        resetMapZoom(); // Reset zoom to the default</span>
+<span class="nc" id="L924">        mapViewer.getMapViewerState().setActiveUnit(null);</span>
+<span class="nc" id="L925">        this.canvas.startMapEditorGUI();</span>
+<span class="nc bnc" id="L926" title="All 4 branches missed.">        enableEditorToolboxPanel(getGame() != null &amp;&amp; getGame().getMap() != null);</span>
+<span class="nc bnc" id="L927" title="All 4 branches missed.">        enableEditorTransformPanel(getGame() != null &amp;&amp; getGame().getMap() != null);</span>
+<span class="nc bnc" id="L928" title="All 6 branches missed.">        enableMapControls(getGame() != null &amp;&amp; getGame().getMap() != null &amp;&amp; getClientOptions().getBoolean(ClientOptions.DISPLAY_MAP_CONTROLS));</span>
+<span class="nc" id="L929">        updateMenuBar();</span>
+<span class="nc" id="L930">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void enableEditorToolboxPanel(boolean shouldDisplayPanel) {
+<span class="nc" id="L937">        final MapEditorToolboxPanel panel = this.canvas.getExistingFreeColPanel(MapEditorToolboxPanel.class);</span>
+<span class="nc bnc" id="L938" title="All 4 branches missed.">        if (shouldDisplayPanel &amp;&amp; panel == null) {</span>
+<span class="nc" id="L939">            this.canvas.showMapEditorToolboxPanel();</span>
+<span class="nc bnc" id="L940" title="All 4 branches missed.">        } else if (!shouldDisplayPanel &amp;&amp; panel != null) {</span>
+<span class="nc" id="L941">            this.canvas.removeFromCanvas(panel);</span>
+        } // else: ignore.
+<span class="nc" id="L943">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isShowingMapEditorToolboxPanel() {
+<span class="nc" id="L950">        return this.canvas.isAddedAsPanelFrameOrIcon(MapEditorToolboxPanel.class);</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void enableEditorTransformPanel(boolean shouldDisplayPanel) {
+<span class="nc" id="L958">        final MapEditorTransformPanel panel = this.canvas.getExistingFreeColPanel(MapEditorTransformPanel.class);</span>
+<span class="nc bnc" id="L959" title="All 4 branches missed.">        if (shouldDisplayPanel &amp;&amp; panel == null) {</span>
+<span class="nc" id="L960">            this.canvas.showMapEditorTransformPanel();</span>
+<span class="nc bnc" id="L961" title="All 4 branches missed.">        } else if (!shouldDisplayPanel &amp;&amp; panel != null) {</span>
+<span class="nc" id="L962">            this.canvas.removeFromCanvas(panel);</span>
+        } // else: ignore.
+<span class="nc" id="L964">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isShowingMapEditorTransformPanel() {
+<span class="nc" id="L971">        return this.canvas.isAddedAsPanelFrameOrIcon(MapEditorTransformPanel.class);</span>
+    }
+
+
+    // Animation handling
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void animateUnitAttack(Unit attacker, Unit defender,
+                                  Tile attackerTile, Tile defenderTile,
+                                  boolean success) {
+<span class="nc" id="L984">        animations(Animations.unitAttack(getFreeColClient(),</span>
+                                         attacker, defender,
+                                         attackerTile, defenderTile,
+<span class="nc" id="L987">                                         success, getMapScale()));</span>
+<span class="nc" id="L988">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void animateUnitMove(Unit unit, Tile srcTile, Tile dstTile) {
+<span class="nc" id="L995">        animations(Animations.unitMove(getFreeColClient(),</span>
+<span class="nc" id="L996">                unit, srcTile, dstTile, getMapScale()));</span>
+<span class="nc" id="L997">    }</span>
+    
+    // Dialog primitives
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean modalConfirmDialog(Tile tile, StringTemplate tmpl, ImageIcon icon,
+                           String okKey, String cancelKey, boolean defaultOk) {
+<span class="nc" id="L1007">        return this.widgets.modalConfirmDialog(tmpl, icon, okKey, cancelKey,getPopupPosition(tile), defaultOk);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected &lt;T&gt; T modalChoiceDialog(Tile tile, StringTemplate tmpl, ImageIcon icon,
+                              String cancelKey, List&lt;ChoiceItem&lt;T&gt;&gt; choices) {
+<span class="nc" id="L1016">        return this.widgets.modalChoiceDialog(tmpl, icon, cancelKey, choices,</span>
+<span class="nc" id="L1017">                                      getPopupPosition(tile));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String modalInputDialog(Tile tile, StringTemplate tmpl, String defaultValue,
+                           String okKey, String cancelKey) {
+<span class="nc" id="L1026">        return this.widgets.modalInputDialog(tmpl, defaultValue, okKey, cancelKey,</span>
+<span class="nc" id="L1027">                                     getPopupPosition(tile));</span>
+    }
+
+
+    // Focus control
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Tile getFocus() {
+<span class="nc" id="L1038">        return this.mapViewer.getMapViewerBounds().getFocus();</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Point getFocusMapPoint() {
+<span class="nc" id="L1046">        return this.mapViewer.getMapViewerBounds().getFocusMapPoint();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setFocus(Tile tileToFocus) {
+<span class="nc" id="L1054">        this.mapViewer.getMapViewerBounds().setFocus(tileToFocus);</span>
+<span class="nc" id="L1055">        repaint();</span>
+<span class="nc" id="L1056">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setFocusMapPoint(Point pointToFocus) {
+<span class="nc" id="L1063">        this.mapViewer.getMapViewerBounds().setFocusMapPoint(pointToFocus);</span>
+<span class="nc" id="L1064">        repaint();</span>
+<span class="nc" id="L1065">    }</span>
+
+
+    // MapControls
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canZoomInMapControls() {
+<span class="nc bnc" id="L1075" title="All 2 branches missed.">        if (this.mapControls == null) return false;</span>
+<span class="nc" id="L1076">        return this.mapControls.canZoomInMapControls();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canZoomOutMapControls() {
+<span class="nc bnc" id="L1084" title="All 2 branches missed.">        if (this.mapControls == null) return false;</span>
+<span class="nc" id="L1085">        return this.mapControls.canZoomOutMapControls();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void enableMapControls(boolean enable) {
+<span class="nc bnc" id="L1093" title="All 2 branches missed.">        if (this.mapControls == null) return;</span>
+<span class="nc bnc" id="L1094" title="All 2 branches missed.">        if (enable) {</span>
+<span class="nc" id="L1095">            updateMapControls();</span>
+<span class="nc" id="L1096">            this.canvas.addMapControls();</span>
+        } else {
+<span class="nc" id="L1098">            this.canvas.removeMapControls();</span>
+        }
+<span class="nc" id="L1100">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void miniMapToggleViewControls() {
+<span class="nc bnc" id="L1107" title="All 2 branches missed.">        if (this.mapControls == null) {</span>
+<span class="nc" id="L1108">            return;</span>
+        }
+<span class="nc" id="L1110">        getFreeColClient().toggleClientOption(ClientOptions.MINIMAP_TOGGLE_BORDERS);</span>
+<span class="nc" id="L1111">        this.mapControls.updateMinimap();</span>
+<span class="nc" id="L1112">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void miniMapToggleFogOfWarControls() {
+<span class="nc bnc" id="L1119" title="All 2 branches missed.">        if (this.mapControls == null) {</span>
+<span class="nc" id="L1120">            return;</span>
+        }
+<span class="nc" id="L1122">        getFreeColClient().toggleClientOption(ClientOptions.MINIMAP_TOGGLE_FOG_OF_WAR);</span>
+<span class="nc" id="L1123">        this.mapControls.updateMinimap();</span>
+<span class="nc" id="L1124">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void updateMapControls() {
+<span class="nc bnc" id="L1131" title="All 2 branches missed.">        if (this.mapControls == null) return;</span>
+<span class="nc" id="L1132">        this.mapControls.update(getViewMode(), getActiveUnit(),</span>
+<span class="nc" id="L1133">                                getSelectedTile());</span>
+<span class="nc" id="L1134">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void zoomInMapControls() {
+<span class="nc bnc" id="L1141" title="All 2 branches missed.">        if (this.mapControls == null) return;</span>
+<span class="nc" id="L1142">        this.mapControls.zoomIn();</span>
+<span class="nc" id="L1143">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void zoomOutMapControls() {
+<span class="nc bnc" id="L1150" title="All 2 branches missed.">        if (this.mapControls == null) return;</span>
+<span class="nc" id="L1151">        this.mapControls.zoomOut();</span>
+<span class="nc" id="L1152">    }</span>
+
+
+    // Menu handling
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void closeMenus() {
+<span class="nc" id="L1162">        this.canvas.closeMenus();</span>
+<span class="nc" id="L1163">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void resetMenuBar() {
+<span class="nc" id="L1170">        this.canvas.resetMenuBar();</span>
+<span class="nc" id="L1171">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void updateMenuBar() {
+<span class="nc" id="L1178">        this.canvas.updateMenuBar();</span>
+<span class="nc" id="L1179">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showPopupMenu(JPopupMenu menu, int x, int y) {
+<span class="nc" id="L1186">        menu.show(this.canvas, x, y);</span>
+<span class="nc" id="L1187">    }</span>
+
+
+    // Path handling
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setUnitPath(PathNode path) {
+<span class="nc" id="L1197">        this.mapViewer.getMapViewerState().setUnitPath(path);</span>
+<span class="nc" id="L1198">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void activateGotoPath() {
+<span class="nc" id="L1205">        Unit unit = getActiveUnit();</span>
+<span class="nc bnc" id="L1206" title="All 2 branches missed.">        if (unit == null) return;</span>
+
+        // Enter &quot;goto mode&quot; if not already activated; otherwise cancel it
+<span class="nc bnc" id="L1209" title="All 2 branches missed.">        if (isGotoStarted()) {</span>
+<span class="nc" id="L1210">            clearGotoPath();</span>
+        } else {
+<span class="nc" id="L1212">            startGoto();</span>
+            
+            // Draw the path to the current mouse position, if the
+            // mouse is over the screen; see also
+            // CanvasMouseMotionListener.
+<span class="nc" id="L1217">            Point pt = this.canvas.getMousePosition();</span>
+<span class="nc bnc" id="L1218" title="All 2 branches missed.">            updateGotoTile((pt == null) ? null</span>
+<span class="nc" id="L1219">                : tileAt(pt.x, pt.y));</span>
+        }
+<span class="nc" id="L1221">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clearGotoPath() {
+<span class="nc" id="L1228">        stopGoto();</span>
+<span class="nc" id="L1229">        updateUnitPath();</span>
+<span class="nc" id="L1230">        repaint();</span>
+<span class="nc" id="L1231">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isGotoStarted() {
+<span class="nc" id="L1238">        return this.gotoStarted;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void performGoto(Tile tile) {
+<span class="nc bnc" id="L1246" title="All 2 branches missed.">        if (isGotoStarted()) stopGoto();</span>
+
+<span class="nc" id="L1248">        final Unit active = getActiveUnit();</span>
+<span class="nc bnc" id="L1249" title="All 2 branches missed.">        if (active != null) {</span>
+<span class="nc bnc" id="L1250" title="All 4 branches missed.">            if (tile != null &amp;&amp; active.getTile() != tile) {</span>
+<span class="nc" id="L1251">                startGoto();</span>
+<span class="nc" id="L1252">                updateGotoTile(tile);</span>
+<span class="nc" id="L1253">                traverseGotoPath();</span>
+            }
+        }
+<span class="nc" id="L1256">        updateUnitPath();</span>
+<span class="nc" id="L1257">        repaint();</span>
+<span class="nc" id="L1258">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void performGoto(int x, int y) {
+<span class="nc" id="L1265">        performGoto(tileAt(x, y));</span>
+<span class="nc" id="L1266">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void traverseGotoPath() {
+<span class="nc" id="L1273">        final Unit unit = getActiveUnit();</span>
+<span class="nc bnc" id="L1274" title="All 4 branches missed.">        if (unit == null || !isGotoStarted()) {</span>
+<span class="nc" id="L1275">            return;</span>
+        }
+        
+<span class="nc" id="L1278">        setUnitPath(null);</span>
+
+<span class="nc" id="L1280">        final PathNode path = stopGoto();</span>
+<span class="nc bnc" id="L1281" title="All 2 branches missed.">        if (path == null) {</span>
+<span class="nc" id="L1282">            igc().clearGotoOrders(unit);</span>
+        } else {
+<span class="nc" id="L1284">            igc().goToTile(unit, path);</span>
+<span class="nc" id="L1285">            refresh();</span>
+        }
+<span class="nc" id="L1287">        updateUnitPath();</span>
+<span class="nc" id="L1288">        repaint();</span>
+<span class="nc" id="L1289">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void updateGoto(int x, int y, boolean start) {
+<span class="nc bnc" id="L1296" title="All 6 branches missed.">        if (!isGotoStarted() &amp;&amp; start &amp;&amp; isDrag(x, y)) {</span>
+<span class="nc" id="L1297">            startGoto();</span>
+        }
+<span class="nc bnc" id="L1299" title="All 2 branches missed.">        if (isGotoStarted()) {</span>
+<span class="nc" id="L1300">            updateGotoTile(tileAt(x, y));</span>
+        }
+<span class="nc" id="L1302">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void prepareDrag(int x, int y) {
+<span class="nc bnc" id="L1309" title="All 2 branches missed.">        if (isGotoStarted()) {</span>
+<span class="nc" id="L1310">            stopGoto();</span>
+<span class="nc" id="L1311">            repaint();</span>
+        }
+        
+<span class="nc" id="L1314">        final Tile tile = tileAt(x, y);</span>
+<span class="nc" id="L1315">        final Unit dragUnit = this.mapViewer.getMapViewerState().findUnitInFront(tile);</span>
+<span class="nc bnc" id="L1316" title="All 4 branches missed.">        if (dragUnit == null || !getMyPlayer().owns(dragUnit)) {</span>
+<span class="nc" id="L1317">            clearDrag();</span>
+<span class="nc" id="L1318">            return;</span>
+        }
+        
+<span class="nc" id="L1321">        this.mapViewer.getMapViewerState().setActiveUnit(dragUnit);</span>
+<span class="nc" id="L1322">        updateMapControls();</span>
+        
+<span class="nc" id="L1324">        setDragPoint(x, y);</span>
+<span class="nc" id="L1325">        this.canvas.requestFocus();</span>
+<span class="nc" id="L1326">    }</span>
+    
+
+    // Scrolling
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean scrollMap(Direction direction, boolean performRepaints) {
+<span class="nc bnc" id="L1336" title="All 2 branches missed.">        if (!performRepaints</span>
+<span class="nc bnc" id="L1337" title="All 2 branches missed.">                || this.mapViewer.getMapViewerRepaintManager().isAllDirty()</span>
+<span class="nc bnc" id="L1338" title="All 2 branches missed.">                || !getClientOptions().isTerrainAnimationsEnabled()) {</span>
+<span class="nc" id="L1339">            return this.mapViewer.getMapViewerBounds().scrollMap(direction);</span>
+        }
+        
+        /*
+         * TODO: We can get better performance for diagonal scrolling, when terrain
+         *       animations are disabled, by updating the back buffer and removing the
+         *       terrain animation check above.
+         */
+        
+<span class="nc" id="L1348">        boolean scrolled = false;</span>
+<span class="nc bnc" id="L1349" title="All 2 branches missed.">        if (Direction.longSides.contains(direction)) {</span>
+<span class="nc" id="L1350">            final List&lt;Direction&gt; directions = toNonDiagonalDirections(direction);</span>
+<span class="nc" id="L1351">            scrolled |= this.mapViewer.getMapViewerBounds().scrollMap(directions.get(0));</span>
+<span class="nc bnc" id="L1352" title="All 2 branches missed.">            if (scrolled) {</span>
+<span class="nc" id="L1353">                this.mapViewer.paintImmediatelyToBuffersOnly();</span>
+            }
+<span class="nc" id="L1355">            scrolled |= this.mapViewer.getMapViewerBounds().scrollMap(directions.get(1));</span>
+<span class="nc" id="L1356">        } else {</span>
+<span class="nc" id="L1357">            scrolled |= this.mapViewer.getMapViewerBounds().scrollMap(direction);</span>
+        }
+        
+<span class="nc bnc" id="L1360" title="All 2 branches missed.">        if (scrolled) {</span>
+<span class="nc" id="L1361">            paintImmediately();</span>
+        }
+        
+<span class="nc" id="L1364">        return scrolled;</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void resetScrollSpeed() {
+<span class="nc" id="L1372">        this.mapViewer.getMapViewerBounds().resetScrollSpeed();</span>
+<span class="nc" id="L1373">    }</span>
+    
+    private static List&lt;Direction&gt; toNonDiagonalDirections(Direction d) {
+<span class="nc bnc" id="L1376" title="All 5 branches missed.">        switch (d) {</span>
+<span class="nc" id="L1377">        case NE: return List.of(Direction.N, Direction.E);</span>
+<span class="nc" id="L1378">        case SE: return List.of(Direction.S, Direction.E);</span>
+<span class="nc" id="L1379">        case NW: return List.of(Direction.N, Direction.W);</span>
+<span class="nc" id="L1380">        case SW: return List.of(Direction.S, Direction.W);</span>
+<span class="nc" id="L1381">        default: return List.of(d);</span>
+        }
+    }
+
+
+    // Tile image manipulation
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public BufferedImage createTileImageWithBeachBorderAndItems(Tile tile) {
+<span class="nc" id="L1393">        return tileViewer.createTileImageWithBeachBorderAndItems(tile);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public BufferedImage createTileImage(Tile tile, Player player) {
+<span class="nc" id="L1401">        return tileViewer.createTileImage(tile, player);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public BufferedImage createColonyTileImage(Tile tile, Colony colony) {
+<span class="nc" id="L1409">        return tileViewer.createColonyTileImage(tile, colony);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void displayColonyTiles(Graphics2D g2d, Tile[][] tiles,
+                                   Colony colony) {
+<span class="nc" id="L1418">        this.tileViewer.displayColonyTiles(g2d, tiles, colony);</span>
+<span class="nc" id="L1419">    }</span>
+
+
+    // View mode handling
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ViewMode getViewMode() {
+<span class="nc" id="L1429">        return this.mapViewer.getMapViewerState().getViewMode();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Unit getActiveUnit() {
+<span class="nc" id="L1437">        return this.mapViewer.getMapViewerState().getActiveUnit();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Tile getSelectedTile() {
+<span class="nc" id="L1445">        return this.mapViewer.getMapViewerState().getSelectedTile();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void changeView(Tile tile) {
+<span class="nc" id="L1453">        boolean change = changeViewMode(ViewMode.TERRAIN);</span>
+        // Do not change active unit, we might come back to it
+<span class="nc" id="L1455">        change |= changeSelectedTile(tile, getClientOptions()</span>
+<span class="nc" id="L1456">            .getBoolean(ClientOptions.ALWAYS_CENTER));</span>
+<span class="nc" id="L1457">        changeDone(change);</span>
+<span class="nc" id="L1458">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void changeView(Unit unit, boolean force) {
+<span class="nc" id="L1465">        boolean change = changeViewMode(ViewMode.MOVE_UNITS);</span>
+<span class="nc" id="L1466">        change |= changeActiveUnit(unit);</span>
+<span class="nc bnc" id="L1467" title="All 6 branches missed.">        if (unit != null &amp;&amp; unit.hasTile() &amp;&amp; !force) {</span>
+            // Bring the selected tile along with the unit.
+<span class="nc" id="L1469">            change |= changeSelectedTile(unit.getTile(), true);</span>
+        }
+<span class="nc bnc" id="L1471" title="All 4 branches missed.">        changeDone(change || force);</span>
+<span class="nc" id="L1472">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void changeView(MapTransform mt) {
+<span class="nc" id="L1479">        boolean change = changeViewMode(ViewMode.MAP_TRANSFORM);</span>
+        // Do not change selected tile
+<span class="nc" id="L1481">        changeDone(change);</span>
+<span class="nc" id="L1482">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void changeView() {
+<span class="nc" id="L1489">        boolean change = changeViewMode(ViewMode.END_TURN);</span>
+<span class="nc" id="L1490">        change |= changeActiveUnit(null);</span>
+<span class="nc" id="L1491">        change |= changeSelectedTile(null, false);</span>
+<span class="nc" id="L1492">        changeDone(change);</span>
+<span class="nc" id="L1493">    }</span>
+
+
+
+    // Zoom control
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canZoomInMap() {
+<span class="nc bnc" id="L1504" title="All 2 branches missed.">        return this.scaledImageLibrary.getScaleFactor() &lt; getMaxScale();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canZoomOutMap() {
+<span class="nc bnc" id="L1512" title="All 2 branches missed.">        return this.scaledImageLibrary.getScaleFactor() &gt; ImageLibrary.MIN_SCALE;</span>
+    }
+    
+    private float getMaxScale() {
+<span class="nc bnc" id="L1516" title="All 2 branches missed.">        return MemoryManager.isHighQualityGraphicsEnabled() ? ImageLibrary.MAX_SCALE : ImageLibrary.NORMAL_SCALE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void zoomInMap() {
+<span class="nc" id="L1524">        float scale = this.scaledImageLibrary.getScaleFactor();</span>
+<span class="nc" id="L1525">        float newScale = scale + ImageLibrary.SCALE_STEP;</span>
+<span class="nc bnc" id="L1526" title="All 4 branches missed.">        if (scale &lt; newScale &amp;&amp; newScale &lt;= getMaxScale()) {</span>
+<span class="nc" id="L1527">            changeMapScale(newScale);</span>
+        }
+<span class="nc" id="L1529">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void zoomOutMap() {
+<span class="nc" id="L1536">        float scale = this.scaledImageLibrary.getScaleFactor();</span>
+<span class="nc" id="L1537">        float newScale = scale - ImageLibrary.SCALE_STEP;</span>
+<span class="nc bnc" id="L1538" title="All 4 branches missed.">        if (ImageLibrary.MIN_SCALE &lt;= newScale &amp;&amp; newScale &lt; scale) {</span>
+<span class="nc" id="L1539">            changeMapScale(newScale);</span>
+        }
+<span class="nc" id="L1541">    }</span>
+
+    private void changeMapScale(float newScale) {
+<span class="nc" id="L1544">        newScale = constrainToMaxMapScale(newScale);</span>
+<span class="nc" id="L1545">        imageCache.clear();</span>
+<span class="nc bnc" id="L1546" title="All 2 branches missed.">        if (this.mapViewer != null) {</span>
+<span class="nc" id="L1547">            this.mapViewer.changeScale(newScale);</span>
+        }
+<span class="nc bnc" id="L1549" title="All 2 branches missed.">        if (this.mapControls != null) {</span>
+<span class="nc" id="L1550">            this.mapControls.updateMinimap();</span>
+        }
+<span class="nc bnc" id="L1552" title="All 2 branches missed.">        if (this.canvas != null) {</span>
+<span class="nc" id="L1553">            refresh();</span>
+        }
+<span class="nc" id="L1555">    }</span>
+    
+    private float constrainToMaxMapScale(float newScale) {
+<span class="nc bnc" id="L1558" title="All 2 branches missed.">        if (newScale &gt; getMaxScale()) {</span>
+<span class="nc" id="L1559">            newScale = getMaxScale();</span>
+        }
+<span class="nc" id="L1561">        return newScale;</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void reloadResources() {
+<span class="nc" id="L1569">        ResourceManager.reload();</span>
+<span class="nc" id="L1570">        imageCache.clear();</span>
+<span class="nc" id="L1571">        refresh();</span>
+<span class="nc" id="L1572">    }</span>
+    
+    public void prepareResources() {
+<span class="nc" id="L1575">        ResourceManager.prepare();</span>
+<span class="nc" id="L1576">        imageCache.clear();</span>
+<span class="nc" id="L1577">        refresh();</span>
+<span class="nc" id="L1578">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void emergencyPurge() {
+<span class="nc" id="L1585">        imageCache.clear();</span>
+        
+<span class="nc" id="L1587">        final SoundController sc = getFreeColClient().getSoundController();</span>
+<span class="nc" id="L1588">        sc.setDefaultPlaylist(List.of());</span>
+<span class="nc" id="L1589">        sc.playMusic(null);</span>
+<span class="nc" id="L1590">    }</span>
+
+
+    // Highest level panel and dialog handling
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clickAt(int count, int x, int y) {
+<span class="nc bnc" id="L1600" title="All 2 branches missed.">        if (mapViewer.getMapViewerState().isRangedAttackMode()) {</span>
+<span class="nc" id="L1601">            final Tile tile = tileAt(x, y);</span>
+<span class="nc" id="L1602">            final Unit activeUnit = mapViewer.getMapViewerState().getActiveUnit();</span>
+<span class="nc bnc" id="L1603" title="All 2 branches missed.">            if (activeUnit == null</span>
+<span class="nc bnc" id="L1604" title="All 2 branches missed.">                    || !activeUnit.isOffensiveUnit()</span>
+<span class="nc bnc" id="L1605" title="All 2 branches missed.">                    || !activeUnit.canAttackRanged(tile)</span>
+<span class="nc bnc" id="L1606" title="All 2 branches missed.">                    || activeUnit.getMovesLeft() &lt;= 0</span>
+<span class="nc bnc" id="L1607" title="All 2 branches missed.">                    || !getFreeColClient().currentPlayerIsMyPlayer()) {</span>
+<span class="nc" id="L1608">                return;</span>
+            }
+<span class="nc" id="L1610">            igc().attackRanged(activeUnit, tile);</span>
+<span class="nc" id="L1611">            return;</span>
+        }
+        
+        // This could be a drag, which would have already been processed
+        // in @see CanvasMouseListener#mouseReleased
+<span class="nc bnc" id="L1616" title="All 4 branches missed.">        if (count == 1 &amp;&amp; isDrag(x, y)) return;</span>
+
+<span class="nc" id="L1618">        final Tile tile = tileAt(x, y);</span>
+<span class="nc bnc" id="L1619" title="All 2 branches missed.">        if (tile == null) return;</span>
+<span class="nc" id="L1620">        Unit other = null;</span>
+
+<span class="nc bnc" id="L1622" title="All 2 branches missed.">        if (!tile.isExplored()) { // Select unexplored tiles</span>
+<span class="nc" id="L1623">            setFocus(tile);</span>
+<span class="nc bnc" id="L1624" title="All 2 branches missed.">        } else if (tile.hasSettlement()) { // Pop up settlements if any</span>
+<span class="nc" id="L1625">            Settlement settlement = tile.getSettlement();</span>
+<span class="nc bnc" id="L1626" title="All 2 branches missed.">            if (settlement instanceof Colony) {</span>
+<span class="nc bnc" id="L1627" title="All 2 branches missed.">                if (getMyPlayer().owns(settlement)) {</span>
+<span class="nc" id="L1628">                    showColonyPanel((Colony)settlement, null);</span>
+                } else {
+<span class="nc" id="L1630">                    DebugUtils.showForeignColony(getFreeColClient(),</span>
+                                                 (Colony)settlement);
+                }
+<span class="nc bnc" id="L1633" title="All 2 branches missed.">            } else if (settlement instanceof IndianSettlement) {</span>
+<span class="nc" id="L1634">                showIndianSettlementPanel((IndianSettlement)settlement);</span>
+            }
+<span class="nc bnc" id="L1636" title="All 2 branches missed.">        } else if ((other = this.mapViewer.getMapViewerState().findUnitInFront(tile)) != null) {</span>
+<span class="nc bnc" id="L1637" title="All 2 branches missed.">            if (getMyPlayer().owns(other)) {</span>
+                // If there is one of the player units present, select it,
+                // unless we are on the same tile as the active unit,
+                // in which case select the active unit if not in units mode
+                // otherwise the unit *after* the active.
+<span class="nc" id="L1642">                final Unit active = getActiveUnit();</span>
+<span class="nc bnc" id="L1643" title="All 4 branches missed.">                if (active != null &amp;&amp; active.getTile() == tile) {</span>
+<span class="nc bnc" id="L1644" title="All 2 branches missed.">                    if (getViewMode() != ViewMode.MOVE_UNITS) {</span>
+<span class="nc" id="L1645">                        other = active;</span>
+                    } else {
+<span class="nc" id="L1647">                        List&lt;Unit&gt; units = tile.getUnitList();</span>
+<span class="nc bnc" id="L1648" title="All 2 branches missed.">                        while (!units.isEmpty()) {</span>
+<span class="nc" id="L1649">                            Unit u = units.remove(0);</span>
+<span class="nc bnc" id="L1650" title="All 2 branches missed.">                            if (u == active) {</span>
+<span class="nc bnc" id="L1651" title="All 2 branches missed.">                                if (!units.isEmpty()) other = units.remove(0);</span>
+                                break;
+                            }
+<span class="nc" id="L1654">                        }</span>
+                    }
+                }
+<span class="nc" id="L1657">                changeView(other, false);</span>
+<span class="nc" id="L1658">            } else { // Select the tile under the unit if it is not ours</span>
+<span class="nc" id="L1659">                setFocus(tile);</span>
+            }
+        } else { // Otherwise select the tile in terrain mode on multiclick
+<span class="nc bnc" id="L1662" title="All 2 branches missed.">            if (count &gt; 1) {</span>
+<span class="nc" id="L1663">                changeView(tile);</span>
+            } else {
+<span class="nc" id="L1665">                setFocus(tile);</span>
+            }
+        }
+<span class="nc" id="L1668">    }    </span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void closePanel(String panel) {
+<span class="nc" id="L1675">        this.canvas.closePanel(panel);</span>
+<span class="nc" id="L1676">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void closeMainPanel() {
+<span class="nc" id="L1683">        this.canvas.closeMainPanel();</span>
+<span class="nc" id="L1684">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void closeStatusPanel() {
+<span class="nc" id="L1691">        StatusPanel panel</span>
+<span class="nc" id="L1692">            = this.canvas.getExistingFreeColPanel(StatusPanel.class);</span>
+<span class="nc bnc" id="L1693" title="All 2 branches missed.">        if (panel != null) {</span>
+<span class="nc" id="L1694">            this.canvas.removeFromCanvas(panel);</span>
+<span class="nc" id="L1695">            this.canvas.requestFocusInWindow();</span>
+        }
+<span class="nc" id="L1697">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void displayChat(String sender, String message, Color color,
+                            boolean privateChat) {
+<span class="nc" id="L1705">        this.mapViewer.getMapViewerState().displayChat(new GUIMessage(sender + &quot;: &quot; + message, color));</span>
+<span class="nc" id="L1706">        repaint();</span>
+<span class="nc" id="L1707">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void displayObject(FreeColObject fco) {
+        // TODO: Improve OO.
+<span class="nc bnc" id="L1715" title="All 2 branches missed.">        if (fco instanceof Colony) {</span>
+<span class="nc" id="L1716">            showColonyPanel((Colony)fco, null);</span>
+<span class="nc bnc" id="L1717" title="All 2 branches missed.">        } else if (fco instanceof Europe) {</span>
+<span class="nc" id="L1718">            showEuropePanel();</span>
+<span class="nc bnc" id="L1719" title="All 2 branches missed.">        } else if (fco instanceof IndianSettlement) {</span>
+<span class="nc" id="L1720">            showIndianSettlementPanel((IndianSettlement)fco);</span>
+<span class="nc bnc" id="L1721" title="All 2 branches missed.">        } else if (fco instanceof Tile) {</span>
+<span class="nc" id="L1722">            setFocus((Tile)fco);</span>
+<span class="nc bnc" id="L1723" title="All 2 branches missed.">        } else if (fco instanceof Unit) {</span>
+<span class="nc" id="L1724">            Location loc = ((Unit)fco).up();</span>
+<span class="nc bnc" id="L1725" title="All 2 branches missed.">            if (loc.getRank() == Location.LOCATION_RANK_HIGHSEAS) {</span>
+                // do nothing. Unit at LOCATION_RANK_HIGHSEAS can't be displayed
+<span class="nc bnc" id="L1727" title="All 2 branches missed.">            }else if (loc instanceof Colony) {</span>
+<span class="nc" id="L1728">                showColonyPanel((Colony)loc, (Unit)fco);</span>
+            } else {
+<span class="nc" id="L1730">                displayObject((FreeColObject)loc);</span>
+            }
+<span class="nc bnc" id="L1732" title="All 2 branches missed.">        } else if (fco instanceof WorkLocation) {</span>
+<span class="nc" id="L1733">            showColonyPanel(((WorkLocation)fco).getColony(), null);</span>
+        }
+<span class="nc" id="L1735">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void displayStartChat(String sender, String message,
+                                 boolean privateChat) {
+<span class="nc" id="L1743">        StartGamePanel panel</span>
+<span class="nc" id="L1744">            = this.canvas.getExistingFreeColPanel(StartGamePanel.class);</span>
+<span class="nc bnc" id="L1745" title="All 2 branches missed.">        if (panel != null) {</span>
+<span class="nc" id="L1746">            panel.displayChat(sender, message, privateChat);</span>
+        }
+<span class="nc" id="L1748">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isDialogShowing() {
+<span class="nc bnc" id="L1755" title="All 4 branches missed.">        return this.canvas.getDisplayedModalDialogs() &gt; 0 || this.canvas.getExistingFreeColDialog(ClientOptionsDialog.class) != null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isPanelShowing() {
+<span class="nc bnc" id="L1763" title="All 4 branches missed.">        return this.canvas != null &amp;&amp; this.canvas.getShowingPanel() != null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void refresh() {
+<span class="nc bnc" id="L1771" title="All 2 branches missed.">        if (this.mapViewer != null) {</span>
+<span class="nc" id="L1772">            this.mapViewer.getMapViewerRepaintManager().markAsDirty();</span>
+        }
+<span class="nc bnc" id="L1774" title="All 2 branches missed.">        if (this.mapControls != null) {</span>
+<span class="nc" id="L1775">            this.mapControls.updateMinimap();</span>
+        }
+<span class="nc bnc" id="L1777" title="All 2 branches missed.">        if (this.canvas != null) {</span>
+<span class="nc" id="L1778">            this.canvas.repaint(0, 0, this.canvas.getWidth(), this.canvas.getHeight());</span>
+        }
+<span class="nc" id="L1780">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void repaint() {
+<span class="nc" id="L1787">    	this.canvas.repaint(0, 0, this.canvas.getWidth(), this.canvas.getHeight());</span>
+<span class="nc" id="L1788">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void refreshPlayersTable() {
+<span class="nc" id="L1795">        StartGamePanel panel</span>
+<span class="nc" id="L1796">            = this.canvas.getExistingFreeColPanel(StartGamePanel.class);</span>
+<span class="nc bnc" id="L1797" title="All 2 branches missed.">        if (panel != null) panel.refreshPlayersTable();</span>
+<span class="nc" id="L1798">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void removeComponent(Component component) {
+<span class="nc" id="L1805">        this.canvas.remove(component);</span>
+<span class="nc bnc" id="L1806" title="All 2 branches missed.">        if (!isPanelShowing()) this.canvas.requestFocusInWindow();</span>
+<span class="nc" id="L1807">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void removeDialog(DeprecatedFreeColDialog&lt;?&gt; fcd) {
+<span class="nc" id="L1814">        this.canvas.dialogRemove(fcd);</span>
+<span class="nc" id="L1815">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void removeTradeRoutePanel(FreeColPanel panel) {
+<span class="nc" id="L1822">        this.canvas.remove(panel);</span>
+<span class="nc" id="L1823">        TradeRouteInputPanel tripPanel</span>
+<span class="nc" id="L1824">            = this.canvas.getExistingFreeColPanel(TradeRouteInputPanel.class);</span>
+<span class="nc bnc" id="L1825" title="All 2 branches missed.">        if (tripPanel != null) tripPanel.cancelTradeRoute();</span>
+<span class="nc" id="L1826">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void restoreSavedSize(Component comp, Dimension size) {
+<span class="nc" id="L1833">        this.canvas.restoreSavedSize(comp, size);</span>
+<span class="nc" id="L1834">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showTilePopup(Tile tile) {
+<span class="nc bnc" id="L1841" title="All 4 branches missed.">        if (tile == null || !tile.isExplored()) return;</span>
+<span class="nc" id="L1842">        TilePopup tp = new TilePopup(getFreeColClient(), tile);</span>
+<span class="nc bnc" id="L1843" title="All 2 branches missed.">        if (tp.hasItem()) {</span>
+<span class="nc" id="L1844">            Point point = this.mapViewer.getMapViewerBounds().calculateTilePosition(tile, true);</span>
+<span class="nc" id="L1845">            tp.show(this.canvas, point.x, point.y);</span>
+<span class="nc" id="L1846">            tp.repaint();</span>
+        }
+<span class="nc" id="L1848">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Tile tileAt(int x, int y) {
+<span class="nc" id="L1855">        return this.mapViewer.convertToMapTile(x, y);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void updateEuropeanSubpanels() {
+<span class="nc bnc" id="L1863" title="All 2 branches missed.">        for (Class&lt;? extends FreeColPanel&gt; c: EUROPE_CLASSES) {</span>
+<span class="nc" id="L1864">            FreeColPanel p = this.canvas.getExistingFreeColPanel(c);</span>
+<span class="nc bnc" id="L1865" title="All 2 branches missed.">            if (p != null) {</span>
+                // TODO: remember how to write generic code, avoid
+                // introspection
+                try {
+<span class="nc" id="L1869">                    Introspector.invokeVoidMethod(p, &quot;update&quot;);</span>
+<span class="nc" id="L1870">                } catch (Exception e) {</span>
+                    ; // &quot;can not happen&quot;
+<span class="nc" id="L1872">                }</span>
+            }
+<span class="nc" id="L1874">        }</span>
+<span class="nc" id="L1875">    }</span>
+
+
+    // Panel display, usually used just by the associated action,
+    // mostly delegated to Widgets
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showAboutPanel() {
+<span class="nc" id="L1886">        return this.widgets.showAboutPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showBuildQueuePanel(Colony colony) {
+<span class="nc" id="L1894">        return this.widgets.showBuildQueuePanel(colony);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showCaptureGoodsDialog(final Unit unit, List&lt;Goods&gt; gl,
+                                       DialogHandler&lt;List&lt;Goods&gt;&gt; handler) {
+<span class="nc" id="L1903">        this.widgets.showCaptureGoodsDialog(unit, gl, handler);</span>
+<span class="nc" id="L1904">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showChatPanel() {
+<span class="nc bnc" id="L1911" title="All 2 branches missed.">        return (getFreeColClient().getSinglePlayer()) ? null</span>
+<span class="nc" id="L1912">            : this.widgets.showChatPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showChooseFoundingFatherDialog(final List&lt;FoundingFather&gt; ffs,
+                                               DialogHandler&lt;FoundingFather&gt; handler) {
+<span class="nc" id="L1921">        this.widgets.showChooseFoundingFatherDialog(ffs, handler);</span>
+<span class="nc" id="L1922">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showClientOptionsDialog() {
+<span class="nc" id="L1929">        final FreeColClient fcc = getFreeColClient();</span>
+<span class="nc" id="L1930">        final ClientOptionsDialog dialog = new ClientOptionsDialog(fcc, this.canvas.getParentFrame(), true);</span>
+<span class="nc" id="L1931">        dialog.setDialogHandler(group -&gt; {</span>
+<span class="nc bnc" id="L1932" title="All 2 branches missed.">            if (group != null) {</span>
+<span class="nc" id="L1933">                refreshGuiUsingClientOptions();</span>
+<span class="nc" id="L1934">                canvas.mainTitleIfMainPanelIsAlreadyShowing();</span>
+            }
+<span class="nc" id="L1936">        });</span>
+<span class="nc" id="L1937">        this.canvas.showFreeColPanel(dialog, PopupPosition.CENTERED, true);</span>
+<span class="nc" id="L1938">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void refreshGuiUsingClientOptions() {
+<span class="nc" id="L1945">        final int dpi = Utils.determineDpi(graphicsDevice);</span>
+<span class="nc" id="L1946">        final float scaleFactor = determineScaleFactorUsingClientOptions(dpi);</span>
+        
+<span class="nc" id="L1948">        this.fixedImageLibrary.changeScaleFactor(scaleFactor);</span>
+<span class="nc" id="L1949">        resetMapZoom();</span>
+<span class="nc bnc" id="L1950" title="All 2 branches missed.">        if (this.tileViewer != null) {</span>
+<span class="nc" id="L1951">            this.tileViewer.updateScaledVariables();</span>
+        }
+        
+<span class="nc" id="L1954">        configureMigLayout(scaleFactor);</span>
+        
+<span class="nc" id="L1956">        FreeColImageBorder.setScaleFactor(scaleFactor);</span>
+        
+<span class="nc" id="L1958">        ResourceManager.setMods(getClientOptions().getActiveMods());</span>
+<span class="nc bnc" id="L1959" title="All 2 branches missed.">        if (getClientOptions().getRange(ClientOptions.GRAPHICS_QUALITY) == ClientOptions.GRAPHICS_QUALITY_LOWEST) {</span>
+<span class="nc" id="L1960">            ImageResource.forceLowestQuality(true);</span>
+<span class="nc" id="L1961">            reloadResources();</span>
+<span class="nc bnc" id="L1962" title="All 2 branches missed.">        } else if (ImageResource.isForceLowestQuality()) {</span>
+<span class="nc" id="L1963">            ImageResource.forceLowestQuality(false);</span>
+<span class="nc" id="L1964">            reloadResources();</span>
+        } else {
+<span class="nc" id="L1966">            prepareResources();</span>
+        }
+        
+<span class="nc" id="L1969">        final int fontSize = determineMainFontSizeUsingClientOptions(dpi);</span>
+<span class="nc" id="L1970">        FontLibrary.setMainFontSize(fontSize);</span>
+        
+<span class="nc" id="L1972">        final Font font = FontLibrary.getMainFont();</span>
+<span class="nc" id="L1973">        FreeColLookAndFeel.setScaleFactor(scaleFactor);</span>
+<span class="nc" id="L1974">        FreeColLookAndFeel.installFont(font);</span>
+<span class="nc" id="L1975">        FreeColToolTipUI.setFontScaling(FontLibrary.getFontScaling());</span>
+<span class="nc" id="L1976">        Utility.initStyleContext(font);</span>
+        
+<span class="nc bnc" id="L1978" title="All 2 branches missed.">        if (getFreeColClient().getActionManager() != null) {</span>
+<span class="nc" id="L1979">            getFreeColClient().getActionManager().refreshResources();</span>
+        }
+        
+<span class="nc bnc" id="L1982" title="All 2 branches missed.">        if (this.mapControls != null) {</span>
+<span class="nc" id="L1983">            this.mapControls.updateLayoutIfNeeded();</span>
+        }
+<span class="nc bnc" id="L1985" title="All 2 branches missed.">        if (this.canvas != null) { </span>
+<span class="nc" id="L1986">            this.canvas.resetMenuBar();</span>
+<span class="nc" id="L1987">            resetMapControls();</span>
+        }
+        
+<span class="nc" id="L1990">        canvas.refreshAllFrames();</span>
+        
+<span class="nc" id="L1992">        refresh();</span>
+<span class="nc" id="L1993">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    public void resetMapControls() {
+<span class="nc bnc" id="L2000" title="All 2 branches missed.">        if (this.canvas.removeMapControls()) {</span>
+<span class="nc" id="L2001">            updateMapControls();</span>
+<span class="nc" id="L2002">            this.canvas.addMapControls();</span>
+        }
+<span class="nc" id="L2004">    }</span>
+
+    private int determineMainFontSizeUsingClientOptions(final int dpi) {
+<span class="nc" id="L2007">        final int DEFAULT_DPI = 72;</span>
+        
+<span class="nc bnc" id="L2009" title="All 2 branches missed.">        if (getClientOptions().getBoolean(ClientOptions.MANUAL_MAIN_FONT_SIZE)) {</span>
+<span class="nc" id="L2010">            final int fontSize = getClientOptions().getInteger(ClientOptions.MAIN_FONT_SIZE);</span>
+<span class="nc" id="L2011">            logger.info(&quot;Manual font size: &quot; + fontSize + &quot; (reported DPI: &quot; + dpi + &quot;)&quot;);</span>
+<span class="nc" id="L2012">            return fontSize;</span>
+        }
+        
+<span class="nc" id="L2015">        final int displayScaling = getClientOptions().getInteger(ClientOptions.DISPLAY_SCALING);</span>
+<span class="nc" id="L2016">        final float scaleFactor = determineScaleFactorUsingClientOptions(dpi);</span>
+<span class="nc" id="L2017">        final int fontSizeUsingScaling = (int) (FontLibrary.DEFAULT_UNSCALED_MAIN_FONT_SIZE * scaleFactor);</span>
+        
+<span class="nc bnc" id="L2019" title="All 2 branches missed.">        if (displayScaling != 0) {</span>
+<span class="nc" id="L2020">            logger.info(&quot;Font size based on manual display scaling: &quot; + fontSizeUsingScaling + &quot; (reported DPI: &quot; + dpi + &quot;)&quot;);</span>
+<span class="nc" id="L2021">            return fontSizeUsingScaling;</span>
+        }
+        
+<span class="nc" id="L2024">        int fontSizeUsingDpi = (int) ((FontLibrary.DEFAULT_UNSCALED_MAIN_FONT_SIZE * dpi) / DEFAULT_DPI);</span>
+<span class="nc" id="L2025">        final int screenHeight = graphicsDevice.getDisplayMode().getHeight();</span>
+<span class="nc bnc" id="L2026" title="All 2 branches missed.">        if (screenHeight &lt; 900) {</span>
+<span class="nc" id="L2027">            fontSizeUsingDpi = Math.min(14, fontSizeUsingDpi);</span>
+<span class="nc bnc" id="L2028" title="All 2 branches missed.">        } else if (screenHeight &lt; 1050) {</span>
+<span class="nc" id="L2029">            fontSizeUsingDpi = Math.min(18, fontSizeUsingDpi);</span>
+        }
+        
+<span class="nc bnc" id="L2032" title="All 2 branches missed.">        if (fontSizeUsingDpi &gt;= fontSizeUsingScaling * 0.25f) {</span>
+<span class="nc" id="L2033">            logger.info(&quot;Using font size from scaling: &quot; + fontSizeUsingScaling + &quot; (reported DPI: &quot; + dpi + &quot;, screen height: &quot; + screenHeight + &quot;)&quot;);</span>
+<span class="nc" id="L2034">            return fontSizeUsingScaling;</span>
+        }
+                
+<span class="nc" id="L2037">        logger.info(&quot;Automatic font size: &quot; + fontSizeUsingDpi + &quot; (reported DPI: &quot; + dpi + &quot;, screen height: &quot; + screenHeight + &quot;)&quot;);</span>
+<span class="nc" id="L2038">        return Math.max(10, fontSizeUsingDpi);        </span>
+    }
+
+    private float determineScaleFactorUsingClientOptions(final int dpi) {
+<span class="nc" id="L2042">        final int DEFAULT_DPI = 72;</span>
+<span class="nc" id="L2043">        final int displayScaling = getClientOptions().getInteger(ClientOptions.DISPLAY_SCALING);</span>
+        float scaleFactor;
+<span class="nc bnc" id="L2045" title="All 2 branches missed.">        if (displayScaling == 0) {</span>
+            /* 
+             * Multiplication and division by 4 gives a rounded number
+             * to the closest 25.
+             */
+<span class="nc" id="L2050">            scaleFactor = Math.round((dpi * 4f) / DEFAULT_DPI) / 4f;</span>
+<span class="nc bnc" id="L2051" title="All 2 branches missed.">            if (scaleFactor &lt; 1) {</span>
+<span class="nc" id="L2052">                scaleFactor = 1F;</span>
+            }
+<span class="nc bnc" id="L2054" title="All 2 branches missed.">            if (scaleFactor &gt; 2) {</span>
+<span class="nc" id="L2055">                scaleFactor = 2F;</span>
+            }
+            
+            final int screenHeight;
+<span class="nc bnc" id="L2059" title="All 2 branches missed.">            if (FreeColDebugger.isAutomaticRescalingOnWindowResize()) {</span>
+<span class="nc bnc" id="L2060" title="All 4 branches missed.">                screenHeight = (canvas != null &amp;&amp; canvas.getParentFrame() != null) ? canvas.getParentFrame().getHeight() : graphicsDevice.getDisplayMode().getHeight();</span>
+            } else {
+<span class="nc" id="L2062">                screenHeight = graphicsDevice.getDisplayMode().getHeight();</span>
+            }
+<span class="nc bnc" id="L2064" title="All 2 branches missed.">            if (screenHeight &lt; 720) {</span>
+<span class="nc" id="L2065">                scaleFactor = 0.75F;</span>
+<span class="nc bnc" id="L2066" title="All 2 branches missed.">            } else if (screenHeight &lt; 900) {</span>
+<span class="nc" id="L2067">                scaleFactor = 1F;</span>
+<span class="nc bnc" id="L2068" title="All 2 branches missed.">            } else if (screenHeight &lt; 1050) {</span>
+<span class="nc" id="L2069">                scaleFactor = Math.min(1.25F, scaleFactor);</span>
+<span class="nc bnc" id="L2070" title="All 2 branches missed.">            } else if (screenHeight &lt; 1200) {</span>
+<span class="nc" id="L2071">                scaleFactor = Math.min(1.5F, scaleFactor);</span>
+<span class="nc bnc" id="L2072" title="All 2 branches missed.">            } else if (screenHeight &lt; 1400) {</span>
+<span class="nc" id="L2073">                scaleFactor = Math.min(1.75F, scaleFactor);</span>
+            }
+            
+<span class="nc" id="L2076">            logger.info(&quot;Automatic scale factor: &quot; + scaleFactor + &quot; (reported DPI: &quot; + dpi + &quot;, screen height: &quot; + screenHeight + &quot;)&quot;);</span>
+<span class="nc" id="L2077">        } else {</span>
+<span class="nc" id="L2078">            scaleFactor = displayScaling / 100f;</span>
+<span class="nc" id="L2079">            logger.info(&quot;Manual scale factor: &quot; + scaleFactor + &quot; (reported DPI: &quot; + dpi + &quot;)&quot;);</span>
+        }
+<span class="nc" id="L2081">        return scaleFactor;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showColonyPanel(final Colony colony, Unit unit) {
+<span class="nc bnc" id="L2089" title="All 2 branches missed.">        if (colony == null) return null;</span>
+<span class="nc" id="L2090">        final Predicate&lt;Component&gt; pred = (c) -&gt;</span>
+<span class="nc bnc" id="L2091" title="All 2 branches missed.">            (c instanceof ColonyPanel</span>
+<span class="nc bnc" id="L2092" title="All 2 branches missed.">                &amp;&amp; ((ColonyPanel)c).getColony() == colony);</span>
+<span class="nc" id="L2093">        ColonyPanel panel = (ColonyPanel)this.canvas.getMatchingComponent(pred);</span>
+<span class="nc bnc" id="L2094" title="All 2 branches missed.">        if (panel == null) {</span>
+            try {
+<span class="nc" id="L2096">                panel = new ColonyPanel(getFreeColClient(), colony);</span>
+<span class="nc" id="L2097">            } catch (Exception e) {</span>
+<span class="nc" id="L2098">                logger.log(Level.WARNING, &quot;Exception in ColonyPanel for &quot;</span>
+<span class="nc" id="L2099">                    + colony.getId(), e);</span>
+<span class="nc" id="L2100">                return null;</span>
+<span class="nc" id="L2101">            }</span>
+<span class="nc" id="L2102">            this.canvas.showFreeColPanel(panel,</span>
+<span class="nc" id="L2103">                getPopupPosition(colony.getTile()), true);</span>
+        } else {
+<span class="nc" id="L2105">            panel.requestFocus();</span>
+        }
+<span class="nc bnc" id="L2107" title="All 2 branches missed.">        if (unit != null) panel.setSelectedUnit(unit);</span>
+<span class="nc" id="L2108">        return panel;</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showFreeColPanel(FreeColPanel panel, boolean toolBox, PopupPosition popupPosition, boolean resizable) {
+<span class="nc bnc" id="L2116" title="All 2 branches missed.">        if (canvas.isAddedAsPanelFrameOrIcon(panel)) {</span>
+<span class="nc" id="L2117">            panel.requestFocus();</span>
+        } else {
+<span class="nc" id="L2119">            canvas.showFreeColPanel(panel, toolBox, popupPosition, resizable);</span>
+        }
+<span class="nc" id="L2121">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showColopediaPanel(String nodeId) {
+<span class="nc" id="L2128">        return this.widgets.showColopediaPanel(nodeId);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showColorChooserPanel(ActionListener al) {
+<span class="nc" id="L2136">        return this.widgets.showColorChooserPanel(al);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showCompactLabourReport() {
+<span class="nc" id="L2144">        return this.widgets.showCompactLabourReport();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showCompactLabourReport(UnitData unitData) {
+<span class="nc" id="L2152">        return this.widgets.showCompactLabourReport(unitData);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;String&gt; showConfirmDeclarationDialog() {
+<span class="nc" id="L2160">        return this.widgets.showConfirmDeclarationDialog();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showDeclarationPanel(Runnable afterClosing) {
+<span class="nc" id="L2168">        mapViewer.getMapViewerRepaintManager().setRepaintsBlocked(true);</span>
+        try {
+<span class="nc" id="L2170">            this.widgets.showDeclarationPanel(() -&gt; {</span>
+<span class="nc" id="L2171">                mapViewer.getMapViewerRepaintManager().setRepaintsBlocked(false);</span>
+<span class="nc" id="L2172">                refresh();</span>
+<span class="nc" id="L2173">                afterClosing.run();</span>
+<span class="nc" id="L2174">            });</span>
+<span class="nc" id="L2175">        } catch (RuntimeException e) {</span>
+<span class="nc" id="L2176">            mapViewer.getMapViewerRepaintManager().setRepaintsBlocked(false);</span>
+<span class="nc" id="L2177">            throw e;</span>
+<span class="nc" id="L2178">        }</span>
+<span class="nc" id="L2179">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showDifficultyDialog(Specification spec,
+                                            OptionGroup group,
+                                            boolean editable,
+                                            DialogHandler&lt;OptionGroup&gt; dialogHandler) {
+<span class="nc" id="L2189">        this.widgets.showDifficultyDialog(spec, group, editable, dialogHandler);</span>
+<span class="nc" id="L2190">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showDumpCargoDialog(Unit unit,
+                                    DialogHandler&lt;List&lt;Goods&gt;&gt; handler) {
+<span class="nc" id="L2198">        this.widgets.showDumpCargoDialog(unit, getPopupPosition(unit.getTile()),</span>
+                                         handler);
+<span class="nc" id="L2200">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean showEditOptionDialog(Option&lt;?&gt; option) {
+<span class="nc" id="L2207">        return this.widgets.showEditOptionDialog(option);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public IndianSettlement showEditSettlementDialog(IndianSettlement is) {
+<span class="nc" id="L2215">        return this.widgets.showEditSettlementDialog(is);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showEmigrationDialog(final Player player,
+                                     final boolean fountainOfYouth,
+                                     DialogHandler&lt;Integer&gt; handler) {
+<span class="nc" id="L2225">        this.widgets.showEmigrationDialog(player, fountainOfYouth, handler);</span>
+<span class="nc" id="L2226">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showEndTurnDialog(final List&lt;Unit&gt; units) {
+<span class="nc" id="L2233">        this.widgets.showEndTurnDialog(units);</span>
+<span class="nc" id="L2234">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showErrorPanel(String message, Runnable callback) {
+<span class="nc" id="L2241">        return this.widgets.showErrorPanel(message)</span>
+<span class="nc" id="L2242">            .addClosingCallback(callback);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showEuropePanel() {
+<span class="nc" id="L2250">        return this.widgets.showEuropePanel(() -&gt; {</span>
+<span class="nc bnc" id="L2251" title="All 2 branches missed.">                for (Class&lt;? extends FreeColPanel&gt; c: EUROPE_CLASSES) {</span>
+<span class="nc" id="L2252">                    FreeColPanel p = this.canvas.getExistingFreeColPanel(c);</span>
+<span class="nc bnc" id="L2253" title="All 2 branches missed.">                    if (p != null) this.canvas.remove(p);</span>
+<span class="nc" id="L2254">                }</span>
+<span class="nc" id="L2255">            });</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showEventPanel(String header, String image,
+                                       String footer) {
+<span class="nc" id="L2264">        return this.widgets.showEventPanel(header, image, footer);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showFindSettlementPanel() {
+<span class="nc" id="L2272">        return this.widgets.showFindSettlementPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showFirstContactDialog(final Player player, final Player other,
+                                       final Tile tile, int settlementCount,
+                                       DialogHandler&lt;Boolean&gt; handler) {
+<span class="nc" id="L2282">        this.widgets.showFirstContactDialog(player, other, tile,</span>
+                                            settlementCount,
+<span class="nc" id="L2284">                                            getPopupPosition(tile), handler);</span>
+<span class="nc" id="L2285">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showGameOptionsDialog(boolean editable, DialogHandler&lt;OptionGroup&gt; dialogHandler) {
+<span class="nc" id="L2292">        this.widgets.showGameOptionsDialog(editable, dialogHandler);</span>
+<span class="nc" id="L2293">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showHighScoresPanel(String messageId,
+                                            List&lt;HighScore&gt; scores) {
+<span class="nc" id="L2301">        return this.widgets.showHighScoresPanel(messageId, scores);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showIndianSettlementPanel(IndianSettlement is) {
+<span class="nc" id="L2309">        return this.widgets.showIndianSettlementPanel(is,</span>
+<span class="nc" id="L2310">            getPopupPosition(is.getTile()));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showInformationPanel(FreeColObject displayObject,
+                                             StringTemplate template) {
+<span class="nc" id="L2319">        ImageIcon icon = null;</span>
+<span class="nc" id="L2320">        Tile tile = null;</span>
+<span class="nc bnc" id="L2321" title="All 2 branches missed.">        if (displayObject != null) {</span>
+<span class="nc" id="L2322">            icon = this.fixedImageLibrary.getObjectImageIcon(displayObject);</span>
+<span class="nc bnc" id="L2323" title="All 2 branches missed.">            tile = (displayObject instanceof Location)</span>
+<span class="nc" id="L2324">                ? ((Location)displayObject).getTile()</span>
+<span class="nc" id="L2325">                : null;</span>
+        }
+<span class="nc bnc" id="L2327" title="All 2 branches missed.">        if (getClientOptions().getBoolean(ClientOptions.AUDIO_ALERTS)) {</span>
+<span class="nc" id="L2328">            playSound(&quot;sound.event.alertSound&quot;);</span>
+        }
+<span class="nc" id="L2330">        return this.widgets.showInformationPanel(displayObject,</span>
+<span class="nc" id="L2331">                                                 getPopupPosition(tile),</span>
+                                                 icon, template);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public File showLoadDialog(File directory, String... extension) {
+<span class="nc" id="L2340">        final FileFilter[] filters = new FileFilter[extension.length];</span>
+<span class="nc bnc" id="L2341" title="All 2 branches missed.">        for (int i=0; i&lt;extension.length; i++) {</span>
+<span class="nc" id="L2342">            filters[i] = FreeColDataFile.getFileFilter(extension[i]);</span>
+        }
+<span class="nc" id="L2344">        File file = null;</span>
+        for (;;) {
+<span class="nc" id="L2346">            file = this.widgets.showLoadDialog(directory, filters);</span>
+<span class="nc bnc" id="L2347" title="All 4 branches missed.">            if (file == null || file.isFile()) break;</span>
+<span class="nc" id="L2348">            String err = Messages.message(FreeCol.badFile(&quot;error.noSuchFile&quot;,</span>
+                                                          file));
+<span class="nc" id="L2350">            showErrorPanel(err, null);</span>
+<span class="nc" id="L2351">        }</span>
+<span class="nc" id="L2352">        return file;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public LoadingSavegameInfo showLoadingSavegameDialog(boolean publicServer,
+                                                         boolean singlePlayer) {
+<span class="nc" id="L2361">        return this.widgets.showLoadingSavegameDialog(publicServer,</span>
+                                                      singlePlayer);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showLogFilePanel() {
+<span class="nc" id="L2370">        return this.widgets.showLogFilePanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showMainPanel(String userMsg) {
+<span class="nc" id="L2378">        FreeColPanel panel = this.canvas.showMainPanel();</span>
+<span class="nc bnc" id="L2379" title="All 2 branches missed.">        if (userMsg != null) showInformationPanel(userMsg);</span>
+<span class="nc" id="L2380">        return panel;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showMainTitle() {
+<span class="nc" id="L2388">        this.canvas.mainTitle();</span>
+<span class="nc" id="L2389">        playSound(&quot;sound.intro.general&quot;);</span>
+<span class="nc" id="L2390">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showMapGeneratorOptionsDialog(boolean editable, DialogHandler&lt;OptionGroup&gt; dialogHandler) {
+<span class="nc" id="L2397">        this.widgets.showMapGeneratorOptionsDialog(editable, dialogHandler);</span>
+<span class="nc" id="L2398">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Dimension showMapSizeDialog() {
+<span class="nc" id="L2405">        return this.widgets.showMapSizeDialog();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showModelMessages(List&lt;ModelMessage&gt; modelMessages) {
+<span class="nc bnc" id="L2413" title="All 2 branches missed.">        if (modelMessages.isEmpty()) return null;</span>
+<span class="nc" id="L2414">        final Game game = getGame();</span>
+<span class="nc" id="L2415">        int n = modelMessages.size();</span>
+<span class="nc" id="L2416">        String[] texts = new String[n];</span>
+<span class="nc" id="L2417">        FreeColObject[] fcos = new FreeColObject[n];</span>
+<span class="nc" id="L2418">        ImageIcon[] icons = new ImageIcon[n];</span>
+<span class="nc" id="L2419">        Tile tile = null;</span>
+<span class="nc bnc" id="L2420" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L2421">            ModelMessage m = modelMessages.get(i);</span>
+<span class="nc" id="L2422">            texts[i] = Messages.message(m);</span>
+<span class="nc" id="L2423">            fcos[i] = game.getMessageSource(m);</span>
+<span class="nc" id="L2424">            icons[i] = this.fixedImageLibrary</span>
+<span class="nc" id="L2425">                .getObjectImageIcon(game.getMessageDisplay(m));</span>
+<span class="nc bnc" id="L2426" title="All 4 branches missed.">            if (tile == null &amp;&amp; fcos[i] instanceof Location) {</span>
+<span class="nc" id="L2427">                tile = ((Location)fcos[i]).getTile();</span>
+            }
+        }
+<span class="nc" id="L2430">        InformationPanel panel</span>
+<span class="nc" id="L2431">            = new InformationPanel(getFreeColClient(), texts, fcos, icons);</span>
+<span class="nc" id="L2432">        return this.canvas.showFreeColPanel(panel,</span>
+<span class="nc" id="L2433">            getPopupPosition(tile), false);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showMonarchDialog(final MonarchAction action,
+                                  StringTemplate template, String monarchKey,
+                                  DialogHandler&lt;Boolean&gt; handler) {
+<span class="nc" id="L2443">        this.widgets.showMonarchDialog(action, template, monarchKey, handler);</span>
+<span class="nc" id="L2444">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showNamingDialog(StringTemplate template,
+                                      final String defaultName,
+                                      final Unit unit,
+                                      DialogHandler&lt;String&gt; handler) {
+<span class="nc" id="L2454">        this.widgets.showNamingDialog(template, defaultName,</span>
+<span class="nc" id="L2455">                                      getPopupPosition(unit.getTile()),</span>
+                                      handler);
+<span class="nc" id="L2457">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showNativeDemandDialog(Unit unit, Colony colony,
+                                       GoodsType type, int amount,
+                                       DialogHandler&lt;Boolean&gt; handler) {
+<span class="nc" id="L2466">        this.widgets.showNativeDemandDialog(unit, colony, type, amount,</span>
+<span class="nc" id="L2467">                                            getPopupPosition(unit.getTile()),</span>
+                                            handler);
+<span class="nc" id="L2469">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showNegotiationDialog(FreeColGameObject our, FreeColGameObject other, DiplomaticTrade agreement,
+            StringTemplate comment, DialogHandler&lt;DiplomaticTrade&gt; handler) {
+<span class="nc bnc" id="L2477" title="All 12 branches missed.">        if ((!(our instanceof Unit) &amp;&amp; !(our instanceof Colony))</span>
+            || (!(other instanceof Unit) &amp;&amp; !(other instanceof Colony))
+            || (our instanceof Colony &amp;&amp; other instanceof Colony)) {
+<span class="nc" id="L2480">            throw new RuntimeException(&quot;Bad DTD args: &quot; + our + &quot;, &quot; + other);</span>
+        }
+<span class="nc" id="L2482">        this.widgets.showNegotiationDialog(our, other, agreement, comment, getPopupPosition(((Location)our).getTile()), handler);</span>
+<span class="nc" id="L2483">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showNewPanel(Specification spec) {
+        try {
+<span class="nc" id="L2491">            return this.widgets.showNewPanel(spec);</span>
+<span class="nc" id="L2492">        } catch (RuntimeException e) {</span>
+<span class="nc" id="L2493">            logger.log(Level.WARNING, &quot;Exception while showing new game panel&quot;, e);</span>
+<span class="nc" id="L2494">            showErrorPanel(e, StringTemplate.key(&quot;error.unspecified&quot;));</span>
+<span class="nc" id="L2495">            return null;</span>
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Parameters showParametersDialog() {
+<span class="nc" id="L2504">        return this.widgets.showParametersDialog();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean showPreCombatDialog(Unit attacker,
+                                       FreeColGameObject defender, Tile tile) {
+<span class="nc" id="L2513">        return this.widgets.showPreCombatDialog(attacker, defender,</span>
+<span class="nc" id="L2514">                                                getPopupPosition(tile));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showPurchasePanel() {
+<span class="nc" id="L2522">        return this.widgets.showPurchasePanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showRecruitPanel() {
+<span class="nc" id="L2530">        return this.widgets.showRecruitPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportCargoPanel() {
+<span class="nc" id="L2538">        return this.widgets.showReportCargoPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportColonyPanel() {
+        boolean compact;
+        try {
+<span class="nc" id="L2548">            compact = getFreeColClient().getClientOptions()</span>
+<span class="nc bnc" id="L2549" title="All 2 branches missed.">                .getInteger(ClientOptions.COLONY_REPORT)</span>
+                == ClientOptions.COLONY_REPORT_COMPACT;
+<span class="nc" id="L2551">        } catch (Exception e) {</span>
+<span class="nc" id="L2552">            compact = false;</span>
+<span class="nc" id="L2553">        }</span>
+<span class="nc" id="L2554">        return this.widgets.showReportColonyPanel(compact);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportContinentalCongressPanel() {
+<span class="nc" id="L2562">        return this.widgets.showReportContinentalCongressPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportEducationPanel() {
+<span class="nc" id="L2570">        return this.widgets.showReportEducationPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportExplorationPanel() {
+<span class="nc" id="L2578">        return this.widgets.showReportExplorationPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportForeignAffairPanel() {
+<span class="nc" id="L2586">        return this.widgets.showReportForeignAffairPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportHistoryPanel() {
+<span class="nc" id="L2594">        return this.widgets.showReportHistoryPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportIndianPanel() {
+<span class="nc" id="L2602">        return this.widgets.showReportIndianPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportLabourPanel() {
+<span class="nc" id="L2610">        return this.widgets.showReportLabourPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportLabourDetailPanel(UnitType unitType,
+            Map&lt;UnitType, java.util.Map&lt;Location, Integer&gt;&gt; data,
+            TypeCountMap&lt;UnitType&gt; unitCount, List&lt;Colony&gt; colonies) {
+<span class="nc" id="L2620">        return this.widgets.showReportLabourDetailPanel(unitType, data,</span>
+                                                        unitCount, colonies);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportMilitaryPanel() {
+<span class="nc" id="L2629">        return this.widgets.showReportMilitaryPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportNavalPanel() {
+<span class="nc" id="L2637">        return this.widgets.showReportNavalPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportProductionPanel() {
+<span class="nc" id="L2645">        return this.widgets.showReportProductionPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportReligiousPanel() {
+<span class="nc" id="L2653">        return this.widgets.showReportReligiousPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportRequirementsPanel() {
+<span class="nc" id="L2661">        return this.widgets.showReportRequirementsPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportTradePanel() {
+<span class="nc" id="L2669">        return this.widgets.showReportTradePanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showReportTurnPanel(List&lt;ModelMessage&gt; messages) {
+<span class="nc" id="L2677">        return this.widgets.showReportTurnPanel(messages);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String showRiverStyleDialog(List&lt;String&gt; styles) {
+<span class="nc" id="L2685">        return this.widgets.showRiverStyleDialog(styles);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public File showSaveDialog(File directory, String defaultName) {
+<span class="nc" id="L2693">        String extension = lastPart(defaultName, &quot;.&quot;);</span>
+<span class="nc" id="L2694">        FileFilter[] filters = new FileFilter[] {</span>
+<span class="nc" id="L2695">            FreeColDataFile.getFileFilter(extension),</span>
+<span class="nc" id="L2696">            FreeColDataFile.getFileFilter(&quot;*&quot;)</span>
+        };
+<span class="nc" id="L2698">        return this.widgets.showSaveDialog(directory, filters, defaultName);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Dimension showScaleMapSizeDialog() {
+<span class="nc" id="L2706">        return this.widgets.showScaleMapSizeDialog();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int showSelectAmountDialog(GoodsType goodsType, int available,
+                                      int defaultAmount, boolean needToPay) {
+<span class="nc" id="L2715">        return this.widgets.showSelectAmountDialog(goodsType, available,</span>
+                                                   defaultAmount, needToPay);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location showSelectDestinationDialog(Unit unit) {
+<span class="nc" id="L2724">        return this.widgets.showSelectDestinationDialog(unit,</span>
+<span class="nc" id="L2725">            getPopupPosition(unit.getTile()));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int showSelectTributeAmountDialog(StringTemplate question,
+                                             int maximum) {
+<span class="nc" id="L2734">        return this.widgets.showSelectTributeAmountDialog(question, maximum);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showServerListPanel(List&lt;ServerInfo&gt; serverList) {
+<span class="nc" id="L2742">        this.canvas.closeMenus();</span>
+<span class="nc" id="L2743">        return this.widgets.showServerListPanel(serverList);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showStartGamePanel(Game game, Player player,
+                                           boolean singlePlayerMode) {
+<span class="nc bnc" id="L2752" title="All 2 branches missed.">        if (game == null) {</span>
+<span class="nc" id="L2753">            logger.warning(&quot;StartGamePanel requires game != null.&quot;);</span>
+<span class="nc bnc" id="L2754" title="All 2 branches missed.">        } else if (player == null) {</span>
+<span class="nc" id="L2755">            logger.warning(&quot;StartGamePanel requires player != null.&quot;);</span>
+        } else {
+<span class="nc" id="L2757">            this.canvas.closeMenus();</span>
+<span class="nc" id="L2758">            StartGamePanel panel</span>
+<span class="nc" id="L2759">                = this.canvas.getExistingFreeColPanel(StartGamePanel.class);</span>
+<span class="nc bnc" id="L2760" title="All 2 branches missed.">            if (panel == null) {</span>
+<span class="nc" id="L2761">                panel = new StartGamePanel(getFreeColClient());</span>
+            }
+<span class="nc" id="L2763">            panel.initialize(singlePlayerMode);</span>
+<span class="nc" id="L2764">            return this.canvas.showFreeColPanel(panel,</span>
+                PopupPosition.CENTERED, true);
+        }
+<span class="nc" id="L2767">        return null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showStatisticsPanel(Map&lt;String, String&gt; serverStats,
+                                            Map&lt;String, String&gt; clientStats) {
+<span class="nc" id="L2776">        return this.widgets.showStatisticsPanel(serverStats, clientStats);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showStatusPanel(String message) {
+<span class="nc" id="L2784">        StatusPanel panel</span>
+<span class="nc" id="L2785">            = this.canvas.getExistingFreeColPanel(StatusPanel.class);</span>
+<span class="nc bnc" id="L2786" title="All 2 branches missed.">        if (panel == null) {</span>
+<span class="nc" id="L2787">            panel = new StatusPanel(getFreeColClient());</span>
+        } else {
+<span class="nc" id="L2789">            this.canvas.removeFromCanvas(panel);</span>
+        }
+<span class="nc" id="L2791">        panel.setStatusMessage(message);</span>
+<span class="nc" id="L2792">        return this.canvas.showFreeColPanel(panel,</span>
+            PopupPosition.CENTERED, true);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showTilePanel(Tile tile) {
+<span class="nc" id="L2801">        return this.widgets.showTilePanel(tile);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showTradeRouteInputPanel(TradeRoute newRoute) {
+<span class="nc" id="L2809">        return this.widgets.showTradeRouteInputPanel(newRoute);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showTradeRoutePanel(Unit unit) {
+<span class="nc" id="L2817">        return this.widgets.showTradeRoutePanel(unit,</span>
+<span class="nc bnc" id="L2818" title="All 2 branches missed.">            getPopupPosition((unit == null) ? null : unit.getTile()));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showTrainPanel() {
+<span class="nc" id="L2826">        return this.widgets.showTrainPanel();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showVictoryDialog(DialogHandler&lt;Boolean&gt; handler) {
+<span class="nc" id="L2834">        this.widgets.showVictoryDialog(handler);</span>
+<span class="nc" id="L2835">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void showWarehouseDialog(Colony colony, DialogHandler&lt;Boolean&gt; handler) {
+<span class="nc" id="L2842">        this.widgets.showWarehouseDialog(colony, handler);</span>
+<span class="nc" id="L2843">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FreeColPanel showWorkProductionPanel(Unit unit) {
+<span class="nc" id="L2850">        return this.widgets.showWorkProductionPanel(unit);</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void prepareShowingMainMenu() {
+<span class="nc" id="L2858">        canvas.prepareShowingMainMenu();</span>
+<span class="nc" id="L2859">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canGameChangingModsBeAdded() {
+<span class="nc bnc" id="L2866" title="All 2 branches missed.">        return getFreeColClient().getGame() == null;</span>
+    }
+    
+    @Override
+    public void refreshScaleFactorIfNecessary() {
+<span class="nc bnc" id="L2871" title="All 2 branches missed.">        if (!FreeColDebugger.isAutomaticRescalingOnWindowResize()) {</span>
+<span class="nc" id="L2872">            return;</span>
+        }
+        
+<span class="nc" id="L2875">        final int dpi = Utils.determineDpi(graphicsDevice);</span>
+<span class="nc" id="L2876">        final float scaleFactor = determineScaleFactorUsingClientOptions(dpi);</span>
+<span class="nc bnc" id="L2877" title="All 2 branches missed.">        if (Math.abs(getFixedImageLibrary().getScaleFactor() - scaleFactor) &lt;= 0.1) {</span>
+<span class="nc" id="L2878">            return;</span>
+        }
+        
+<span class="nc" id="L2881">        refreshGuiUsingClientOptions();</span>
+<span class="nc" id="L2882">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CanvasMapViewer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.mapviewer</a> &gt; <span class="el_source">CanvasMapViewer.java</span></div><h1>CanvasMapViewer.java</h1><pre class="source lang-java linenums">package net.sf.freecol.client.gui.mapviewer;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.RenderingHints;
+import java.awt.font.TextLayout;
+import java.awt.geom.Rectangle2D;
+import java.util.logging.Logger;
+
+import javax.swing.JComponent;
+
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.debug.FreeColDebugger;
+
+/**
+ * A component using {@code MapViewer} to display the map, or to display
+ * various background images when the map is unavailable.
+ */
+public class CanvasMapViewer extends JComponent {
+    
+<span class="nc" id="L27">    private static final Logger logger = Logger.getLogger(CanvasMapViewer.class.getName());</span>
+
+    private final FreeColClient freeColClient;
+    private final MapViewer mapViewer;
+    
+<span class="nc" id="L32">    private double averageFullMapRenderTimeInMillis = 0;</span>
+<span class="nc" id="L33">    private long fullMapRenderNumber = 0;</span>
+<span class="nc" id="L34">    private long lastFullMapRenderTimeInMillis = 0;</span>
+
+    
+<span class="nc" id="L37">    public CanvasMapViewer(FreeColClient freeColClient, MapViewer mapViewer) {</span>
+<span class="nc" id="L38">        this.freeColClient = freeColClient;</span>
+<span class="nc" id="L39">        this.mapViewer = mapViewer;</span>
+<span class="nc" id="L40">        setLayout(null);</span>
+<span class="nc" id="L41">    }</span>
+    
+    
+    /**
+     * Change the displayed map size.
+     *
+     * @param size The new map size.
+     */
+    public void changeSize(Dimension size) {
+<span class="nc" id="L50">        setSize(size);</span>
+<span class="nc" id="L51">        mapViewer.changeSize(size);</span>
+<span class="nc" id="L52">    }</span>
+    
+    public void paintImmediately() {
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        if (!isMapAvailable()) {</span>
+<span class="nc" id="L56">            return;</span>
+        }
+        
+<span class="nc" id="L59">        paintImmediately(0, 0, getWidth(), getHeight());</span>
+        //Toolkit.getDefaultToolkit().sync();
+<span class="nc" id="L61">    }</span>
+    
+    @Override
+    protected void paintComponent(Graphics g) {
+<span class="nc" id="L65">        final long startTime = System.currentTimeMillis();</span>
+<span class="nc" id="L66">        super.paintComponent(g);</span>
+        
+<span class="nc" id="L68">        final Dimension size = getSize();</span>
+<span class="nc" id="L69">        final Graphics2D g2d = (Graphics2D) g;</span>
+
+<span class="nc" id="L71">        boolean fullMapRenderedWithoutUsingBackBuffer = false;</span>
+        
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        if (isMapAvailable()) {</span>
+<span class="nc" id="L74">            fullMapRenderedWithoutUsingBackBuffer = this.mapViewer.displayMap(g2d, size);</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        } else if (this.freeColClient.isMapEditor()) {</span>
+<span class="nc" id="L76">            paintBlackBackground(g2d, size);</span>
+        } else { /* main menu */
+<span class="nc" id="L78">            paintMainMenuBackground(g2d, size);</span>
+        }
+        
+<span class="nc bnc" id="L81" title="All 2 branches missed.">        if (FreeColDebugger.debugRendering()) {</span>
+<span class="nc" id="L82">            drawRenderingTimeStrings(g, startTime, fullMapRenderedWithoutUsingBackBuffer);</span>
+        }
+<span class="nc" id="L84">    }</span>
+
+    private boolean isMapAvailable() {
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        return this.freeColClient != null</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">                &amp;&amp; this.freeColClient.getGame() != null</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">                &amp;&amp; this.freeColClient.getGame().getMap() != null;</span>
+    }
+
+    private void paintMainMenuBackground(Graphics2D g2d, Dimension size) {
+        // Get the background without scaling, to avoid wasting
+        // memory needlessly keeping an unbounded number of rescaled
+        // versions of the largest image in FreeCol, forever.
+<span class="nc" id="L96">        final Image bgImage = ImageLibrary.getCanvasBackgroundImage();</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        if (bgImage != null) {</span>
+            // Draw background image with scaling.
+<span class="nc" id="L99">            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION,</span>
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+<span class="nc" id="L101">            g2d.drawImage(bgImage, 0, 0, size.width, size.height, this);</span>
+<span class="nc" id="L102">            String versionStr = &quot;v. &quot; + FreeCol.getVersion();</span>
+<span class="nc" id="L103">            Font oldFont = g2d.getFont();</span>
+<span class="nc" id="L104">            Color oldColor = g2d.getColor();</span>
+<span class="nc" id="L105">            Font newFont = oldFont.deriveFont(Font.BOLD);</span>
+<span class="nc" id="L106">            TextLayout layout = new TextLayout(versionStr, newFont,</span>
+<span class="nc" id="L107">                g2d.getFontRenderContext());</span>
+<span class="nc" id="L108">            Rectangle2D bounds = layout.getBounds();</span>
+<span class="nc" id="L109">            float x = size.width - (float) bounds.getWidth() - 5;</span>
+<span class="nc" id="L110">            float y = size.height - (float) bounds.getHeight();</span>
+<span class="nc" id="L111">            g2d.setColor(Color.white);</span>
+<span class="nc" id="L112">            layout.draw(g2d, x, y);</span>
+<span class="nc" id="L113">            g2d.setFont(oldFont);</span>
+<span class="nc" id="L114">            g2d.setColor(oldColor);</span>
+<span class="nc" id="L115">        } else {</span>
+<span class="nc" id="L116">            g2d.setColor(Color.WHITE);</span>
+<span class="nc" id="L117">            g2d.fillRect(0, 0, size.width, size.height);</span>
+<span class="nc" id="L118">            logger.warning(&quot;Unable to load the canvas background&quot;);</span>
+        }
+<span class="nc" id="L120">    }</span>
+
+    private void paintBlackBackground(Graphics2D g2d, Dimension size) {
+<span class="nc" id="L123">        g2d.setColor(Color.BLACK);</span>
+<span class="nc" id="L124">        g2d.fillRect(0, 0, size.width, size.height);</span>
+<span class="nc" id="L125">    }</span>
+
+    private void drawRenderingTimeStrings(Graphics g, final long startTime, boolean fullMapRenderedWithoutUsingBackBuffer) {
+<span class="nc" id="L128">        g.setColor(Color.white);</span>
+<span class="nc" id="L129">        final long renderTime = System.currentTimeMillis() - startTime;</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        if (fullMapRenderedWithoutUsingBackBuffer) {</span>
+<span class="nc" id="L131">            lastFullMapRenderTimeInMillis = renderTime;</span>
+<span class="nc" id="L132">            fullMapRenderNumber++;</span>
+<span class="nc" id="L133">            averageFullMapRenderTimeInMillis = (averageFullMapRenderTimeInMillis * (fullMapRenderNumber - 1)</span>
+                    + renderTime) / fullMapRenderNumber;
+        }
+
+<span class="nc" id="L137">        final int art = (int) averageFullMapRenderTimeInMillis;</span>
+<span class="nc" id="L138">        g.drawString(&quot;Full map (average): &quot; + art + &quot;ms ==&gt; &quot; + (1000 / (art+1)) + &quot;fps&quot;, 50, 50);</span>
+<span class="nc" id="L139">        g.drawString(&quot;Full map (last): &quot; +lastFullMapRenderTimeInMillis + &quot;ms ==&gt; &quot; + (1000 / (lastFullMapRenderTimeInMillis+1)) + &quot;fps&quot;, 50, 70);</span>
+<span class="nc" id="L140">        g.drawString(&quot;Last render: &quot; + renderTime + &quot;ms ==&gt; &quot; + (1000 / (renderTime+1)) + &quot;fps&quot;, 50, 90);</span>
+<span class="nc" id="L141">        g.drawString(&quot;Zoom factor: &quot; + ((int) (freeColClient.getGUI().getScaledImageLibrary().getScaleFactor() * 100)) + &quot;%&quot;, 50, 110);</span>
+<span class="nc" id="L142">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

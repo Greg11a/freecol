@@ -1,0 +1,467 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefendSettlementMission.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.mission</a> &gt; <span class="el_source">DefendSettlementMission.java</span></div><h1>DefendSettlementMission.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai.mission;
+
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.CombatModel;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.PathNode;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.Unit.UnitState;
+import net.sf.freecol.common.model.pathfinding.CostDeciders;
+import net.sf.freecol.common.model.pathfinding.GoalDecider;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.server.ai.AIMain;
+import net.sf.freecol.server.ai.AIMessage;
+import net.sf.freecol.server.ai.AIUnit;
+import net.sf.freecol.server.ai.MissionAIPlayer;
+
+
+/**
+ * Mission for defending a {@code Settlement}.
+ */
+public final class DefendSettlementMission extends Mission {
+
+<span class="fc" id="L52">    private static final Logger logger = Logger.getLogger(DefendSettlementMission.class.getName());</span>
+
+    public static final String TAG = &quot;defendSettlementMission&quot;;
+
+    /** The tag for this mission. */
+<span class="pc" id="L57">    private final String tag = &quot;AI defender&quot;;</span>
+
+    /** The settlement to be protected. */
+    private Location target;
+
+
+    /**
+     * Creates a mission for the given {@code AIUnit}.
+     *
+     * @param aiMain The main AI-object.
+     * @param aiUnit The {@code AIUnit} this mission
+     *        is created for.
+     * @param settlement The {@code Settlement} to defend.
+     */
+    public DefendSettlementMission(AIMain aiMain, AIUnit aiUnit,
+                                   Settlement settlement) {
+<span class="fc" id="L73">        super(aiMain, aiUnit);</span>
+
+<span class="fc" id="L75">        setTarget(settlement);</span>
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * Creates a new {@code DefendSettlementMission} from a reader.
+     *
+     * @param aiMain The main AI-object.
+     * @param aiUnit The {@code AIUnit} this mission is created for.
+     * @param xr The input stream containing the XML.
+     * @throws XMLStreamException if a problem was encountered
+     *      during parsing.
+     * @see net.sf.freecol.server.ai.AIObject#readFromXML
+     */
+    public DefendSettlementMission(AIMain aiMain, AIUnit aiUnit,
+                                   FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L90">        super(aiMain, aiUnit);</span>
+
+<span class="nc" id="L92">        readFromXML(xr);</span>
+<span class="nc" id="L93">    }</span>
+
+
+    /**
+     * Extract a valid target for this mission from a path.
+     *
+     * @param aiUnit The {@code AIUnit} to perform the mission.
+     * @param path A {@code PathNode} to extract a target from.
+     * @return A target for a {@code DefendSettlementMission}, or null
+     *     if none found.
+     */
+    public static Location extractTarget(AIUnit aiUnit, PathNode path) {
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        if (path == null) return null;</span>
+<span class="nc" id="L106">        final Location loc = path.getLastNode().getLocation();</span>
+<span class="nc" id="L107">        Settlement settlement = loc.getSettlement();</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        return (invalidSettlementReason(aiUnit, settlement) == null) ? settlement</span>
+<span class="nc" id="L109">            : null;</span>
+    }
+
+    /**
+     * Evaluate allocating a unit to the defence of a settlement.
+     *
+     * @param aiUnit The {@code AIUnit} that is to defend.
+     * @param path A {@code PathNode} to take to the settlement.
+     * @return A value for such a mission.
+     */
+    public static int scorePath(AIUnit aiUnit, PathNode path) {
+<span class="nc" id="L120">        final Location loc = extractTarget(aiUnit, path);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        return (loc instanceof Settlement)</span>
+<span class="nc" id="L122">            ? ((MissionAIPlayer)aiUnit.getAIOwner()).adjustMission(</span>
+                aiUnit, path, DefendSettlementMission.class,
+<span class="nc" id="L124">                (int)(1000 * ((Settlement)loc).getDefenceRatio()</span>
+<span class="nc" id="L125">                    / (path.getTotalTurns() + 1)))</span>
+<span class="nc" id="L126">            : Integer.MIN_VALUE;</span>
+    }
+
+    /**
+     * Gets a {@code GoalDecider} for finding the best colony
+     * {@code Tile}, optionally falling back to the nearest colony.
+     *
+     * @param aiUnit The {@code AIUnit} that is searching.
+     * @return A suitable {@code GoalDecider}.
+     */
+    private static GoalDecider getGoalDecider(final AIUnit aiUnit) {
+<span class="nc" id="L137">        return new GoalDecider() {</span>
+<span class="nc" id="L138">                private PathNode bestPath = null;</span>
+<span class="nc" id="L139">                private int bestValue = Integer.MIN_VALUE;</span>
+                
+                @Override
+<span class="nc" id="L142">                public PathNode getGoal() { return bestPath; }</span>
+                @Override
+<span class="nc" id="L144">                public boolean hasSubGoals() { return true; }</span>
+                @Override
+                public boolean check(Unit u, PathNode path) {
+<span class="nc" id="L147">                    int value = scorePath(aiUnit, path);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">                    if (bestValue &lt; value) {</span>
+<span class="nc" id="L149">                        bestValue = value;</span>
+<span class="nc" id="L150">                        bestPath = path;</span>
+<span class="nc" id="L151">                        return true;</span>
+                    }
+<span class="nc" id="L153">                    return false;</span>
+                }
+            };
+    }
+
+    /**
+     * Finds a path to the best nearby settlement to defend.
+     *
+     * @param aiUnit The {@code AIUnit} to execute this mission.
+     * @param range An upper bound on the number of moves.
+     * @param deferOK Enables deferring to a fallback colony.
+     * @return A path to the new target, or null if none found.
+     */
+    private static PathNode findTargetPath(AIUnit aiUnit, int range,
+        @SuppressWarnings(&quot;unused&quot;) boolean deferOK) {
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        if (invalidAIUnitReason(aiUnit) != null) return null;</span>
+<span class="nc" id="L169">        final Unit unit = aiUnit.getUnit();</span>
+<span class="nc" id="L170">        final Location start = unit.getPathStartLocation();</span>
+
+<span class="nc" id="L172">        return unit.search(start, getGoalDecider(aiUnit),</span>
+<span class="nc" id="L173">                           CostDeciders.avoidSettlementsAndBlockingUnits(),</span>
+<span class="nc" id="L174">                           range, unit.getCarrier());</span>
+    }
+
+    /**
+     * Finds a path to the best nearby settlement to defend.
+     *
+     * @param aiUnit The {@code AIUnit} that is searching.
+     * @param range An upper bound on the number of moves.
+     * @param deferOK Enables deferral (not implemented in this mission).
+     * @return A suitable target, or null if none found.
+     */
+    private static Location findMissionTarget(AIUnit aiUnit, int range,
+                                              boolean deferOK) {
+<span class="nc" id="L187">        PathNode path = findTargetPath(aiUnit, range, deferOK);</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        return (path != null) ? extractTarget(aiUnit, path) : null;</span>
+    }
+
+    /**
+     * Why would a DefendSettlementMission be invalid with the given unit?
+     *
+     * @param aiUnit The {@code AIUnit} to test.
+     * @return A reason why the mission would be invalid with the unit,
+     *     or null if none found.
+     */
+    private static String invalidUnitReason(AIUnit aiUnit) {
+<span class="fc" id="L199">        String reason = invalidAIUnitReason(aiUnit);</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (reason != null) return reason;</span>
+<span class="fc" id="L201">        final Unit unit = aiUnit.getUnit();</span>
+<span class="fc" id="L202">        final CombatModel cm = unit.getGame().getCombatModel();</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">        return (cm.getDefencePower(null, unit) &lt;= 0.0f) ? &quot;unit-not-defender&quot;</span>
+<span class="fc" id="L204">            : null;</span>
+    }
+    
+    /**
+     * Why is this mission invalid with a given settlement target?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @param settlement The potential target {@code Settlement}.
+     * @return A reason for mission invalidity, or null if none found.
+     */
+    private static String invalidSettlementReason(AIUnit aiUnit,
+                                                  Settlement settlement) {
+<span class="fc" id="L216">        return invalidTargetReason(settlement, aiUnit.getUnit().getOwner());</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given AI unit?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @return A reason for mission invalidity, or null if none found.
+     */
+    public static String invalidMissionReason(AIUnit aiUnit) {
+<span class="fc" id="L226">        final String reason = invalidUnitReason(aiUnit);</span>
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">        if (reason != null) {</span>
+<span class="nc" id="L228">            return reason;</span>
+        }
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        if (!aiUnit.getUnit().getOwner().hasSettlements()) {</span>
+<span class="nc" id="L231">            return Mission.TARGETNOTFOUND;</span>
+        }
+        
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        if (aiUnit.getUnit().getOwner().isIndian()) {</span>
+<span class="fc" id="L235">            return null;</span>
+        }
+        
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">        if (!aiUnit.getUnit().isDefensiveUnit()</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">                || aiUnit.getUnit().hasAbility(Ability.SPEAK_WITH_CHIEF)) {</span>
+<span class="nc" id="L240">            return Mission.UNITNOTOFREQUIREDTYPE;</span>
+        }
+        
+<span class="fc" id="L243">        return null;</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given AI unit and location?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @param loc The {@code Location} to check.
+     * @return A reason for invalidity, or null if none found.
+     */
+    public static String invalidMissionReason(AIUnit aiUnit, Location loc) {
+<span class="fc" id="L254">        String reason = invalidMissionReason(aiUnit);</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">        return (reason != null)</span>
+<span class="nc" id="L256">            ? reason</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">            : (loc instanceof Settlement)</span>
+<span class="fc" id="L258">            ? invalidSettlementReason(aiUnit, (Settlement)loc)</span>
+<span class="nc" id="L259">            : Mission.TARGETINVALID;</span>
+    }
+
+
+    // Implement Mission
+    //   Inherit dispose, getTransportDestination, isOneTime
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getBaseTransportPriority() {
+<span class="fc" id="L271">        return NORMAL_TRANSPORT_PRIORITY + 5;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTarget() {
+<span class="nc" id="L279">        return target;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setTarget(Location target) {
+<span class="pc bpc" id="L287" title="2 of 4 branches missed.">        if (target == null || target instanceof Settlement) {</span>
+<span class="fc" id="L288">            this.target = target;</span>
+        }
+<span class="fc" id="L290">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location findTarget() {
+<span class="nc" id="L297">        return findMissionTarget(getAIUnit(), 4, true);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String invalidReason() {
+<span class="nc" id="L305">        return invalidMissionReason(getAIUnit(), getTarget());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Mission doMission(LogBuilder lb) {
+<span class="nc" id="L313">        lb.add(tag);</span>
+<span class="nc" id="L314">        String reason = invalidReason();</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">        if (isTargetReason(reason)) {</span>
+<span class="nc" id="L316">            return retargetMission(reason, lb);</span>
+<span class="nc bnc" id="L317" title="All 2 branches missed.">        } else if (reason != null) {</span>
+<span class="nc" id="L318">            return lbFail(lb, false, reason);</span>
+        }
+
+        // Go to the target!
+<span class="nc" id="L322">        final Unit unit = getUnit();</span>
+<span class="nc" id="L323">        Unit.MoveType mt = travelToTarget(getTarget(),</span>
+<span class="nc" id="L324">            CostDeciders.avoidSettlementsAndBlockingUnits(), lb);</span>
+<span class="nc bnc" id="L325" title="All 5 branches missed.">        switch (mt) {</span>
+        case MOVE: // Arrived
+<span class="nc" id="L327">            break;</span>
+
+        case MOVE_HIGH_SEAS: case MOVE_NO_MOVES: case MOVE_ILLEGAL:
+<span class="nc" id="L330">            return lbWait(lb);</span>
+
+        case MOVE_NO_REPAIR:
+<span class="nc" id="L333">            return lbFail(lb, false, AIUNITDIED);</span>
+
+        case MOVE_NO_ACCESS_EMBARK: case MOVE_NO_TILE:
+<span class="nc" id="L336">            return this;</span>
+
+        default:
+<span class="nc" id="L339">            return lbMove(lb, mt);</span>
+        }
+
+        // Check if the mission should change?
+        // Change to supporting the settlement if the size is marginal.
+<span class="nc" id="L344">        final AIMain aiMain = getAIMain();</span>
+<span class="nc" id="L345">        final AIUnit aiUnit = getAIUnit();</span>
+<span class="nc" id="L346">        Mission m = null;</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">        if (getTarget() instanceof Colony) {</span>
+<span class="nc" id="L348">            Colony colony = (Colony)getTarget();</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">            if (unit.isInColony()</span>
+<span class="nc bnc" id="L350" title="All 4 branches missed.">                || (unit.isPerson() &amp;&amp; colony.getUnitCount() &lt; 1)) {</span>
+<span class="nc" id="L351">                m = getEuropeanAIPlayer().getWorkInsideColonyMission(aiUnit,</span>
+<span class="nc" id="L352">                    aiMain.getAIColony(colony));</span>
+<span class="nc bnc" id="L353" title="All 2 branches missed.">                return lbDone(lb, m != null, &quot;bolster &quot;, colony);</span>
+            }
+        }
+
+        // Anything more to do?
+<span class="nc bnc" id="L358" title="All 3 branches missed.">        switch (unit.getState()) {</span>
+<span class="nc" id="L359">        case FORTIFIED:  return lbWait(lb, &quot;, fortified&quot;);</span>
+<span class="nc" id="L360">        case FORTIFYING: return lbWait(lb, &quot;, fortifying&quot;);</span>
+        default: break;
+        }
+
+        // Check if the settlement is badly defended.  If so, try to fortify.
+<span class="nc" id="L365">        Settlement settlement = (Settlement)getTarget();</span>
+<span class="nc" id="L366">        int defenderCount = 0, fortifyCount = 0;</span>
+<span class="nc bnc" id="L367" title="All 2 branches missed.">        for (Unit u : settlement.getAllUnitsList()) {</span>
+<span class="nc" id="L368">            AIUnit aiu = getAIMain().getAIUnit(u);</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">            if (invalidMissionReason(aiu) == null) {</span>
+<span class="nc" id="L370">                defenderCount++;</span>
+<span class="nc bnc" id="L371" title="All 2 branches missed.">                switch (u.getState()) {</span>
+<span class="nc" id="L372">                case FORTIFIED: case FORTIFYING: fortifyCount++; break;</span>
+                default: break;
+                }
+            }
+<span class="nc" id="L376">        }</span>
+<span class="nc bnc" id="L377" title="All 4 branches missed.">        if (defenderCount &lt;= 2 || fortifyCount &lt;= 1) {</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">            return (!unit.checkSetState(UnitState.FORTIFYING))</span>
+<span class="nc" id="L379">                ? lbWait(lb, &quot;, waiting to fortify at &quot;, settlement)</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">                : (AIMessage.askChangeState(aiUnit, UnitState.FORTIFYING)</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">                    &amp;&amp; unit.getState() == UnitState.FORTIFYING)</span>
+<span class="nc" id="L382">                ? lbWait(lb, &quot;, now fortifying at &quot;, settlement)</span>
+<span class="nc" id="L383">                : lbFail(lb, false, &quot;, fortify failed at &quot;, settlement);</span>
+        }
+
+        // The target is well enough defended.  See if the unit
+        // should attack a nearby hostile unit.  Remember to prevent a
+        // sole unit attacking because if it loses, the settlement
+        // will collapse (and the combat model does not handle that).
+<span class="nc bnc" id="L390" title="All 2 branches missed.">        if (!unit.isOffensiveUnit()) {</span>
+<span class="nc" id="L391">            return lbFail(lb, false, &quot;not-offensive-unit&quot;);</span>
+        }
+
+<span class="nc" id="L394">        final CombatModel cm = unit.getGame().getCombatModel();</span>
+<span class="nc" id="L395">        Unit bestTarget = null;</span>
+<span class="nc" id="L396">        double bestDifference = Double.MIN_VALUE;</span>
+<span class="nc" id="L397">        Direction bestDirection = null;</span>
+<span class="nc bnc" id="L398" title="All 2 branches missed.">        for (Direction d : Direction.getRandomDirections(&quot;defendSettlements&quot;,</span>
+<span class="nc" id="L399">                logger, getAIRandom())) {</span>
+<span class="nc" id="L400">            Tile t = unit.getTile().getNeighbourOrNull(d);</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">            if (t == null) continue;</span>
+<span class="nc" id="L402">            Unit defender = t.getFirstUnit();</span>
+<span class="nc bnc" id="L403" title="All 2 branches missed.">            if (defender != null</span>
+<span class="nc bnc" id="L404" title="All 2 branches missed.">                &amp;&amp; defender.getOwner().atWarWith(unit.getOwner())</span>
+<span class="nc bnc" id="L405" title="All 2 branches missed.">                &amp;&amp; unit.getMoveType(d).isAttack()) {</span>
+<span class="nc" id="L406">                Unit enemyUnit = t.getDefendingUnit(unit);</span>
+<span class="nc" id="L407">                double enemyAttack = cm.getOffencePower(enemyUnit, unit);</span>
+<span class="nc" id="L408">                double weAttack = cm.getOffencePower(unit, enemyUnit);</span>
+<span class="nc" id="L409">                double enemyDefend = cm.getDefencePower(unit, enemyUnit);</span>
+<span class="nc" id="L410">                double weDefend = cm.getDefencePower(enemyUnit, unit);</span>
+<span class="nc" id="L411">                double difference = weAttack / (weAttack + enemyDefend)</span>
+                    - enemyAttack / (enemyAttack + weDefend);
+<span class="nc bnc" id="L413" title="All 2 branches missed.">                if (difference &gt; bestDifference) {</span>
+<span class="nc bnc" id="L414" title="All 4 branches missed.">                    if (difference &gt; 0 || weAttack &gt; enemyDefend) {</span>
+<span class="nc" id="L415">                        bestDifference = difference;</span>
+<span class="nc" id="L416">                        bestTarget = enemyUnit;</span>
+<span class="nc" id="L417">                        bestDirection = d;</span>
+                    }
+                }
+            }
+        }
+
+        // Attack if a target is available.
+<span class="nc bnc" id="L424" title="All 2 branches missed.">        if (bestTarget != null) {</span>
+<span class="nc" id="L425">            AIMessage.askAttack(getAIUnit(), bestDirection);</span>
+<span class="nc" id="L426">            return lbAttack(lb, bestTarget);</span>
+        }
+
+<span class="nc" id="L429">        return lbWait(lb, &quot;, alert at &quot;, getTarget());</span>
+    }
+    
+
+    // Serialization
+
+    private static final String SETTLEMENT_TAG = &quot;settlement&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L443">        super.writeAttributes(xw);</span>
+
+<span class="nc bnc" id="L445" title="All 2 branches missed.">        if (target != null) {</span>
+<span class="nc" id="L446">            xw.writeAttribute(SETTLEMENT_TAG, target.getId());</span>
+        }
+<span class="nc" id="L448">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L455">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L457">        target = xr.getAttribute(getGame(), SETTLEMENT_TAG,</span>
+                                 Settlement.class, (Settlement)null);
+<span class="nc" id="L459">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L465">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AnimateMoveMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">AnimateMoveMessage.java</span></div><h1>AnimateMoveMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+
+
+/**
+ * The message sent to tell a client to show a movement animation.
+ */
+public class AnimateMoveMessage extends ObjectMessage {
+
+    public static final String TAG = &quot;animateMove&quot;;
+    private static final String NEW_TILE_TAG = &quot;newTile&quot;;
+    private static final String OLD_TILE_TAG = &quot;oldTile&quot;;
+    private static final String UNIT_TAG = &quot;unit&quot;;
+
+
+    /**
+     * Create a new {@code AnimateMoveMessage} for the supplied unit and
+     * direction.
+     *
+     * @param unit The {@code Unit} to move.
+     * @param oldTile The {@code Tile} to move from.
+     * @param newTile The {@code Tile} to move to.
+     * @param appears If true, the unit is newly appearing, and either it
+     *     or its carrier must be present in this message.
+     */
+    public AnimateMoveMessage(Unit unit, Tile oldTile, Tile newTile,
+                              boolean appears) {
+<span class="nc" id="L57">        super(TAG, UNIT_TAG, unit.getId(),</span>
+<span class="nc" id="L58">              NEW_TILE_TAG, newTile.getId(), OLD_TILE_TAG, oldTile.getId());</span>
+
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        if (appears) {</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">            appendChild((unit.isOnCarrier()) ? unit.getCarrier() : unit);</span>
+        }
+<span class="nc" id="L63">    }</span>
+
+    /**
+     * Create a new {@code AnimateMoveMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public AnimateMoveMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L74">        super(TAG, xr, NEW_TILE_TAG, OLD_TILE_TAG, UNIT_TAG);</span>
+
+<span class="nc" id="L76">        FreeColXMLReader.ReadScope rs</span>
+<span class="nc" id="L77">            = xr.replaceScope(FreeColXMLReader.ReadScope.NOINTERN);</span>
+<span class="nc" id="L78">        Unit unit = null;</span>
+        try {
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            while (xr.moreTags()) {</span>
+<span class="nc" id="L81">                String tag = xr.getLocalName();</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                if (Unit.TAG.equals(tag)) {</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">                    if (unit == null) {</span>
+<span class="nc" id="L84">                        unit = xr.readFreeColObject(game, Unit.class);</span>
+                    } else {
+<span class="nc" id="L86">                        expected(TAG, tag);</span>
+                    }
+                } else {
+<span class="nc" id="L89">                    expected(Unit.TAG, tag);</span>
+                }
+<span class="nc" id="L91">                xr.expectTag(tag);</span>
+<span class="nc" id="L92">            }</span>
+<span class="nc" id="L93">            xr.expectTag(TAG);</span>
+        } finally {
+<span class="nc" id="L95">            xr.replaceScope(rs);</span>
+        }
+<span class="nc" id="L97">        appendChild(unit);</span>
+<span class="nc" id="L98">    }</span>
+
+
+    /**
+     * Get the unit that is moving.
+     *
+     * @param game The {@code Game} to look up the unit in.
+     * @return The {@code Unit} that moves.
+     */
+    private Unit getUnit(Game game) {
+<span class="nc" id="L108">        final String uid = getStringAttribute(UNIT_TAG);</span>
+<span class="nc" id="L109">        Unit unit = game.getFreeColGameObject(uid, Unit.class);</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (unit == null) {</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">            if ((unit = getChild(0, Unit.class)) == null) {</span>
+<span class="nc" id="L112">                logger.warning(&quot;Move animation missing unit: &quot; + uid);</span>
+            } else {
+<span class="nc" id="L114">                unit.intern();</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">                if (!unit.getId().equals(uid)) { // actually on carrier</span>
+<span class="nc" id="L116">                    unit = unit.getCarriedUnitById(uid);</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">                    if (unit == null) {</span>
+<span class="nc" id="L118">                        logger.warning(&quot;Move animation missing carried unit: &quot;</span>
+                            + uid);
+                    }
+                }
+            }
+        }
+<span class="nc" id="L124">        return unit;</span>
+    }
+
+    /**
+     * Get the tile to move to.
+     *
+     * @param game The {@code Game} to look up the tile in.
+     * @return The new {@code Tile}.
+     */
+    private Tile getNewTile(Game game) {
+<span class="nc" id="L134">        return game.getFreeColGameObject(getStringAttribute(NEW_TILE_TAG),</span>
+                                         Tile.class);
+    }
+
+    /**
+     * Get the tile to move from.
+     *
+     * @param game The {@code Game} to look up the tile in.
+     * @return The old {@code Tile}.
+     */
+    private Tile getOldTile(Game game) {
+<span class="nc" id="L145">        return game.getFreeColGameObject(getStringAttribute(OLD_TILE_TAG),</span>
+                                         Tile.class);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L154">        return Message.MessagePriority.ANIMATION;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+        // Ignored
+<span class="nc" id="L163">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L170">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L171">        final Player player = freeColClient.getMyPlayer();</span>
+<span class="nc" id="L172">        final Tile oldTile = getOldTile(game);</span>
+<span class="nc" id="L173">        final Tile newTile = getNewTile(game);</span>
+<span class="nc" id="L174">        final Unit unit = getUnit(game);</span>
+
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (unit == null) return;</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (oldTile == null) {</span>
+<span class="nc" id="L178">            logger.warning(&quot;Animation for: &quot; + player.getId()</span>
+                + &quot; missing old Tile.&quot;);
+<span class="nc" id="L180">            return;</span>
+        }
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (newTile == null) {</span>
+<span class="nc" id="L183">            logger.warning(&quot;Animation for: &quot; + player.getId()</span>
+                + &quot; missing new Tile.&quot;);
+<span class="nc" id="L185">            return;</span>
+        }
+
+        // This only performs animation, if required.  It does not
+        // actually change unit positions, which happens in an &quot;update&quot;.
+<span class="nc" id="L190">        igc(freeColClient).animateMoveHandler(unit, oldTile, newTile);</span>
+<span class="nc" id="L191">        clientGeneric(freeColClient);</span>
+<span class="nc" id="L192">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

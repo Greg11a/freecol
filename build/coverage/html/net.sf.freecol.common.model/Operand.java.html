@@ -1,0 +1,400 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Operand.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">Operand.java</span></div><h1>Operand.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTLIMIT or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import static net.sf.freecol.common.model.Constants.INFINITY;
+import static net.sf.freecol.common.util.CollectionUtils.count;
+import static net.sf.freecol.common.util.CollectionUtils.sum;
+
+import java.util.Collection;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.option.GameOptions;
+import net.sf.freecol.common.util.Utils;
+
+
+/**
+ * The {@code Operand} class implements Operands to be used in
+ * relations, such as the Limit class. The OperandType specifies which
+ * types of objects will be considered, and the ScopeLevel specifies
+ * the level at which these objects are to be selected. If the
+ * ScopeLevel is PLAYER, for example, and the OperandType is UNITS,
+ * then all units owned by a particular player will be considered.
+ *
+ * Since the class inherits from Scope, the choice of objects can be
+ * further refined by specifying type, ability or method. However, the
+ * return value of the method must be an Integer (or int), since this
+ * value will be returned as the value of the Operand itself if the
+ * OperandType is NONE.
+ */
+public class Operand extends Scope {
+
+<span class="fc" id="L52">    public static enum OperandType {</span>
+<span class="fc" id="L53">        UNITS, BUILDINGS, SETTLEMENTS, FOUNDING_FATHERS, YEAR, OPTION, NONE</span>
+    }
+
+<span class="fc" id="L56">    public static enum ScopeLevel {</span>
+<span class="fc" id="L57">        SETTLEMENT, PLAYER, GAME, NONE</span>
+    }
+
+
+    /** The type of object the operand really represents. */
+<span class="pc" id="L62">    private OperandType operandType = OperandType.NONE;</span>
+
+    /** How broadly to apply the operand. */
+<span class="pc" id="L65">    private ScopeLevel scopeLevel = ScopeLevel.NONE;</span>
+
+    /** The operand amount. */
+<span class="pc" id="L68">    private Integer value = null;</span>
+
+
+    /**
+     * Deliberately empty constructor.
+     */
+<span class="fc" id="L74">    public Operand() {}</span>
+
+    /**
+     * Creates a new {@code Operand} instance.
+     *
+     * @param value The initial operand value.
+     */
+<span class="nc" id="L81">    public Operand(int value) {</span>
+<span class="nc" id="L82">        this.value = value;</span>
+<span class="nc" id="L83">    }</span>
+
+    /**
+     * Creates a new {@code Operand} instance.
+     *
+     * @param operandType The {@code OperandType} to use.
+     * @param scopeLevel The {@code ScopeLevel} to use.
+     */
+<span class="nc" id="L91">    public Operand(OperandType operandType, ScopeLevel scopeLevel) {</span>
+<span class="nc" id="L92">        this.operandType = operandType;</span>
+<span class="nc" id="L93">        this.scopeLevel = scopeLevel;</span>
+<span class="nc" id="L94">    }</span>
+
+    /**
+     * Create a new operand by reading a stream.
+     *
+     * @param xr The {@code FreeColXMLReader} to read.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+<span class="fc" id="L102">    protected Operand(FreeColXMLReader xr) throws XMLStreamException {</span>
+<span class="fc" id="L103">        readFromXML(xr);</span>
+<span class="fc" id="L104">    }</span>
+
+
+    /**
+     * Gets the operand type.
+     *
+     * @return The {@code OperandType}.
+     */
+    public final OperandType getOperandType() {
+<span class="fc" id="L113">        return this.operandType;</span>
+    }
+
+    /**
+     * Set the operand type.
+     *
+     * @param newOperandType The new {@code OperandType}.
+     */
+    public final void setOperandType(final OperandType newOperandType) {
+<span class="nc" id="L122">        this.operandType = newOperandType;</span>
+<span class="nc" id="L123">    }</span>
+
+    /**
+     * Gets the scope level.
+     *
+     * @return The scope level.
+     */
+    public final ScopeLevel getScopeLevel() {
+<span class="fc" id="L131">        return this.scopeLevel;</span>
+    }
+
+    /**
+     * Sets the scope level.
+     *
+     * @param newScopeLevel The new {@code ScopeLevel}.
+     */
+    public final void setScopeLevel(final ScopeLevel newScopeLevel) {
+<span class="nc" id="L140">        this.scopeLevel = newScopeLevel;</span>
+<span class="nc" id="L141">    }</span>
+
+    /**
+     * Gets the operand value.
+     *
+     * @return The operand value.
+     */
+    public final Integer getValue() {
+<span class="fc" id="L149">        return this.value;</span>
+    }
+
+    /**
+     * Sets the operand value.
+     *
+     * @param newValue The new value.
+     */
+    public final void setValue(final Integer newValue) {
+<span class="fc" id="L158">        this.value = newValue;</span>
+<span class="fc" id="L159">    }</span>
+
+    /**
+     * Count the number of objects in a list that this operand is
+     * applicable to.
+     *
+     * @param objects The list of objects to check.
+     * @return The number of applicable objects.
+     */
+    private Integer ourCount(Collection&lt;? extends FreeColObject&gt; objects) {
+<span class="fc" id="L169">        return count(objects, o -&gt; this.appliesTo(o));</span>
+    }
+
+    /**
+     * Gets the operand value if it is applicable to the given Game.
+     *
+     * @param game The {@code Game} to check.
+     * @return The operand value or null if inapplicable.
+     */
+    public Integer getValue(Game game) {
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (this.value != null) return this.value;</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        if (this.scopeLevel != ScopeLevel.GAME) return null;</span>
+
+<span class="fc" id="L182">        final String methodName = getMethodName();</span>
+<span class="fc" id="L183">        int result = 0;</span>
+<span class="pc bpc" id="L184" title="2 of 4 branches missed.">        switch (this.operandType) {</span>
+        case NONE:
+<span class="nc" id="L186">            result = game.invokeMethod(methodName, Integer.class, 0);</span>
+<span class="nc" id="L187">            break;</span>
+        case YEAR:
+<span class="fc" id="L189">            result = game.getTurn().getYear();</span>
+<span class="fc" id="L190">            break;</span>
+        case OPTION:
+<span class="fc" id="L192">            result = game.getSpecification().getInteger(getType());</span>
+<span class="fc" id="L193">            break;</span>
+        default:
+<span class="nc bnc" id="L195" title="All 2 branches missed.">            for (Player player : game.getLivePlayerList()) {</span>
+<span class="nc bnc" id="L196" title="All 5 branches missed.">                switch (this.operandType) {</span>
+                case UNITS:
+<span class="nc" id="L198">                    result += ourCount(player.getUnitSet());</span>
+<span class="nc" id="L199">                    break;</span>
+                case BUILDINGS:
+<span class="nc" id="L201">                    result += sum(player.getColonies(),</span>
+<span class="nc" id="L202">                                  c -&gt; ourCount(c.getBuildings()));</span>
+<span class="nc" id="L203">                    break;</span>
+                case SETTLEMENTS:
+<span class="nc" id="L205">                    result += ourCount(player.getSettlementList());</span>
+<span class="nc" id="L206">                    break;</span>
+                case FOUNDING_FATHERS:
+<span class="nc" id="L208">                    result += ourCount(player.getFoundingFathers());</span>
+<span class="nc" id="L209">                    break;</span>
+                default:
+<span class="nc" id="L211">                    return null;</span>
+                }
+<span class="nc" id="L213">            }</span>
+        }
+<span class="fc" id="L215">        return result;</span>
+    }
+
+    /**
+     * Gets the operand value if it is applicable to the given Player.
+     *
+     * @param player The {@code Player} to check.
+     * @return The operand value, or null if inapplicable.
+     */
+    public Integer getValue(Player player) {
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        if (this.value != null) return this.value;</span>
+<span class="pc bpc" id="L226" title="1 of 3 branches missed.">        switch (this.scopeLevel) {</span>
+        case GAME:
+<span class="fc" id="L228">            return getValue(player.getGame());</span>
+        case PLAYER: // Real case, handled below
+<span class="fc" id="L230">            break;</span>
+        default: // Inapplicable
+<span class="nc" id="L232">            return null;</span>
+        }
+
+<span class="fc" id="L235">        final Specification spec = player.getSpecification();</span>
+<span class="fc" id="L236">        final String methodName = getMethodName();</span>
+<span class="pc bpc" id="L237" title="2 of 5 branches missed.">        switch (this.operandType) {</span>
+        case UNITS:
+<span class="fc" id="L239">            return ourCount(player.getUnitSet());</span>
+        case BUILDINGS:
+<span class="nc" id="L241">            return sum(player.getColonies(), c -&gt; ourCount(c.getBuildings()));</span>
+        case SETTLEMENTS:
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            if (methodName == null) {</span>
+<span class="fc" id="L244">                return ourCount(player.getSettlementList())</span>
+<span class="fc" id="L245">                    + spec.getInteger(GameOptions.SETTLEMENT_LIMIT_MODIFIER);</span>
+            }
+<span class="fc" id="L247">            final String methodValue = getMethodValue();</span>
+<span class="fc" id="L248">            return count(player.getSettlementList(),</span>
+<span class="fc" id="L249">                s -&gt; String.valueOf(s.invokeMethod(methodName,</span>
+<span class="fc" id="L250">                        Boolean.class, Boolean.FALSE)).equals(methodValue));</span>
+        case FOUNDING_FATHERS:
+<span class="nc" id="L252">            return ourCount(player.getFoundingFathers());</span>
+        default:
+            break;
+        }
+<span class="fc" id="L256">        return player.invokeMethod(methodName, Integer.class, (Integer)null);</span>
+    }
+
+    /**
+     * Gets the operand value if it is applicable to the given Settlement.
+     *
+     * @param settlement The {@code Settlement} to check.
+     * @return The operand value, or null if inapplicable.
+     */
+    public Integer getValue(Settlement settlement) {
+<span class="nc bnc" id="L266" title="All 2 branches missed.">        if (this.value != null) return this.value;</span>
+        // In future, we might expand this to handle native settlements
+<span class="nc bnc" id="L268" title="All 4 branches missed.">        if (this.scopeLevel != ScopeLevel.SETTLEMENT</span>
+<span class="nc" id="L269">            || !(settlement instanceof Colony)) return null;</span>
+
+<span class="nc" id="L271">        final Colony colony = (Colony)settlement;</span>
+<span class="nc bnc" id="L272" title="All 3 branches missed.">        switch (this.operandType) {</span>
+        case UNITS:
+<span class="nc" id="L274">            return ourCount(colony.getUnitList());</span>
+        case BUILDINGS:
+<span class="nc" id="L276">            return ourCount(colony.getBuildings());</span>
+        default:
+            break;
+        }
+<span class="nc" id="L280">        return colony.invokeMethod(getMethodName(), Integer.class, (Integer)null);</span>
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L291">        Operand o = copyInCast(other, Operand.class);</span>
+<span class="nc bnc" id="L292" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L293">        this.operandType = o.getOperandType();</span>
+<span class="nc" id="L294">        this.scopeLevel = o.getScopeLevel();</span>
+<span class="nc" id="L295">        this.value = o.getValue();</span>
+<span class="nc" id="L296">        return true;</span>
+    }
+
+        
+    // Serialization
+
+    private static final String OPERAND_TYPE_TAG = &quot;operand-type&quot;;
+    private static final String SCOPE_LEVEL_TAG = &quot;scope-level&quot;;
+    // @compat 0.11.3
+    private static final String OLD_OPERAND_TYPE_TAG = &quot;operandType&quot;;
+    private static final String OLD_SCOPE_LEVEL_TAG = &quot;scopeLevel&quot;;
+    // end @compat 0.11.3
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L315">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L317">        xw.writeAttribute(OPERAND_TYPE_TAG, this.operandType);</span>
+
+<span class="fc" id="L319">        xw.writeAttribute(SCOPE_LEVEL_TAG, this.scopeLevel);</span>
+
+<span class="fc bfc" id="L321" title="All 2 branches covered.">        if (this.value != null) {</span>
+<span class="fc" id="L322">            xw.writeAttribute(VALUE_TAG, this.value);</span>
+        }
+<span class="fc" id="L324">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L331">        super.readAttributes(xr);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_OPERAND_TYPE_TAG)) {</span>
+<span class="nc" id="L335">            this.operandType = xr.getAttribute(OLD_OPERAND_TYPE_TAG,</span>
+                OperandType.class, OperandType.NONE);
+        } else            
+        // end @compat 0.11.3
+<span class="fc" id="L339">            this.operandType = xr.getAttribute(OPERAND_TYPE_TAG,</span>
+                OperandType.class, OperandType.NONE);
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_SCOPE_LEVEL_TAG)) {</span>
+<span class="nc" id="L344">            this.scopeLevel = xr.getAttribute(OLD_SCOPE_LEVEL_TAG,</span>
+                ScopeLevel.class, ScopeLevel.NONE);
+        } else
+        // end @compat 0.11.3
+<span class="fc" id="L348">            this.scopeLevel = xr.getAttribute(SCOPE_LEVEL_TAG,</span>
+                ScopeLevel.class, ScopeLevel.NONE);
+
+<span class="fc" id="L351">        int val = xr.getAttribute(VALUE_TAG, INFINITY);</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        if (val != INFINITY) this.value = val;</span>
+<span class="fc" id="L353">    }</span>
+
+    // getTagName apparently not needed, uses parents
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        if (this == o) return true;</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">        if (o instanceof Operand) {</span>
+<span class="nc" id="L367">            Operand other = (Operand)o;</span>
+<span class="nc bnc" id="L368" title="All 4 branches missed.">            return this.operandType == other.operandType</span>
+                &amp;&amp; this.scopeLevel == other.scopeLevel
+<span class="nc bnc" id="L370" title="All 2 branches missed.">                &amp;&amp; Utils.equals(this.value, other.value)</span>
+<span class="nc bnc" id="L371" title="All 2 branches missed.">                &amp;&amp; super.equals(other);</span>
+        }
+<span class="nc" id="L373">        return false;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="nc" id="L381">        int hash = super.hashCode();</span>
+<span class="nc" id="L382">        hash = 31 * hash + this.operandType.ordinal();</span>
+<span class="nc" id="L383">        hash = 31 * hash + this.scopeLevel.ordinal();</span>
+<span class="nc" id="L384">        hash = 31 * hash + this.value;</span>
+<span class="nc" id="L385">        return hash;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc bnc" id="L393" title="All 2 branches missed.">        if (this.value != null) return Integer.toString(value);</span>
+<span class="nc" id="L394">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L395">        sb.append(&quot;[Operand type=&quot;).append(this.operandType)</span>
+<span class="nc" id="L396">            .append(&quot; scopeLevel=&quot;).append(this.scopeLevel);</span>
+<span class="nc" id="L397">        return super.toString().replaceFirst(&quot;^[^ ]*&quot;, sb.toString());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

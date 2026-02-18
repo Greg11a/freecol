@@ -1,0 +1,378 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BuildingProductionCalculator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model.production</a> &gt; <span class="el_source">BuildingProductionCalculator.java</span></div><h1>BuildingProductionCalculator.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model.production;
+
+import static net.sf.freecol.common.util.CollectionUtils.concat;
+import static net.sf.freecol.common.util.CollectionUtils.count;
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.isNotNull;
+import static net.sf.freecol.common.util.CollectionUtils.map;
+import static net.sf.freecol.common.util.CollectionUtils.matchKey;
+import static net.sf.freecol.common.util.CollectionUtils.sum;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.BuildingType;
+import net.sf.freecol.common.model.FeatureContainer;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Modifier;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.ProductionCache;
+import net.sf.freecol.common.model.ProductionInfo;
+import net.sf.freecol.common.model.ProductionType;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Turn;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.option.GameOptions;
+
+/**
+ * Calculates the production for a building of a given type.
+ */
+public class BuildingProductionCalculator {
+    private final static double EPSILON = 0.0001;
+    
+
+    private Player owner;
+    private FeatureContainer colonyFeatureContainer;
+    private int colonyProductionBonus;
+    
+    
+    /**
+     * Creates a calculator for the given owner and colony data.
+     * 
+     * @param owner The {@code Player} owning the building.
+     * @param colonyFeatureContainer The {@code FeatureContainer} for the colony where the
+     *      building is located. This is used for applying bonus to the production.
+     * @param colonyProductionBonus The production bonus for the colony where the building
+     *      is located.
+     */
+<span class="fc" id="L76">    public BuildingProductionCalculator(Player owner, FeatureContainer colonyFeatureContainer, int colonyProductionBonus) {</span>
+<span class="fc" id="L77">        this.owner = owner;</span>
+<span class="fc" id="L78">        this.colonyFeatureContainer = colonyFeatureContainer;</span>
+<span class="fc" id="L79">        this.colonyProductionBonus = colonyProductionBonus;</span>
+<span class="fc" id="L80">    }</span>
+    
+    
+    /**
+     * Gets the production information for a building taking account
+     * of the available input and output goods.
+     *
+     * @param buildingType The type of building.
+     * @param turn The current game turn.
+     * @param workerAssignments A list of workers assigned to the building.
+     * @param inputs The input goods available.
+     * @param outputs The output goods already available in the colony,
+     *     necessary in order to avoid excess production.
+     * @param warehouseCapacity The storage capacity of the settlement
+     *     producing the goods.
+     * @return The production information.
+     * @see ProductionCache#update
+     */
+    public ProductionInfo getAdjustedProductionInfo(
+            BuildingType buildingType,
+            Turn turn,
+            List&lt;WorkerAssignment&gt; workerAssignments,
+            List&lt;AbstractGoods&gt; inputs,
+            List&lt;AbstractGoods&gt; outputs,
+            int warehouseCapacity) {
+<span class="fc" id="L105">        ProductionInfo result = new ProductionInfo();</span>
+        
+<span class="fc" id="L107">        final List&lt;AbstractGoods&gt; buildingOutputs = getOutputs(buildingType, workerAssignments);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (buildingOutputs.isEmpty()) return result;</span>
+        
+<span class="fc" id="L110">        final List&lt;AbstractGoods&gt; buildingInputs = getInputs(buildingType, workerAssignments);</span>
+        
+<span class="fc" id="L112">        final Specification spec = buildingType.getSpecification();</span>
+<span class="fc" id="L113">        final boolean avoidOverflow = buildingType.hasAbility(Ability.AVOID_EXCESS_PRODUCTION);</span>
+        // Calculate two production ratios, the minimum (and actual)
+        // possible multiplier between the nominal input and output
+        // goods and the amount actually consumed and produced, and
+        // the maximum possible ratio that would apply but for
+        // circumstances such as limited input availability.
+<span class="fc" id="L119">        double maximumRatio = 0.0, minimumRatio = Double.MAX_VALUE;</span>
+
+        // First, calculate the nominal production ratios.
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (buildingType.hasAbility(Ability.AUTO_PRODUCTION)) {</span>
+            // Autoproducers are special
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            for (AbstractGoods output : transform(buildingOutputs.stream(),</span>
+                                                  AbstractGoods::isPositive)) {
+<span class="fc" id="L126">                final GoodsType goodsType = output.getType();</span>
+                //int available = colony.getGoodsCount(goodsType);
+<span class="fc" id="L128">                int available = outputs.stream().filter(gt -&gt; gt.getType().equals(goodsType)).findAny().map(AbstractGoods::getAmount).orElse(0);</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">                if (available &gt;= warehouseCapacity) {</span>
+<span class="fc" id="L130">                    minimumRatio = maximumRatio = 0.0;</span>
+                } else {
+<span class="fc" id="L132">                    int divisor = (int) buildingType.apply(0f, turn, Modifier.BREEDING_DIVISOR);</span>
+<span class="fc" id="L133">                    int factor = (int) buildingType.apply(0f, turn, Modifier.BREEDING_FACTOR);</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">                    int production = (available &lt; goodsType.getBreedingNumber()</span>
+<span class="fc" id="L135">                        || divisor &lt;= 0) ? 0</span>
+                        // Deliberate use of integer division
+<span class="fc" id="L137">                        : ((available - 1) / divisor + 1) * factor;</span>
+<span class="fc" id="L138">                    double newRatio = (double)production / output.getAmount();</span>
+<span class="fc" id="L139">                    minimumRatio = Math.min(minimumRatio, newRatio);</span>
+<span class="fc" id="L140">                    maximumRatio = Math.max(maximumRatio, newRatio);</span>
+                }
+<span class="fc" id="L142">            }</span>
+        } else {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            for (AbstractGoods output : buildingOutputs) {</span>
+<span class="fc" id="L145">                final GoodsType goodsType = output.getType();</span>
+<span class="fc" id="L146">                float production = determineProduction(buildingType, workerAssignments, turn, goodsType);</span>
+
+                // Beware!  If we ever unify this code with ColonyTile,
+                // ColonyTiles have outputs with zero amount.
+<span class="fc" id="L150">                double newRatio = production / output.getAmount();</span>
+<span class="fc" id="L151">                minimumRatio = Math.min(minimumRatio, newRatio);</span>
+<span class="fc" id="L152">                maximumRatio = Math.max(maximumRatio, newRatio);</span>
+<span class="fc" id="L153">            }</span>
+        }
+
+        // Then reduce the minimum ratio if some input is in short supply.
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        for (AbstractGoods input : buildingInputs) {</span>
+<span class="fc" id="L158">            long required = (long)Math.floor(input.getAmount() * minimumRatio);</span>
+<span class="fc" id="L159">            long available = getAvailable(input.getType(), inputs);</span>
+            // Do not allow auto-production to go negative.
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            if (buildingType.hasAbility(Ability.AUTO_PRODUCTION)) available = Math.max(0, available);</span>
+            // Experts in factory level buildings may produce a
+            // certain amount of goods even when no input is available.
+            // Factories have the EXPERTS_USE_CONNECTIONS ability.
+            long minimumGoodsInput;
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            if (available &lt; required</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">                &amp;&amp; buildingType.hasAbility(Ability.EXPERTS_USE_CONNECTIONS)</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">                &amp;&amp; spec.getBoolean(GameOptions.EXPERTS_HAVE_CONNECTIONS)</span>
+<span class="nc" id="L169">                &amp;&amp; ((minimumGoodsInput = buildingType.getExpertConnectionProduction()</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">                        * count(workerAssignments.stream().map(WorkerAssignment::getUnitType),</span>
+<span class="nc" id="L171">                            matchKey(getExpertUnitType(buildingType))))</span>
+                    &gt; available)) {
+<span class="nc" id="L173">                available = minimumGoodsInput;</span>
+            }
+            // Scale production by limitations on availability.
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (available &lt; required) {</span>
+<span class="fc" id="L177">                minimumRatio *= (double)available / required;</span>
+                //maximumRatio = Math.max(maximumRatio, minimumRatio);
+            }
+<span class="fc" id="L180">        }</span>
+
+        // Check whether there is space enough to store the goods
+        // produced in order to avoid excess production.
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (avoidOverflow) {</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            for (AbstractGoods output : buildingOutputs) {</span>
+<span class="fc" id="L186">                double production = output.getAmount() * minimumRatio;</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                if (production &lt;= 0) continue;</span>
+<span class="fc" id="L188">                double headroom = (double)warehouseCapacity</span>
+<span class="fc" id="L189">                    - getAvailable(output.getType(), outputs);</span>
+                // Clamp production at warehouse capacity
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                if (production &gt; headroom) {</span>
+<span class="fc" id="L192">                    minimumRatio = Math.min(minimumRatio,</span>
+<span class="fc" id="L193">                        headroom / output.getAmount());</span>
+                }
+<span class="fc" id="L195">                production = output.getAmount() * maximumRatio;</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">                if (production &gt; headroom) {</span>
+<span class="fc" id="L197">                    maximumRatio = Math.min(maximumRatio, </span>
+<span class="fc" id="L198">                        headroom / output.getAmount());</span>
+                }
+<span class="fc" id="L200">            }</span>
+        }
+
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        for (AbstractGoods input : buildingInputs) {</span>
+<span class="fc" id="L204">            GoodsType type = input.getType();</span>
+            // maximize consumption
+<span class="fc" id="L206">            int consumption = (int)Math.floor(input.getAmount()</span>
+                * minimumRatio + EPSILON);
+<span class="fc" id="L208">            int maximumConsumption = (int)Math.floor(input.getAmount()</span>
+                * maximumRatio);
+<span class="fc" id="L210">            result.addConsumption(new AbstractGoods(type, consumption));</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">            if (consumption &lt; maximumConsumption) {</span>
+<span class="fc" id="L212">                result.addMaximumConsumption(new AbstractGoods(type, maximumConsumption));</span>
+            }
+<span class="fc" id="L214">        }</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        for (AbstractGoods output : buildingOutputs) {</span>
+<span class="fc" id="L216">            GoodsType type = output.getType();</span>
+            // minimize production, but add a magic little something
+            // to counter rounding errors
+<span class="fc" id="L219">            int production = (int)Math.floor(output.getAmount() * minimumRatio</span>
+                + EPSILON);
+<span class="fc" id="L221">            int maximumProduction = (int)Math.floor(output.getAmount()</span>
+                * maximumRatio);
+<span class="fc" id="L223">            result.addProduction(new AbstractGoods(type, production));</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            if (production &lt; maximumProduction) {</span>
+<span class="fc" id="L225">                result.addMaximumProduction(new AbstractGoods(type, maximumProduction));</span>
+            }
+<span class="fc" id="L227">        }</span>
+<span class="fc" id="L228">        return result;</span>
+    }
+    
+    /**
+     * Gets the unit type that is the expert for this work location
+     * using its first output for which an expert type can be found.
+     *
+     * @return The expert {@code UnitType} or null if none found.
+     */
+    public UnitType getExpertUnitType(BuildingType buildingType) {
+<span class="nc" id="L238">        final Specification spec = buildingType.getSpecification();</span>
+<span class="nc" id="L239">        ProductionType pt = getBestProductionType(buildingType);</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        return (pt == null) ? null</span>
+<span class="nc" id="L241">            : find(map(pt.getOutputs(),</span>
+<span class="nc" id="L242">                       ag -&gt; spec.getExpertForProducing(ag.getType())),</span>
+<span class="nc" id="L243">                   isNotNull());</span>
+    }
+    
+    private ProductionType getBestProductionType(BuildingType buildingType) {
+<span class="nc" id="L247">        return ProductionType.getBestProductionType(null, buildingType.getAvailableProductionTypes(false));</span>
+    }
+    
+    private List&lt;AbstractGoods&gt; getOutputs(BuildingType buildingType, List&lt;WorkerAssignment&gt; workerAssignments) {
+<span class="fc" id="L251">        final List&lt;AbstractGoods&gt; unattendedOutputs = buildingType.getAvailableProductionTypes(true).stream()</span>
+<span class="fc" id="L252">                .map(pt -&gt; pt.getOutputList())</span>
+<span class="fc" id="L253">                .flatMap(Collection::stream)</span>
+<span class="fc" id="L254">                .collect(Collectors.toList());</span>
+        
+<span class="fc" id="L256">        final List&lt;AbstractGoods&gt; workerOutputs = workerAssignments.stream()</span>
+                //.map(wa -&gt; wa.getProductionType().getOutputList())
+<span class="fc" id="L258">                .map(WorkerAssignment::getProductionType)</span>
+                /*
+                 * XXX: This code is needed when a production type have yet to be
+                 *      chosen for the worker. But why are we calling this method
+                 *      in that case?
+                 */
+<span class="fc" id="L264">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L265">                .map(pt -&gt; pt.getOutputList())</span>
+<span class="fc" id="L266">                .flatMap(Collection::stream)</span>
+<span class="fc" id="L267">                .collect(Collectors.toList());</span>
+        
+<span class="fc" id="L269">        final List&lt;AbstractGoods&gt; allOutputs = new ArrayList&lt;&gt;(unattendedOutputs);</span>
+<span class="fc" id="L270">        allOutputs.addAll(workerOutputs);</span>
+        
+<span class="fc" id="L272">        final Map&lt;GoodsType, Integer&gt; amounts = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        for (AbstractGoods ag : allOutputs) {</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">            if (amounts.get(ag.getType()) == null) {</span>
+<span class="fc" id="L275">                amounts.put(ag.getType(), 0);</span>
+            }
+<span class="fc" id="L277">            amounts.put(ag.getType(), amounts.get(ag.getType()) + ag.getAmount());</span>
+<span class="fc" id="L278">        }</span>
+        
+<span class="fc" id="L280">        return amounts.entrySet().stream().map(e -&gt; new AbstractGoods(e.getKey(), e.getValue())).collect(Collectors.toList());</span>
+    }
+    
+    private List&lt;AbstractGoods&gt; getInputs(BuildingType buildingType, List&lt;WorkerAssignment&gt; workerAssignments) {
+<span class="fc" id="L284">        final List&lt;AbstractGoods&gt; unattendedInputs = buildingType.getAvailableProductionTypes(true).stream()</span>
+<span class="fc" id="L285">                .map(pt -&gt; pt.getInputList())</span>
+<span class="fc" id="L286">                .flatMap(Collection::stream)</span>
+<span class="fc" id="L287">                .collect(Collectors.toList());</span>
+<span class="fc" id="L288">        final List&lt;AbstractGoods&gt; workerInputs = workerAssignments.stream()</span>
+                //.map(wa -&gt; wa.getProductionType().getInputList())
+<span class="fc" id="L290">                .map(WorkerAssignment::getProductionType)</span>
+                /*
+                 * XXX: This code is needed when a production type have yet to be
+                 *      chosen for the worker. But why are we calling this method
+                 *      in that case?
+                 */
+<span class="fc" id="L296">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L297">                .map(pt -&gt; pt.getInputList())</span>
+<span class="fc" id="L298">                .flatMap(Collection::stream)</span>
+<span class="fc" id="L299">                .collect(Collectors.toList());</span>
+        
+<span class="fc" id="L301">        final List&lt;AbstractGoods&gt; allInputs = new ArrayList&lt;&gt;(unattendedInputs);</span>
+<span class="fc" id="L302">        allInputs.addAll(workerInputs);</span>
+        
+<span class="fc" id="L304">        final Map&lt;GoodsType, Integer&gt; amounts = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">        for (AbstractGoods ag : allInputs) {</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">            if (amounts.get(ag.getType()) == null) {</span>
+<span class="fc" id="L307">                amounts.put(ag.getType(), 0);</span>
+            }
+<span class="fc" id="L309">            amounts.put(ag.getType(), amounts.get(ag.getType()) + ag.getAmount());</span>
+<span class="fc" id="L310">        }</span>
+        
+<span class="fc" id="L312">        return amounts.entrySet().stream().map(e -&gt; new AbstractGoods(e.getKey(), e.getValue())).collect(Collectors.toList());</span>
+    }
+
+    private int determineProduction(BuildingType buildingType, List&lt;WorkerAssignment&gt; workerAssignments, final Turn turn, final GoodsType goodsType) {
+<span class="fc" id="L316">        float production = sum(workerAssignments,</span>
+<span class="fc" id="L317">                               wa -&gt; getUnitProduction(turn, buildingType, wa, goodsType));</span>
+        // Unattended production always applies for buildings!
+<span class="fc" id="L319">        production += getBaseProduction(buildingType, null, goodsType, null);</span>
+<span class="fc" id="L320">        production = FeatureContainer.applyModifiers(production, turn,</span>
+<span class="fc" id="L321">                                    getProductionModifiers(turn, buildingType, goodsType, null));</span>
+<span class="fc" id="L322">        return (int) Math.floor(production);</span>
+    }
+    
+    /**
+     * Convenience function to extract a goods amount from a list of
+     * available goods.
+     *
+     * @param type The {@code GoodsType} to extract the amount for.
+     * @param available The list of available goods to query.
+     * @return The goods amount, or zero if none found.
+     */
+    private int getAvailable(GoodsType type, List&lt;AbstractGoods&gt; available) {
+<span class="fc" id="L334">        return AbstractGoods.getCount(type, available);</span>
+    }
+    
+    /**
+     * Gets the productivity of a unit working in this work location,
+     * considering *only* the contribution of the unit, exclusive of
+     * that of the work location.
+     *
+     * @param turn The current game turn.
+     * @param buildingType The type of building.
+     * @param workerAssignment The worker assigned to the building.
+     * @param goodsType The {@code GoodsType} to check the production of.
+     * @return The maximum return from this unit.
+     */
+    private int getUnitProduction(Turn turn, BuildingType buildingType, WorkerAssignment workerAssignment, GoodsType goodsType) {
+<span class="pc bpc" id="L349" title="2 of 4 branches missed.">        if (workerAssignment == null || workerAssignment.getProductionType().getOutputs().noneMatch(g -&gt; goodsType.equals(g.getType()))) {</span>
+<span class="nc" id="L350">            return 0;</span>
+        }
+        
+<span class="fc" id="L353">        return Math.max(0,</span>
+<span class="fc" id="L354">                        (int) FeatureContainer.applyModifiers(getBaseProduction(buildingType, workerAssignment.getProductionType(), goodsType, workerAssignment.getUnitType()),</span>
+                                            turn,
+<span class="fc" id="L356">                                            getProductionModifiers(turn, buildingType, goodsType, workerAssignment.getUnitType())));</span>
+    }
+    
+    private int getBaseProduction(BuildingType buildingType, ProductionType productionType, GoodsType goodsType, UnitType unitType) {
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">        return (buildingType == null) ? 0 : buildingType.getBaseProduction(productionType, goodsType, unitType);</span>
+    }
+    
+    private Stream&lt;Modifier&gt; getProductionModifiers(Turn turn, BuildingType buildingType, GoodsType goodsType,
+            UnitType unitType) {
+<span class="pc bpc" id="L365" title="1 of 2 branches missed.">        final String id = (goodsType == null) ? null : goodsType.getId();</span>
+        
+<span class="fc bfc" id="L367" title="All 2 branches covered.">        return (unitType != null)</span>
+            // With a unit, unit specific bonuses apply
+<span class="fc" id="L369">            ? concat(buildingType.getModifiers(id, unitType, turn),</span>
+<span class="fc" id="L370">                    ProductionUtils.getRebelProductionModifiersForBuilding(buildingType, colonyProductionBonus, goodsType, unitType),</span>
+<span class="fc" id="L371">                    buildingType.getCompetenceModifiers(id, unitType, turn),</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">                    (owner == null) ? null : owner.getModifiers(id, unitType, turn))</span>
+            // With no unit, only the building-specific bonuses 
+<span class="fc" id="L374">            : concat(colonyFeatureContainer.getModifiers(id, buildingType, turn), // XXX: Can we simplify this?</span>
+<span class="fc bfc" id="L375" title="All 2 branches covered.">                    (owner == null) ? null : owner.getModifiers(id, buildingType, turn));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

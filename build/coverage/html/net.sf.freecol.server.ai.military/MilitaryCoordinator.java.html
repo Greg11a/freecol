@@ -1,0 +1,480 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MilitaryCoordinator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.military</a> &gt; <span class="el_source">MilitaryCoordinator.java</span></div><h1>MilitaryCoordinator.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai.military;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.PathNode;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.ai.AIColony;
+import net.sf.freecol.server.ai.AIUnit;
+import net.sf.freecol.server.ai.EuropeanAIPlayer;
+import net.sf.freecol.server.ai.mission.DefendSettlementMission;
+import net.sf.freecol.server.ai.mission.EscortUnitMission;
+import net.sf.freecol.server.ai.mission.Mission;
+import net.sf.freecol.server.ai.mission.UnitSeekAndDestroyMission;
+import net.sf.freecol.server.ai.mission.UnitWanderHostileMission;
+
+/**
+ * Provides missions for all military (land) units.
+ */
+<span class="fc" id="L53">public final class MilitaryCoordinator {</span>
+
+    private final EuropeanAIPlayer player;
+    private final Set&lt;AIUnit&gt; unusedUnits;
+    private final List&lt;AIColony&gt; ourColonies;
+    private final Map&lt;AIColony, List&lt;AIUnit&gt;&gt; defenders;
+    private final DefensiveMap defensiveMap;
+    
+<span class="fc" id="L61">    private final Set&lt;Unit&gt; targetedEnemies = Collections.newSetFromMap(new IdentityHashMap&lt;&gt;());</span>
+<span class="fc" id="L62">    private final Map&lt;Settlement, List&lt;AIUnit&gt;&gt; targetedEnemySettlements = new HashMap&lt;&gt;();</span>
+    
+<span class="fc" id="L64">    private final Map&lt;String, Integer&gt; turnsToReachCache = new HashMap&lt;&gt;();</span>
+    
+    
+    /**
+     * Creates a new military coordinator for the given military units.
+     * 
+     * Please note that a new instance needs to be created every time the map has
+     * changed (for example, by executing other missions).
+     *  
+     * @param player The player owning the units to be coordinated.
+     * @param militaryUnits The units to be managed by this instance.
+     */
+<span class="fc" id="L76">    public MilitaryCoordinator(EuropeanAIPlayer player, Set&lt;AIUnit&gt; militaryUnits) {</span>
+<span class="pc bnc" id="L77" title="All 2 branches missed.">        assert player != null;</span>
+<span class="pc bnc" id="L78" title="All 4 branches missed.">        assert militaryUnits.stream().noneMatch(au -&gt; au.getOwner() != player.getPlayer());</span>
+        
+<span class="fc" id="L80">        this.player = player;</span>
+        //this.unusedUnits = identitySet(militaryUnits);
+        /*
+         * TODO: Filter out units waiting for transport ... so that the transport priority
+         * accumulates during wait time. This is probably better solved by having a separate
+         * mission for transporting units from Europe to the New World.
+         */
+<span class="fc" id="L87">        this.unusedUnits = identitySet(militaryUnits.stream()</span>
+<span class="pc bnc" id="L88" title="All 4 branches missed.">                .filter(u -&gt; !u.getUnit().isInEurope() || !u.hasMission())</span>
+<span class="fc" id="L89">                .collect(Collectors.toList())</span>
+                );
+        
+<span class="fc" id="L92">        this.ourColonies = getOurColoniesSortedByValue();</span>
+<span class="fc" id="L93">        this.defenders = new HashMap&lt;&gt;();</span>
+        
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (AIColony colony : ourColonies) {</span>
+<span class="fc" id="L96">            this.defenders.put(colony, new ArrayList&lt;&gt;());</span>
+<span class="fc" id="L97">        }</span>
+        
+<span class="fc" id="L99">        defensiveMap = DefensiveMap.createDefensiveMap(player);</span>
+<span class="fc" id="L100">    }</span>
+    
+    
+    /**
+     * Determines the missions for the units this coordinator controls.
+     */
+    public void determineMissions() {        
+<span class="fc" id="L107">        final Set&lt;AIUnit&gt; artilleryUnits = identitySet(onlyArtillery(unusedUnits));</span>
+<span class="fc" id="L108">        final Set&lt;AIUnit&gt; dragoonUnits = identitySet(onlyDragoons(unusedUnits));</span>
+<span class="fc" id="L109">        final Set&lt;AIUnit&gt; otherMilitaryUnits = identitySet(neitherArtilleryNorDragoons(unusedUnits));</span>
+        
+        /*
+         * The order here is really important, since military units might run out.
+         */
+        
+        // Do not move away artillery from attacked zones:
+<span class="fc" id="L116">        keepUnitsInColonies(defensiveMap.getAttackedColonies(), artilleryUnits, always());        </span>
+<span class="fc" id="L117">        keepUnitsInColonies(defensiveMap.getAttackedColonies(), dragoonUnits, maxDefenders(1));</span>
+        
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">        if (player.isAggressive()) {</span>
+<span class="nc" id="L120">            final List&lt;AIColony&gt; importantWaterColonies = defensiveMap.getColoniesExposedWater().stream()</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">                    .filter(ac -&gt; ac.getColony().getUnitCount() &gt; 3)</span>
+<span class="nc" id="L122">                    .collect(Collectors.toList());</span>
+<span class="nc" id="L123">            keepUnitsInColonies(importantWaterColonies, artilleryUnits, maxArtilleries(1));</span>
+<span class="nc" id="L124">            placeUnitsInColonies(importantWaterColonies, artilleryUnits, maxArtilleries(1));</span>
+            
+<span class="nc" id="L126">            placeUnitsInColonies(defensiveMap.getAttackedColonies(), dragoonUnits, maxDefenders(1));</span>
+<span class="nc" id="L127">            placeUnitsInColonies(defensiveMap.getAttackedColonies(), dragoonUnits, maxDefenders(1));</span>
+<span class="nc" id="L128">            keepUnitsInColonies(defensiveMap.getThreatenedColonies(), dragoonUnits, maxDefenders(1));</span>
+<span class="nc" id="L129">            placeUnitsInColonies(defensiveMap.getThreatenedColonies(), dragoonUnits, maxDefenders(1));</span>
+            
+<span class="nc" id="L131">            keepUnitsInColonies(defensiveMap.getColoniesExposedWater(), dragoonUnits, maxDefenders(1));</span>
+<span class="nc" id="L132">            placeUnitsInColonies(defensiveMap.getColoniesExposedWater(), dragoonUnits, maxDefenders(1));</span>
+<span class="nc" id="L133">            keepUnitsInColonies(defensiveMap.getColoniesExposedLand(), dragoonUnits, maxDefenders(1));</span>
+<span class="nc" id="L134">            placeUnitsInColonies(defensiveMap.getColoniesExposedLand(), dragoonUnits, maxDefenders(1));</span>
+            
+            // Don't move unmounted soldiers out of the colonies:
+<span class="nc" id="L137">            keepUnitsInColonies(ourColonies, otherMilitaryUnits, always());</span>
+<span class="nc" id="L138">        } else {</span>
+            // Keep at least one decent defender in every colony:
+<span class="fc" id="L140">            keepUnitsInColonies(ourColonies, artilleryUnits, maxDefenders(1));</span>
+<span class="fc" id="L141">            placeUnitsInColonies(ourColonies, artilleryUnits, maxDefenders(1));</span>
+<span class="fc" id="L142">            keepUnitsInColonies(ourColonies, dragoonUnits, maxDefenders(1));</span>
+<span class="fc" id="L143">            placeUnitsInColonies(ourColonies, dragoonUnits, maxDefenders(1));</span>
+            
+            // Don't move unmounted soldiers out of the colonies:
+<span class="fc" id="L146">            keepUnitsInColonies(ourColonies, otherMilitaryUnits, always());</span>
+            
+<span class="fc" id="L148">            keepUnitsInColonies(defensiveMap.getThreatenedColonies(), artilleryUnits, maxArtilleries(3));</span>
+<span class="fc" id="L149">            keepUnitsInColonies(defensiveMap.getColoniesExposedWater(), artilleryUnits, maxArtilleries(2));</span>
+<span class="fc" id="L150">            placeUnitsInColonies(defensiveMap.getThreatenedColonies(), artilleryUnits, maxArtilleries(2));</span>
+        }
+               
+<span class="fc" id="L153">        counterattackEnemyValuableUnitsReachableInTurns(dragoonUnits, 0);</span>
+<span class="fc" id="L154">        counterattackEnemyValuableUnitsReachableInTurns(dragoonUnits, 1);</span>
+<span class="fc" id="L155">        counterattackAllEnemyUnitsReachableInTurns(dragoonUnits, 1);</span>
+<span class="fc" id="L156">        counterattackAllEnemyUnitsReachableInTurns(dragoonUnits, 2);</span>
+        
+<span class="fc" id="L158">        attackEnemySettlements(artilleryUnits, dragoonUnits);</span>
+        
+<span class="fc" id="L160">        keepUnitsInColonies(defensiveMap.getAttackedColonies(), dragoonUnits, always());</span>
+<span class="fc" id="L161">        keepUnitsInColonies(defensiveMap.getThreatenedColonies(), artilleryUnits, always());</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        if (player.isAggressive()) {</span>
+<span class="nc" id="L163">            placeUnitsInColonies(defensiveMap.getColoniesExposedWater(), artilleryUnits, maxArtilleries(1));</span>
+        }
+<span class="fc" id="L165">        placeUnitsInColonies(defensiveMap.getColoniesExposedWater(), artilleryUnits, maxArtilleries(2));</span>
+<span class="fc" id="L166">        keepUnitsInColonies(defensiveMap.getThreatenedColonies(), dragoonUnits, always());</span>
+        
+<span class="fc" id="L168">        keepUnitsInColonies(defensiveMap.getColoniesExposedLand(), artilleryUnits, maxArtilleries(2));</span>
+<span class="fc" id="L169">        placeUnitsInColonies(defensiveMap.getColoniesExposedLand(), dragoonUnits, maxDragoons(2));</span>
+        
+<span class="fc" id="L171">        assignDefendClosestColony(unusedUnits);</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (!ourColonies.isEmpty()) {</span>
+<span class="fc" id="L173">            transportMilitaryUnitsFromEurope(ourColonies.get(0), unusedUnits);</span>
+        }
+<span class="fc" id="L175">        assignWanderHostile();</span>
+<span class="fc" id="L176">    }</span>
+
+    private void attackEnemySettlements(Set&lt;AIUnit&gt; artilleryUnits, Set&lt;AIUnit&gt; dragoonUnits) {
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        for (AIUnit artillery : new HashSet&lt;&gt;(artilleryUnits)) {</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">            if (dragoonUnits.isEmpty()) {</span>
+<span class="nc" id="L181">                continue;</span>
+            }
+                
+<span class="nc bnc" id="L184" title="All 2 branches missed.">            if (artillery.getUnit().getTile() == null) {</span>
+                // Direct transport not supported at the moment.
+<span class="nc" id="L186">                continue;</span>
+            }
+<span class="nc bnc" id="L188" title="All 2 branches missed.">            final Settlement possibleTarget = (Settlement) UnitSeekAndDestroyMission.findMissionTarget(artillery, 10, true, !player.isLikesAttackingNatives());</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">            if (possibleTarget == null) {</span>
+<span class="nc" id="L190">                continue;</span>
+            }
+            
+<span class="nc" id="L193">            List&lt;AIUnit&gt; settlementAttackers = targetedEnemySettlements.get(possibleTarget);</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">            if (settlementAttackers == null) {</span>
+<span class="nc" id="L195">                settlementAttackers = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L196">                targetedEnemySettlements.put(possibleTarget, settlementAttackers);</span>
+            }
+            
+<span class="nc bnc" id="L199" title="All 2 branches missed.">            if (settlementAttackers.size() &gt; possibleTarget.getUnitCount()) {</span>
+                // Too many attackers.
+<span class="nc" id="L201">                continue;</span>
+            }
+            
+            // TODO: Perhaps support going directly to possibleTarget instead?
+<span class="nc" id="L205">            final Tile escortTargetTile = artillery.getUnit().getTile();</span>
+            
+<span class="nc" id="L207">            final AIUnit escort = dragoonUnits.stream()</span>
+<span class="nc" id="L208">                .sorted((a, b) -&gt; Integer.compare(getTurnsToReach(a.getUnit(), escortTargetTile), getTurnsToReach(b.getUnit(), escortTargetTile)))</span>
+<span class="nc" id="L209">                .findFirst()</span>
+<span class="nc" id="L210">                .orElse(null);</span>
+            
+<span class="nc bnc" id="L212" title="All 2 branches missed.">            if (escort == null</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">                    || getTurnsToReach(escort.getUnit(), escortTargetTile) &gt; 8) {</span>
+<span class="nc" id="L214">                continue;</span>
+            }
+            
+<span class="nc" id="L217">            artillery.changeMission(new UnitSeekAndDestroyMission(artillery.getAIMain(), artillery, possibleTarget));</span>
+<span class="nc" id="L218">            artilleryUnits.remove(artillery);</span>
+<span class="nc" id="L219">            unusedUnits.remove(artillery);</span>
+            
+<span class="nc" id="L221">            escort.changeMission(new EscortUnitMission(escort.getAIMain(), escort, artillery.getUnit()));</span>
+<span class="nc" id="L222">            dragoonUnits.remove(escort);</span>
+<span class="nc" id="L223">            unusedUnits.remove(escort);</span>
+            
+            // TODO: Consider sending a second escort if dragoonUnits.size() / 2 &gt; artilleryUnits.size()
+
+<span class="nc" id="L227">            settlementAttackers.add(artillery);</span>
+<span class="nc" id="L228">        }</span>
+<span class="fc" id="L229">    }</span>
+    
+    private int getTurnsToReach(Unit unit, Location location) {
+<span class="nc" id="L232">        final String key = unit.getId() + &quot;,&quot; + location.getId();</span>
+<span class="nc" id="L233">        final Integer cachedResult = turnsToReachCache.get(key);</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">        if (cachedResult != null) {</span>
+<span class="nc" id="L235">            return cachedResult;</span>
+        }
+        
+<span class="nc" id="L238">        final int result = unit.getTurnsToReach(location);</span>
+<span class="nc" id="L239">        turnsToReachCache.put(key, result);</span>
+<span class="nc" id="L240">        return result;</span>
+    }
+
+    private void counterattackEnemyValuableUnitsReachableInTurns(final Set&lt;AIUnit&gt; dragoonUnits, int turns) {
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        for (DefensiveZone defensiveZone : defensiveMap.getDefensiveZones()) {</span>
+<span class="fc" id="L245">            final Set&lt;Unit&gt; unprotectedUnarmedSoldiers = identitySet(onlyUnprotectedUnarmedSoldierUnits(defensiveZone.getEnemies()));</span>
+<span class="fc" id="L246">            final Set&lt;Unit&gt; enemyArtillery = identitySet(onlyArtilleryUnits(defensiveZone.getEnemies()));</span>
+            
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">            for (Unit enemy : unprotectedUnarmedSoldiers) {</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">                for (AIUnit dragoon : new HashSet&lt;&gt;(dragoonUnits)) {</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">                    if (dragoon.getUnit().getTile() == null) {</span>
+<span class="nc" id="L251">                        continue;</span>
+                    }
+<span class="nc bnc" id="L253" title="All 2 branches missed.">                    if (dragoon.getUnit().getTile().getContiguity() != enemy.getTile().getContiguity()) {</span>
+<span class="nc" id="L254">                        continue;</span>
+                    }
+                    
+<span class="nc" id="L257">                    final PathNode path = dragoon.getUnit().findPath(enemy.getTile()); // TODO: add max turns to the search.</span>
+<span class="nc bnc" id="L258" title="All 4 branches missed.">                    if (path != null &amp;&amp; path.getTurns() &lt;= turns) {</span>
+<span class="nc" id="L259">                        dragoon.changeMission(new UnitSeekAndDestroyMission(dragoon.getAIMain(), dragoon, enemy));</span>
+<span class="nc" id="L260">                        unusedUnits.remove(dragoon);</span>
+<span class="nc" id="L261">                        dragoonUnits.remove(dragoon);</span>
+<span class="nc" id="L262">                        targetedEnemies.add(enemy);</span>
+<span class="nc" id="L263">                        break;</span>
+                    }
+<span class="nc" id="L265">                }</span>
+<span class="nc" id="L266">            }</span>
+            
+<span class="fc bfc" id="L268" title="All 2 branches covered.">            for (int i=0; i&lt;2; i++) { // Two per artillery, regardless of defenders.</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">                for (Unit enemy : enemyArtillery) {</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">                    for (AIUnit dragoon : new HashSet&lt;&gt;(dragoonUnits)) {</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">                        if (dragoon.getUnit().getTile() == null) {</span>
+<span class="nc" id="L272">                            continue;</span>
+                        }
+<span class="nc bnc" id="L274" title="All 2 branches missed.">                        if (dragoon.getUnit().getTile().getContiguity() != enemy.getTile().getContiguity()) {</span>
+<span class="nc" id="L275">                            continue;</span>
+                        }
+                        
+<span class="nc" id="L278">                        final PathNode path = dragoon.getUnit().findPath(enemy.getTile()); // TODO: add max turns to the search.</span>
+<span class="nc bnc" id="L279" title="All 4 branches missed.">                        if (path != null &amp;&amp; path.getTurns() &lt;= turns) {</span>
+<span class="nc" id="L280">                            dragoon.changeMission(new UnitSeekAndDestroyMission(dragoon.getAIMain(), dragoon, enemy));</span>
+<span class="nc" id="L281">                            unusedUnits.remove(dragoon);</span>
+<span class="nc" id="L282">                            dragoonUnits.remove(dragoon);</span>
+<span class="nc" id="L283">                            targetedEnemies.add(enemy);</span>
+<span class="nc" id="L284">                            break;</span>
+                        }
+<span class="nc" id="L286">                    }</span>
+<span class="nc" id="L287">                }</span>
+            }
+<span class="fc" id="L289">        }</span>
+<span class="fc" id="L290">    }</span>
+    
+    private void counterattackAllEnemyUnitsReachableInTurns(final Set&lt;AIUnit&gt; dragoonUnits, int turns) {
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        for (DefensiveZone defensiveZone : defensiveMap.getDefensiveZones()) { </span>
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">            for (Unit enemy : defensiveZone.getEnemies()) {</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">                if (targetedEnemies.contains(enemy)) {</span>
+<span class="nc" id="L296">                    continue;</span>
+                }
+<span class="nc bnc" id="L298" title="All 2 branches missed.">                for (AIUnit dragoon : new HashSet&lt;&gt;(dragoonUnits)) {</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">                    if (dragoon.getUnit().getTile() == null) {</span>
+<span class="nc" id="L300">                        continue;</span>
+                    }
+<span class="nc bnc" id="L302" title="All 2 branches missed.">                    if (dragoon.getUnit().getTile().getContiguity() != enemy.getTile().getContiguity()) {</span>
+<span class="nc" id="L303">                        continue;</span>
+                    }
+                    
+<span class="nc" id="L306">                    final PathNode path = dragoon.getUnit().findPath(enemy.getTile()); // TODO: add max turns to the search.</span>
+<span class="nc bnc" id="L307" title="All 4 branches missed.">                    if (path != null &amp;&amp; path.getTurns() &lt;= turns) {</span>
+<span class="nc" id="L308">                        dragoon.changeMission(new UnitSeekAndDestroyMission(dragoon.getAIMain(), dragoon, enemy));</span>
+<span class="nc" id="L309">                        unusedUnits.remove(dragoon);</span>
+<span class="nc" id="L310">                        dragoonUnits.remove(dragoon);</span>
+<span class="nc" id="L311">                        targetedEnemies.add(enemy);</span>
+<span class="nc" id="L312">                        break;</span>
+                    }
+<span class="nc" id="L314">                }</span>
+<span class="nc" id="L315">            }</span>
+<span class="fc" id="L316">        }</span>
+<span class="fc" id="L317">    }</span>
+    
+    private void assignDefendClosestColony(Set&lt;AIUnit&gt; militaryUnits) {
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">        for (AIUnit unit : new HashSet&lt;&gt;(unusedUnits)) {</span>
+<span class="nc" id="L321">            final Mission mission = player.getDefendSettlementMission(unit, true, true);</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">            if (mission != null) {</span>
+<span class="nc" id="L323">                unit.changeMission(mission);</span>
+<span class="nc" id="L324">                unusedUnits.remove(unit);</span>
+            }
+<span class="nc" id="L326">        }</span>
+<span class="fc" id="L327">    }</span>
+    
+    private void transportMilitaryUnitsFromEurope(AIColony destination, Set&lt;AIUnit&gt; militaryUnits) {
+        // TODO: Better method for transporting military units from Europe.
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">        for (AIUnit unit : new HashSet&lt;&gt;(unusedUnits)) {</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">            if (unit.getUnit().getTile() != null) {</span>
+<span class="nc" id="L333">                continue;</span>
+            }
+<span class="nc" id="L335">            unit.changeMission(new DefendSettlementMission(unit.getAIMain(), unit, destination.getColony()));</span>
+<span class="nc" id="L336">            unusedUnits.remove(unit);</span>
+<span class="nc" id="L337">        }</span>
+<span class="fc" id="L338">    }</span>
+    
+    private void placeUnit(List&lt;AIColony&gt; aiColonies, Set&lt;AIUnit&gt; units, Function&lt;List&lt;AIUnit&gt;, Boolean&gt; checkIfDefenderShouldBeAdded, boolean onlySameTile) {
+<span class="fc bfc" id="L341" title="All 2 branches covered.">        for (AIColony colony : aiColonies) {</span>
+<span class="pc bpc" id="L342" title="1 of 2 branches missed.">            if (!checkIfDefenderShouldBeAdded.apply(defenders.get(colony))) {</span>
+<span class="nc" id="L343">                continue;</span>
+            }
+            final AIUnit unit;
+<span class="fc bfc" id="L346" title="All 2 branches covered.">            if (onlySameTile) {</span>
+<span class="fc" id="L347">                unit = findUnitInColony(colony, units);</span>
+            } else {
+<span class="fc" id="L349">                unit = findUnitClosestToColony(colony, units);</span>
+            }
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">            if (unit == null) {</span>
+<span class="fc" id="L352">                break;</span>
+            }
+<span class="nc" id="L354">            placeDefender(unit, colony);</span>
+<span class="nc" id="L355">            units.remove(unit);</span>
+<span class="nc" id="L356">        }</span>
+<span class="fc" id="L357">    }</span>
+    
+    private void keepUnitsInColonies(List&lt;AIColony&gt; aiColonies, Set&lt;AIUnit&gt; units, Function&lt;List&lt;AIUnit&gt;, Boolean&gt; checkIfDefenderShouldBeAdded) {
+<span class="fc" id="L360">        placeUnit(aiColonies, units, checkIfDefenderShouldBeAdded, true);</span>
+<span class="fc" id="L361">    }</span>
+    
+    private void placeUnitsInColonies(List&lt;AIColony&gt; aiColonies, Set&lt;AIUnit&gt; units, Function&lt;List&lt;AIUnit&gt;, Boolean&gt; checkIfDefenderShouldBeAdded) {
+<span class="fc" id="L364">        placeUnit(aiColonies, units, checkIfDefenderShouldBeAdded, false);</span>
+<span class="fc" id="L365">    }</span>
+    
+    private void assignWanderHostile() {
+<span class="pc bpc" id="L368" title="1 of 2 branches missed.">        for (AIUnit unit : new HashSet&lt;&gt;(unusedUnits)) {</span>
+<span class="nc" id="L369">            unit.changeMission(new UnitWanderHostileMission(unit.getAIMain(), unit));</span>
+<span class="nc" id="L370">            unusedUnits.remove(unit);</span>
+<span class="nc" id="L371">        }</span>
+<span class="pc bnc" id="L372" title="All 2 branches missed.">        assert unusedUnits.isEmpty();</span>
+<span class="fc" id="L373">    }</span>
+    
+    private void placeDefender(AIUnit unit, AIColony colony) {
+<span class="nc" id="L376">        unit.changeMission(new DefendSettlementMission(unit.getAIMain(), unit, colony.getColony()));</span>
+<span class="nc" id="L377">        final List&lt;AIUnit&gt; units = defenders.get(colony);</span>
+<span class="nc" id="L378">        units.add(unit);</span>
+<span class="nc" id="L379">        unusedUnits.remove(unit);</span>
+<span class="nc" id="L380">    }</span>
+
+    private AIUnit findUnitClosestToColony(AIColony colony, Set&lt;AIUnit&gt; units) {
+<span class="pc bpc" id="L383" title="1 of 2 branches missed.">        for (AIUnit au : units) {</span>
+<span class="nc bnc" id="L384" title="All 2 branches missed.">            if (au.getMission() instanceof DefendSettlementMission</span>
+<span class="nc bnc" id="L385" title="All 2 branches missed.">                    &amp;&amp; au.getMission().getTarget() == colony.getColony()) {</span>
+<span class="nc" id="L386">                return au;</span>
+            }
+<span class="nc" id="L388">        }</span>
+        
+        // TODO: Handle Europe, handle with/without carrier
+<span class="fc" id="L391">        return units.stream()</span>
+<span class="pc" id="L392">            .sorted((a, b) -&gt; Integer.compare(getTurnsToReach(a.getUnit(), colony.getColony().getTile()), getTurnsToReach(b.getUnit(), colony.getColony().getTile())))</span>
+<span class="fc" id="L393">            .findFirst()</span>
+<span class="fc" id="L394">            .orElse(null);</span>
+    }
+
+    private static AIUnit findUnitInColony(AIColony ac, Set&lt;AIUnit&gt; units) {
+<span class="fc" id="L398">        return units.stream()</span>
+<span class="pc bnc" id="L399" title="All 4 branches missed.">            .filter(au -&gt; au.getUnit().getTile() != null &amp;&amp; au.getUnit().getTile().equals(ac.getColony().getTile()))</span>
+<span class="fc" id="L400">            .findAny()</span>
+<span class="fc" id="L401">            .orElse(null);</span>
+    }
+
+    private static Set&lt;AIUnit&gt; onlyArtillery(Set&lt;AIUnit&gt; militaryUnits) {
+<span class="fc" id="L405">        return militaryUnits.stream()</span>
+<span class="pc" id="L406">                .filter(au -&gt; isArtillery(au.getUnit()))</span>
+<span class="fc" id="L407">                .collect(Collectors.toSet());</span>
+    }
+    
+    private static Set&lt;Unit&gt; onlyArtilleryUnits(Set&lt;Unit&gt; militaryUnits) {
+<span class="fc" id="L411">        return militaryUnits.stream()</span>
+<span class="pc" id="L412">                .filter(u -&gt; isArtillery(u))</span>
+<span class="fc" id="L413">                .collect(Collectors.toSet());</span>
+    }
+
+    private static boolean isArtillery(Unit unit) {
+<span class="nc" id="L417">        return unit.hasAbility(Ability.BOMBARD);</span>
+    }
+    
+    private static Set&lt;Unit&gt; onlyUnprotectedUnarmedSoldierUnits(Set&lt;Unit&gt; militaryUnits) {
+<span class="fc" id="L421">        return militaryUnits.stream()</span>
+<span class="pc bnc" id="L422" title="All 6 branches missed.">                .filter(u -&gt; !u.isArmed() &amp;&amp; u.getSortedMilitaryRoles().stream().anyMatch(r -&gt; r.getExpertUnit() == u.getType()))</span>
+<span class="pc bnc" id="L423" title="All 4 branches missed.">                .filter(u -&gt; militaryUnits.stream().noneMatch(guard -&gt; guard.getTile() == u.getTile() &amp;&amp; guard.isOffensiveUnit()))</span>
+<span class="fc" id="L424">                .collect(Collectors.toSet());</span>
+    }
+    
+    private static Set&lt;AIUnit&gt; onlyDragoons(Set&lt;AIUnit&gt; militaryUnits) {
+<span class="fc" id="L428">        return militaryUnits.stream()</span>
+<span class="pc" id="L429">                .filter(au -&gt; isDragoon(au.getUnit()))</span>
+<span class="fc" id="L430">                .collect(Collectors.toSet());</span>
+    }
+
+    private static boolean isDragoon(Unit unit) {
+<span class="nc" id="L434">        return unit.isMounted();</span>
+    }
+
+    private static Set&lt;AIUnit&gt; neitherArtilleryNorDragoons(Set&lt;AIUnit&gt; militaryUnits) {
+<span class="fc" id="L438">        return militaryUnits.stream()</span>
+<span class="pc bnc" id="L439" title="All 4 branches missed.">                .filter(au -&gt; !au.getUnit().hasAbility(Ability.BOMBARD) &amp;&amp; !au.getUnit().isMounted())</span>
+<span class="fc" id="L440">                .collect(Collectors.toSet());</span>
+    }
+
+    private List&lt;AIColony&gt; getOurColoniesSortedByValue() {
+<span class="fc" id="L444">        final List&lt;AIColony&gt; ourColonies = player.getAIColonies();</span>
+<span class="fc" id="L445">        Collections.sort(ourColonies, (a, b) -&gt; {</span>
+<span class="nc" id="L446">            return Integer.compare(b.getColony().getUnitCount(), a.getColony().getUnitCount());</span>
+        });
+<span class="fc" id="L448">        return ourColonies;</span>
+    }
+    
+    private static &lt;T&gt; Set&lt;T&gt; identitySet(Collection&lt;T&gt; collection) {
+<span class="fc" id="L452">        final Set&lt;T&gt; result = Collections.newSetFromMap(new IdentityHashMap&lt;&gt;());</span>
+<span class="fc" id="L453">        result.addAll(collection);</span>
+<span class="fc" id="L454">        return result;</span>
+    }
+    
+    private static Function&lt;List&lt;AIUnit&gt;, Boolean&gt; maxDefenders(int count) {
+<span class="pc bpc" id="L458" title="1 of 2 branches missed.">        return units -&gt; units.size() &lt; count;</span>
+    }
+    
+    private static Function&lt;List&lt;AIUnit&gt;, Boolean&gt; maxArtilleries(int count) {
+<span class="pc bpc" id="L462" title="1 of 2 branches missed.">        return units -&gt; units.stream().filter(au -&gt; isArtillery(au.getUnit())).count() &lt; count;</span>
+    }
+    
+    private static Function&lt;List&lt;AIUnit&gt;, Boolean&gt; maxDragoons(int count) {
+<span class="pc bpc" id="L466" title="1 of 2 branches missed.">        return units -&gt; units.stream().filter(au -&gt; isDragoon(au.getUnit())).count() &lt; count;</span>
+    }
+    
+    private static Function&lt;List&lt;AIUnit&gt;, Boolean&gt; always() {
+<span class="fc" id="L470">        return units -&gt; true;</span>
+    }
+    
+    public static Predicate&lt;? super AIUnit&gt; isUnitHandledByMilitaryCoordinator() {
+<span class="fc bfc" id="L474" title="All 2 branches covered.">        return u -&gt; !u.getUnit().isNaval()</span>
+<span class="pc bpc" id="L475" title="1 of 2 branches missed.">                &amp;&amp; u.getUnit().isOffensiveUnit()</span>
+<span class="pc bnc" id="L476" title="All 2 branches missed.">                &amp;&amp; !u.getUnit().hasAbility(Ability.SPEAK_WITH_CHIEF)</span>
+                ;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

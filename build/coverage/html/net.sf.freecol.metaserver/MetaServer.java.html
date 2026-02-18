@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetaServer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.metaserver</a> &gt; <span class="el_source">MetaServer.java</span></div><h1>MetaServer.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.metaserver;
+
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.common.networking.Connection;
+
+
+/**
+ * The entry point and main controller object for the meta server.
+ * 
+ * When a new client connects to the meta server a new {@link Connection} is
+ * made, with {@link MetaServerHandler} as the control object.
+ * 
+ * @see net.sf.freecol.common.networking
+ */
+public final class MetaServer extends Thread {
+
+<span class="nc" id="L44">    private static final Logger logger = Logger.getLogger(MetaServer.class.getName());</span>
+
+    /** The public &quot;well-known&quot; socket to which clients may connect. */
+    private final ServerSocket serverSocket;
+
+    /** A map of Connection objects, keyed by the Socket they relate to. */
+<span class="nc" id="L50">    private final Map&lt;Socket, Connection&gt; connections = new HashMap&lt;&gt;();</span>
+
+    /**
+     * Whether to keep running the main loop that is awaiting new client
+     * connections.
+     */
+<span class="nc" id="L56">    private boolean running = true;</span>
+
+    /** The TCP port that is beeing used for the public socket. */
+    private final int port;
+
+    private final MetaServerHandler metaServerHandler;
+
+
+    /**
+     * Creates a new network server. Use {@link #run metaServer.start()} to
+     * start listening for new connections.
+     * 
+     * @param port The TCP port to use for the public socket.
+     * @throws IOException if the public socket cannot be created.
+     */
+<span class="nc" id="L71">    public MetaServer(int port) throws IOException {</span>
+<span class="nc" id="L72">        this.port = port;</span>
+<span class="nc" id="L73">        final MetaRegister mr = new MetaRegister();</span>
+<span class="nc" id="L74">        this.metaServerHandler = new MetaServerHandler(this, mr);</span>
+<span class="nc" id="L75">        this.serverSocket = new ServerSocket(port);</span>
+<span class="nc" id="L76">    }</span>
+
+    /**
+     * Gets the control object that handles the network requests.
+     * 
+     * @return The {@code MetaServerHandler}.
+     */
+    public MetaServerHandler getMetaServerHandler() {
+<span class="nc" id="L84">        return this.metaServerHandler;</span>
+    }
+
+    /**
+     * Gets the TCP port that is being used for the public socket.
+     * 
+     * @return The TCP port.
+     */
+    public int getPort() {
+<span class="nc" id="L93">        return this.port;</span>
+    }
+
+    /**
+     * Gets a {@code Connection} identified by a {@code Socket}.
+     * 
+     * @param socket The {@code Socket} that identifies the
+     *            {@code Connection}
+     * @return The {@code Connection}.
+     */
+    public Connection getConnection(Socket socket) {
+<span class="nc" id="L104">        return this.connections.get(socket);</span>
+    }
+
+    /**
+     * Removes the given connection.
+     * 
+     * @param connection The connection that should be removed.
+     */
+    public void removeConnection(Connection connection) {
+<span class="nc" id="L113">        this.connections.remove(connection.getSocket());</span>
+<span class="nc" id="L114">    }</span>
+
+
+    // Override Thread
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void run() {
+        // Starts the thread's processing. Contains the loop that is
+        // waiting for new connections to the public socket. When a
+        // new client connects to the server a new {@link Connection}
+        // is made, with {@link MetaServerHandler} as the input handler.
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        while (this.running) {</span>
+<span class="nc" id="L129">            Socket clientSocket = null;</span>
+            try {
+<span class="nc" id="L131">                clientSocket = serverSocket.accept();</span>
+<span class="nc" id="L132">                logger.info(&quot;Client connection from: &quot;</span>
+<span class="nc" id="L133">                    + clientSocket.getInetAddress().toString());</span>
+                @SuppressWarnings(&quot;resource&quot;)
+<span class="nc" id="L135">                final Connection connection = new Connection(clientSocket, FreeCol.METASERVER_THREAD).setMessageHandler(getMetaServerHandler());</span>
+<span class="nc" id="L136">                this.connections.put(clientSocket, connection);</span>
+<span class="nc" id="L137">                connection.startReceiving();</span>
+<span class="nc" id="L138">            } catch (IOException e) {</span>
+<span class="nc" id="L139">                logger.log(Level.WARNING, &quot;Meta-run&quot;, e);</span>
+<span class="nc" id="L140">            }</span>
+<span class="nc" id="L141">        }</span>
+<span class="nc" id="L142">    }</span>
+
+    // Main entry point
+
+    /**
+     * Create and start a new {@code MetaServer}.
+     * 
+     * @param args The command-line options.
+     */
+    public static void main(String[] args) {
+<span class="nc" id="L152">        int port = -1;</span>
+        try {
+<span class="nc" id="L154">            port = Integer.parseInt(args[0]);</span>
+<span class="nc" id="L155">        } catch (ArrayIndexOutOfBoundsException|NumberFormatException e) {</span>
+<span class="nc" id="L156">            System.out.println(&quot;Usage: &quot; + MetaServer.class.getName()</span>
+                + &quot; PORT_NUMBER&quot;);
+<span class="nc" id="L158">            System.exit(1);</span>
+<span class="nc" id="L159">        }</span>
+
+<span class="nc" id="L161">        MetaServer metaServer = null;</span>
+        try {
+<span class="nc" id="L163">            metaServer = new MetaServer(port);</span>
+<span class="nc" id="L164">        } catch (IOException e) {</span>
+<span class="nc" id="L165">            logger.log(Level.SEVERE, &quot;Could not create MetaServer!&quot;, e);</span>
+<span class="nc" id="L166">            System.exit(1);</span>
+<span class="nc" id="L167">        }</span>
+<span class="nc" id="L168">        metaServer.start();</span>
+<span class="nc" id="L169">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

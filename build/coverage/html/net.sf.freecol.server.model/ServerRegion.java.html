@@ -1,0 +1,646 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServerRegion.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.model</a> &gt; <span class="el_source">ServerRegion.java</span></div><h1>ServerRegion.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.model;
+
+import java.awt.Rectangle;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Queue;
+
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.HistoryEvent;
+import net.sf.freecol.common.model.Map;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Region;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Turn;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.networking.ChangeSet;
+import net.sf.freecol.common.networking.ChangeSet.See;
+import net.sf.freecol.common.option.GameOptions;
+import net.sf.freecol.common.util.LogBuilder;
+
+
+/**
+ * The server version of a region.
+ */
+public class ServerRegion extends Region {
+
+    /** Score for being first to discover the pacific. */
+    public static final int PACIFIC_SCORE_VALUE = 100;
+
+    /** The size of this Region (number of Tiles). */
+<span class="fc" id="L52">    private int size = 0;</span>
+
+    /** A Rectangle that contains all points of the Region. */
+<span class="fc" id="L55">    private Rectangle bounds = new Rectangle();</span>
+
+
+    /**
+     * Trivial constructor for serialization.
+     *
+     * @param game The {@code Game} to create in.
+     * @param id The object identifier.
+     */
+    public ServerRegion(Game game, String id) {
+<span class="fc" id="L65">        super(game, id);</span>
+<span class="fc" id="L66">    }</span>
+
+    /**
+     * Constructor for copying in a new region from an imported game.
+     *
+     * @param game The {@code Game} to create in.
+     * @param region A {@code Region} to copy.
+     */
+    public ServerRegion(Game game, Region region) {
+<span class="fc" id="L75">        super(game);</span>
+
+<span class="fc" id="L77">        this.name = region.getName();</span>
+<span class="fc" id="L78">        this.key = region.getKey();</span>
+<span class="fc" id="L79">        this.type = region.getType();</span>
+<span class="fc" id="L80">        this.parent = null; // Has to be fixed up elsewhere</span>
+<span class="fc" id="L81">        this.claimable = region.getClaimable();</span>
+<span class="fc" id="L82">        this.discoverable = region.getDiscoverable();</span>
+<span class="fc" id="L83">        this.discoveredIn = region.getDiscoveredIn();</span>
+<span class="fc" id="L84">        this.discoveredBy = region.getDiscoveredBy();</span>
+<span class="fc" id="L85">        this.scoreValue = region.getScoreValue();</span>
+<span class="fc" id="L86">    }</span>
+
+    /**
+     * Create a new discoverable server region of a given type.
+     *
+     * @param game The {@code Game} to create in.
+     * @param type The {@code RegionType} to use.
+     */
+    public ServerRegion(Game game, RegionType type) {
+<span class="fc" id="L95">        this(game, null, type, null);</span>
+
+<span class="fc" id="L97">        this.setClaimable(type.getClaimable());</span>
+<span class="fc" id="L98">        this.setDiscoverable(true);</span>
+<span class="fc" id="L99">    }</span>
+    
+    /**
+     * Create a new fixed server region.
+     *
+     * @param map The {@code Map} to create in.
+     * @param key The key for the region.
+     * @param type The {@code RegionType} to use.
+     * @param parent The {@code Region} to be the parent of this one.
+     */
+    private ServerRegion(Map map, String key, RegionType type,
+                         Region parent) {
+<span class="fc" id="L111">        this(map.getGame(), key, type, parent);</span>
+
+<span class="fc" id="L113">        map.addRegion(this);</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Create a new fixed server region.
+     *
+     * @param game The {@code Game} to create in.
+     * @param key The key for the region.
+     * @param type The {@code RegionType} to use.
+     * @param parent The {@code Region} to be the parent of this one.
+     */
+    private ServerRegion(Game game, String key, RegionType type,
+                         Region parent) {
+<span class="fc" id="L126">        super(game);</span>
+
+<span class="fc" id="L128">        this.key = key;</span>
+<span class="fc" id="L129">        this.name = null;</span>
+<span class="fc" id="L130">        this.type = type;</span>
+<span class="fc" id="L131">        this.parent = parent;</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (this.parent != null) this.parent.addChild(this);</span>
+<span class="fc" id="L133">        this.claimable = false;</span>
+<span class="fc" id="L134">        this.discoverable = false;</span>
+<span class="fc" id="L135">        this.discoveredIn = null;</span>
+<span class="fc" id="L136">        this.discoveredBy = null;</span>
+<span class="fc" id="L137">        this.scoreValue = 0;</span>
+<span class="fc" id="L138">    }</span>
+
+
+    /**
+     * Get the number of tiles in this region.
+     *
+     * @return The number of tiles in this region.
+     */
+    public final int getSize() {
+<span class="fc" id="L147">        return size;</span>
+    }
+
+    /**
+     * Set the number of tiles in this region.
+     *
+     * @param size The new number of tiles.
+     */
+    public final void setSize(final int size) {
+<span class="fc" id="L156">        this.size = size;</span>
+<span class="fc" id="L157">    }</span>
+
+    /**
+     * Get the bounding rectangle for this region.
+     *
+     * @return The bounding {@code Rectangle}.
+     */
+    public final Rectangle getBounds() {
+<span class="fc" id="L165">        return bounds;</span>
+    }
+
+    /**
+     * Is this a geographic region?
+     *
+     * @return True if this is a geographic region.
+     */
+    public final boolean isGeographic() {
+<span class="pc bpc" id="L174" title="1 of 4 branches missed.">        return this.key != null &amp;&amp; this.type == RegionType.LAND;</span>
+    }
+
+    /**
+     * Get the center of the regions bounds.
+     *
+     * @return An two member array [x,y] of the center coordinate.
+     */
+    public int[] getCenter() {
+<span class="fc" id="L183">        return new int[] { bounds.x + bounds.width/2,</span>
+                           bounds.y + bounds.height/2 };
+    }
+
+    /**
+     * Does this region contain the center of another?
+     *
+     * @param other The other {@code ServerRegion} to check.
+     * @return True if the center of the other region is within this one.
+     */
+    public boolean containsCenter(ServerRegion other) {
+<span class="fc" id="L194">        int[] xy = other.getCenter();</span>
+<span class="fc" id="L195">        return bounds.contains(xy[0], xy[1]);</span>
+    }
+
+    /**
+     * Add the given tile to this region.
+     *
+     * @param tile A {@code Tile} to add.
+     */
+    public void addTile(Tile tile) {
+<span class="fc" id="L204">        tile.setRegion(this);</span>
+<span class="fc" id="L205">        size++;</span>
+<span class="fc bfc" id="L206" title="All 8 branches covered.">        if (bounds.x == 0 &amp;&amp; bounds.width == 0</span>
+            || bounds.y == 0 &amp;&amp; bounds.height == 0) {
+<span class="fc" id="L208">            bounds.setBounds(tile.getX(), tile.getY(), 0, 0);</span>
+        } else {
+<span class="fc" id="L210">            bounds.add(tile.getX(), tile.getY());</span>
+        }
+<span class="fc" id="L212">    }</span>
+
+    /**
+     * Discover this region.
+     *
+     * @param player The discovering {@code Player}.
+     * @param unit The discovering {@code Unit}.
+     * @param turn The discovery {@code Turn}.
+     * @param newName The name of the region.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    public void csDiscover(Player player, Unit unit, Turn turn,
+                           String newName, ChangeSet cs) {
+<span class="nc bnc" id="L225" title="All 2 branches missed.">        if (!getDiscoverable()) return;</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        final int score = (getSpecification().getBoolean(GameOptions.EXPLORATION_POINTS)) </span>
+<span class="nc" id="L227">            ? this.scoreValue</span>
+<span class="nc" id="L228">            : 0;</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">        if (!hasName()) this.name = newName;</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">        for (Region r : discover(player, unit, turn)) cs.add(See.all(), r);</span>
+<span class="nc" id="L231">        HistoryEvent h = new HistoryEvent(turn,</span>
+            HistoryEvent.HistoryEventType.DISCOVER_REGION, player)
+<span class="nc" id="L233">                .addStringTemplate(&quot;%nation%&quot;, player.getNationLabel())</span>
+<span class="nc" id="L234">                .addName(&quot;%region%&quot;, newName);</span>
+<span class="nc" id="L235">        h.setScore(score);</span>
+<span class="nc" id="L236">        cs.addGlobalHistory(getGame(), h);</span>
+<span class="nc" id="L237">    }</span>
+    
+    /**
+     * Determines how to separate the given map into three
+     * parts (north, center and south) with equal amount of land tiles
+     * for each.
+     *  
+     * @param map The map.
+     * @return The indexes separating the three parts.
+     */
+    private static int[] findYForThirdsOfLand(Map map) {
+<span class="fc" id="L248">        final int[] landTiles = new int[map.getHeight() - 1];</span>
+<span class="fc" id="L249">        long sum = 0;</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        for (Tile t : map) {</span>
+<span class="fc bfc" id="L251" title="All 4 branches covered.">            if (t.isLand() &amp;&amp; !t.isPolar()) {</span>
+<span class="fc" id="L252">                landTiles[t.getY()]++;</span>
+<span class="fc" id="L253">                sum++;</span>
+            }
+<span class="fc" id="L255">        }</span>
+        
+<span class="fc" id="L257">        return findThirdsOfValues(landTiles, sum);</span>
+    }
+    
+    /**
+     * Determines how to separate the given submap into three
+     * parts (west, center and east) with equal amount of land tiles
+     * for each.
+     *  
+     * @param map The map.
+     * @param startY The starting Y-coordinate for the submap (inclusive).
+     * @param endY The ending Y-coordinate for the submap (inclusive).
+     * @return The indexes separating the three parts.
+     */
+    private static int[] findXForThirdsOfLand(Map map, int startY, int endY) {
+<span class="fc" id="L271">        final List&lt;Tile&gt; subMap = map.subMap(0, startY, map.getWidth() - 1, endY - startY + 1);</span>
+        
+<span class="fc" id="L273">        final int[] landTiles = new int[map.getWidth() - 1];</span>
+<span class="fc" id="L274">        long sum = 0;</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        for (Tile t : subMap) {</span>
+<span class="fc bfc" id="L276" title="All 4 branches covered.">            if (t.isLand() &amp;&amp; !t.isPolar()) {</span>
+<span class="fc" id="L277">                landTiles[t.getX()]++;</span>
+<span class="fc" id="L278">                sum++;</span>
+            }
+<span class="fc" id="L280">        }</span>
+        
+<span class="fc" id="L282">        return findThirdsOfValues(landTiles, sum);</span>
+    }
+    
+    /**
+     * Finds the indexes  for separating the given array into three parts.
+     * @param timesTheValue An array containing the number of elements for
+     *      each number (as given by the index).
+     * @param sum The total sum.
+     * @return The indexes separating the three parts.
+     */
+    private static int[] findThirdsOfValues(int[] timesTheValue, long sum) {
+<span class="fc" id="L293">        final int[] result = new int[2];</span>
+<span class="fc" id="L294">        int accumulatedSum = 0;</span>
+<span class="fc" id="L295">        boolean needFirst = true;</span>
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">        for (int i=0; i&lt;timesTheValue.length; i++) {</span>
+<span class="fc" id="L297">            accumulatedSum += timesTheValue[i];</span>
+<span class="fc bfc" id="L298" title="All 4 branches covered.">            if (needFirst &amp;&amp; accumulatedSum &gt;= sum / 3) {</span>
+<span class="fc" id="L299">                result[0] = i;</span>
+<span class="fc" id="L300">                needFirst = false;</span>
+            }
+<span class="fc bfc" id="L302" title="All 2 branches covered.">            if (accumulatedSum &gt;= (2 * sum) / 3) {</span>
+<span class="fc" id="L303">                result[1] = i;</span>
+<span class="fc" id="L304">                break;</span>
+            }
+        }
+<span class="fc" id="L307">        return result;</span>
+    }
+    
+    private static Rectangle ensureWithinMap(Map map, Rectangle bounds) {
+<span class="fc" id="L311">        final int capX = Math.max(0, bounds.x);</span>
+<span class="fc" id="L312">        final int capY = Math.max(0, bounds.y);</span>
+<span class="fc" id="L313">        final int capWidth = Math.min(map.getWidth() - 1, bounds.x + Math.min(map.getWidth() - 1, bounds.width)) - capX;</span>
+<span class="fc" id="L314">        final int capHeight = Math.min(map.getHeight() - 1, bounds.y + Math.min(map.getHeight() - 1, bounds.height)) - capY;</span>
+        
+<span class="fc" id="L316">        return new Rectangle(capX, capY, capWidth, capHeight);</span>
+    }
+
+    /**
+     * Make the fixed regions if they do not exist in a given map.
+     *
+     * @param map The {@code Map} to check.
+     * @param lb A {@code LogBuilder} to log to.
+     * @return A list of fixed server regions.
+     */     
+    public static List&lt;ServerRegion&gt; requireFixedRegions(Map map, LogBuilder lb) {
+<span class="fc" id="L327">        final java.util.Map&lt;String, Region&gt; fixed = map.getFixedRegions();</span>
+<span class="fc" id="L328">        List&lt;ServerRegion&gt; result = new ArrayList&lt;&gt;(16);</span>
+
+<span class="fc" id="L330">        lb.add(&quot;Add regions &quot;);</span>
+        // Create arctic/antarctic regions first, but only if they do
+        // not exist in on the map already.  This allows for example
+        // the imported Caribbean map to have arctic/antarctic regions
+        // defined but with no tiles assigned to them, thus they will
+        // not be seen on the map.  Generated games though will not
+        // have the region defined, and so will create it here.
+<span class="fc" id="L337">        final int arcticHeight = Map.POLAR_HEIGHT;</span>
+<span class="fc" id="L338">        ServerRegion arctic = (ServerRegion)fixed.get(&quot;model.region.arctic&quot;);</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        if (arctic == null) {</span>
+<span class="fc" id="L340">            arctic = new ServerRegion(map, &quot;model.region.arctic&quot;,</span>
+                                      RegionType.LAND, null);
+<span class="fc bfc" id="L342" title="All 2 branches covered.">            for (int x = 0; x &lt; map.getWidth(); x++) {</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">                for (int y = 0; y &lt; arcticHeight; y++) {</span>
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">                    if (map.isValid(x, y)) {</span>
+<span class="fc" id="L345">                        Tile tile = map.getTile(x, y);</span>
+<span class="fc bfc" id="L346" title="All 2 branches covered.">                        if (tile.isLand()) arctic.addTile(tile);</span>
+                    }
+                }
+            }
+<span class="fc" id="L350">            lb.add(&quot;+arctic&quot;);</span>
+        }
+<span class="fc" id="L352">        result.add(arctic);</span>
+<span class="fc" id="L353">        final int antarcticHeight = map.getHeight() - Map.POLAR_HEIGHT - 1;</span>
+<span class="fc" id="L354">        ServerRegion antarctic = (ServerRegion)fixed.get(&quot;model.region.antarctic&quot;);</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">        if (antarctic == null) {</span>
+<span class="fc" id="L356">            antarctic = new ServerRegion(map, &quot;model.region.antarctic&quot;,</span>
+                                         RegionType.LAND, null);
+<span class="fc bfc" id="L358" title="All 2 branches covered.">            for (int x = 0; x &lt; map.getWidth(); x++) {</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">                for (int y = antarcticHeight; y &lt; map.getHeight(); y++) {</span>
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">                    if (map.isValid(x, y)) {</span>
+<span class="fc" id="L361">                        Tile tile = map.getTile(x, y);</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">                        if (tile.isLand()) antarctic.addTile(tile);</span>
+                    }
+                }
+            }
+<span class="fc" id="L366">            lb.add(&quot;+antarctic&quot;);</span>
+        }
+<span class="fc" id="L368">        result.add(antarctic);</span>
+
+        // Then, create &quot;geographic&quot; land regions.  These regions are
+        // used by the MapGenerator to place Indian Settlements.  Note
+        // that these regions are &quot;virtual&quot;, i.e. having a bounding
+        // box, but contain no tiles directly.
+<span class="fc" id="L374">        final int[] yDelimiterThirds = findYForThirdsOfLand(map);</span>
+        
+<span class="fc" id="L376">        int[] xDelimiterThirds = findXForThirdsOfLand(map, 0, yDelimiterThirds[0]);</span>
+        
+<span class="fc" id="L378">        map.removeRegionsByKey(&quot;model.region.northWest&quot;);</span>
+<span class="fc" id="L379">        final ServerRegion northWest = new ServerRegion(map, &quot;model.region.northWest&quot;, RegionType.LAND, null);</span>
+<span class="fc" id="L380">        northWest.bounds.setBounds(ensureWithinMap(map, new Rectangle(</span>
+                0,
+                0,
+                xDelimiterThirds[0],
+                yDelimiterThirds[0]
+                )));
+<span class="fc" id="L386">        map.addRegion(northWest);</span>
+
+<span class="fc" id="L388">        map.removeRegionsByKey(&quot;model.region.north&quot;);</span>
+<span class="fc" id="L389">        final ServerRegion north = new ServerRegion(map, &quot;model.region.north&quot;,RegionType.LAND, null);</span>
+<span class="fc" id="L390">        north.bounds.setBounds(ensureWithinMap(map, new Rectangle(</span>
+                xDelimiterThirds[0],
+                0,
+                xDelimiterThirds[1] - xDelimiterThirds[0],
+                yDelimiterThirds[0]
+                )));
+<span class="fc" id="L396">        map.addRegion(north);</span>
+
+<span class="fc" id="L398">        map.removeRegionsByKey(&quot;model.region.northEast&quot;);</span>
+<span class="fc" id="L399">        final ServerRegion northEast = new ServerRegion(map, &quot;model.region.northEast&quot;, RegionType.LAND, null);</span>
+<span class="fc" id="L400">        northEast.bounds.setBounds(ensureWithinMap(map, new Rectangle(</span>
+                xDelimiterThirds[1],
+                0,
+                Integer.MAX_VALUE,
+                yDelimiterThirds[0]
+                )));
+<span class="fc" id="L406">        map.addRegion(northEast);</span>
+
+        
+<span class="fc" id="L409">        xDelimiterThirds = findXForThirdsOfLand(map, yDelimiterThirds[0], yDelimiterThirds[1]);</span>
+        
+<span class="fc" id="L411">        map.removeRegionsByKey(&quot;model.region.west&quot;);</span>
+<span class="fc" id="L412">        final ServerRegion west = new ServerRegion(map, &quot;model.region.west&quot;, RegionType.LAND, null);</span>
+<span class="fc" id="L413">        west.bounds.setBounds(ensureWithinMap(map, new Rectangle(</span>
+                0,
+                yDelimiterThirds[0],
+                xDelimiterThirds[0],
+                yDelimiterThirds[1] - yDelimiterThirds[0]
+                )));
+<span class="fc" id="L419">        map.addRegion(west);</span>
+
+<span class="fc" id="L421">        map.removeRegionsByKey(&quot;model.region.center&quot;);</span>
+<span class="fc" id="L422">        final ServerRegion center = new ServerRegion(map, &quot;model.region.center&quot;, RegionType.LAND, null);</span>
+<span class="fc" id="L423">        center.bounds.setBounds(ensureWithinMap(map, new Rectangle(</span>
+                xDelimiterThirds[0],
+                yDelimiterThirds[0],
+                xDelimiterThirds[1] - xDelimiterThirds[0],
+                yDelimiterThirds[1] - yDelimiterThirds[0]
+                )));
+<span class="fc" id="L429">        map.addRegion(center);</span>
+
+<span class="fc" id="L431">        map.removeRegionsByKey(&quot;model.region.east&quot;);</span>
+<span class="fc" id="L432">        final ServerRegion east = new ServerRegion(map, &quot;model.region.east&quot;, RegionType.LAND, null);</span>
+<span class="fc" id="L433">        east.bounds.setBounds(ensureWithinMap(map, new Rectangle(</span>
+                xDelimiterThirds[1],
+                yDelimiterThirds[0],
+                Integer.MAX_VALUE,
+                yDelimiterThirds[1] - yDelimiterThirds[0]
+                )));
+<span class="fc" id="L439">        map.addRegion(east);</span>
+
+        
+<span class="fc" id="L442">        xDelimiterThirds = findXForThirdsOfLand(map, yDelimiterThirds[1], map.getHeight() - 1);</span>
+        
+<span class="fc" id="L444">        map.removeRegionsByKey(&quot;model.region.southWest&quot;);</span>
+<span class="fc" id="L445">        final ServerRegion southWest = new ServerRegion(map, &quot;model.region.southWest&quot;, RegionType.LAND, null);</span>
+<span class="fc" id="L446">        southWest.bounds.setBounds(ensureWithinMap(map, new Rectangle(</span>
+                0,
+                yDelimiterThirds[1],
+                xDelimiterThirds[0],
+                Integer.MAX_VALUE
+                )));
+<span class="fc" id="L452">        map.addRegion(southWest);</span>
+
+<span class="fc" id="L454">        map.removeRegionsByKey(&quot;model.region.south&quot;);</span>
+<span class="fc" id="L455">        final ServerRegion south = new ServerRegion(map, &quot;model.region.south&quot;, RegionType.LAND, null);</span>
+<span class="fc" id="L456">        south.bounds.setBounds(ensureWithinMap(map, new Rectangle(</span>
+                xDelimiterThirds[0],
+                yDelimiterThirds[1],
+                xDelimiterThirds[1] - xDelimiterThirds[0],
+                Integer.MAX_VALUE
+                )));
+<span class="fc" id="L462">        map.addRegion(south);</span>
+
+<span class="fc" id="L464">        map.removeRegionsByKey(&quot;model.region.southEast&quot;);</span>
+<span class="fc" id="L465">        final ServerRegion southEast = new ServerRegion(map, &quot;model.region.southEast&quot;, RegionType.LAND, null);</span>
+<span class="fc" id="L466">        southEast.bounds.setBounds(ensureWithinMap(map, new Rectangle(</span>
+                xDelimiterThirds[1],
+                yDelimiterThirds[1],
+                Integer.MAX_VALUE,
+                Integer.MAX_VALUE
+                )));
+<span class="fc" id="L472">        map.addRegion(southEast);</span>
+
+<span class="fc" id="L474">        boolean allOceans = true;</span>
+<span class="fc" id="L475">        ServerRegion pacific = (ServerRegion)fixed.get(&quot;model.region.pacific&quot;);</span>
+<span class="fc bfc" id="L476" title="All 2 branches covered.">        if (pacific == null) {</span>
+<span class="fc" id="L477">            pacific = new ServerRegion(map, &quot;model.region.pacific&quot;,</span>
+                                       RegionType.OCEAN, null);
+<span class="fc" id="L479">            pacific.setDiscoverable(true);</span>
+<span class="fc" id="L480">            pacific.setScoreValue(PACIFIC_SCORE_VALUE);</span>
+<span class="fc" id="L481">            allOceans = false;</span>
+<span class="fc" id="L482">            lb.add(&quot;+pacific&quot;);</span>
+        }
+<span class="fc" id="L484">        result.add(pacific);</span>
+<span class="fc" id="L485">        ServerRegion northPacific = (ServerRegion)fixed.get(&quot;model.region.northPacific&quot;);</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">        if (northPacific == null) {</span>
+<span class="fc" id="L487">            northPacific = new ServerRegion(map, &quot;model.region.northPacific&quot;,</span>
+                                            RegionType.OCEAN, pacific);
+<span class="fc" id="L489">            northPacific.setDiscoverable(false); // discovers parent</span>
+<span class="fc" id="L490">            allOceans = false;</span>
+<span class="fc" id="L491">            lb.add(&quot;+northPacific&quot;);</span>
+        }
+<span class="fc" id="L493">        result.add(northPacific);</span>
+<span class="fc" id="L494">        ServerRegion southPacific = (ServerRegion)fixed.get(&quot;model.region.southPacific&quot;);</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">        if (southPacific == null) {</span>
+<span class="fc" id="L496">            southPacific = new ServerRegion(map, &quot;model.region.southPacific&quot;,</span>
+                                            RegionType.OCEAN, pacific);
+<span class="fc" id="L498">            southPacific.setDiscoverable(false); // discovers parent</span>
+<span class="fc" id="L499">            allOceans = false;</span>
+<span class="fc" id="L500">            lb.add(&quot;+southPacific&quot;);</span>
+        }
+<span class="fc" id="L502">        result.add(southPacific);</span>
+
+<span class="fc" id="L504">        ServerRegion atlantic = (ServerRegion)fixed.get(&quot;model.region.atlantic&quot;);</span>
+<span class="fc bfc" id="L505" title="All 2 branches covered.">        if (atlantic == null) {</span>
+<span class="fc" id="L506">            atlantic = new ServerRegion(map, &quot;model.region.atlantic&quot;,</span>
+                                        RegionType.OCEAN, null);
+<span class="fc" id="L508">            atlantic.setDiscoverable(false);</span>
+<span class="fc" id="L509">            allOceans = false;</span>
+<span class="fc" id="L510">            lb.add(&quot;+atlantic&quot;);</span>
+        }
+<span class="fc" id="L512">        result.add(atlantic);</span>
+<span class="fc" id="L513">        ServerRegion northAtlantic = (ServerRegion)fixed.get(&quot;model.region.northAtlantic&quot;);</span>
+<span class="fc bfc" id="L514" title="All 2 branches covered.">        if (northAtlantic == null) {</span>
+<span class="fc" id="L515">            northAtlantic = new ServerRegion(map, &quot;model.region.northAtlantic&quot;,</span>
+                                             RegionType.OCEAN, atlantic);
+<span class="fc" id="L517">            northAtlantic.setDiscoverable(false);</span>
+<span class="fc" id="L518">            allOceans = false;</span>
+<span class="fc" id="L519">            lb.add(&quot;+northAtlantic&quot;);</span>
+        }
+<span class="fc" id="L521">        result.add(northAtlantic);</span>
+<span class="fc" id="L522">        ServerRegion southAtlantic = (ServerRegion)fixed.get(&quot;model.region.southAtlantic&quot;);</span>
+<span class="fc bfc" id="L523" title="All 2 branches covered.">        if (southAtlantic == null) {</span>
+<span class="fc" id="L524">            southAtlantic = new ServerRegion(map, &quot;model.region.southAtlantic&quot;,</span>
+                                             RegionType.OCEAN, atlantic);
+<span class="fc" id="L526">            southAtlantic.setDiscoverable(false);</span>
+<span class="fc" id="L527">            allOceans = false;</span>
+<span class="fc" id="L528">            lb.add(&quot;+southAtlantic&quot;);</span>
+        }
+<span class="fc" id="L530">        result.add(southAtlantic);</span>
+        // Fill the ocean regions by first filling the quadrants individually,
+        // then allow the quadrants to overflow into their horizontally
+        // opposite quadrant, then finally into the whole map.
+        // This correctly handles cases like:
+        //
+        //   NP NP NP NA NA NA      NP NP NP NA NA NA
+        //   NP L  L  L  L  NA      NP L  L  NA L  NA
+        //   NP L  NA NA NA NA  or  NP L  NA NA L  NA
+        //   SP L  SA SA SA SA      SP L  NA L  L  SA
+        //   SP L  L  L  L  SA      SP L  L  L  L  SA
+        //   SP SP SP SA SA SA      SP SP SP SA SA SA
+        //
+        // or multiple such incursions across the nominal quadrant divisions.
+        //
+<span class="fc bfc" id="L545" title="All 2 branches covered.">        if (!allOceans) {</span>
+<span class="fc" id="L546">            final int maxx = map.getWidth();</span>
+<span class="fc" id="L547">            final int midx = maxx / 2;</span>
+<span class="fc" id="L548">            final int maxy = map.getHeight();</span>
+<span class="fc" id="L549">            final int midy = maxy / 2;</span>
+<span class="fc" id="L550">            Tile tNP = null, tSP = null, tNA = null, tSA = null, t;</span>
+<span class="pc bpc" id="L551" title="1 of 2 branches missed.">            for (int y = midy-1; y &gt;= 0; y--) {</span>
+<span class="pc bpc" id="L552" title="2 of 4 branches missed.">                if (tNP == null &amp;&amp; !(t = map.getTile(0, y)).isLand()) tNP = t;</span>
+<span class="pc bpc" id="L553" title="2 of 4 branches missed.">                if (tNA == null &amp;&amp; !(t = map.getTile(maxx-1, y)).isLand()) tNA = t;</span>
+<span class="pc bpc" id="L554" title="2 of 4 branches missed.">                if (tNP != null &amp;&amp; tNA != null) break;</span>
+            }
+<span class="pc bpc" id="L556" title="1 of 2 branches missed.">            for (int y = midy; y &lt; maxy; y++) {</span>
+<span class="pc bpc" id="L557" title="2 of 4 branches missed.">                if (tSP == null &amp;&amp; !(t = map.getTile(0, y)).isLand()) tSP = t;</span>
+<span class="pc bpc" id="L558" title="2 of 4 branches missed.">                if (tSA == null &amp;&amp; !(t = map.getTile(maxx-1, y)).isLand()) tSA = t;</span>
+<span class="pc bpc" id="L559" title="2 of 4 branches missed.">                if (tSP != null &amp;&amp; tSA != null) break;</span>
+            }
+<span class="fc" id="L561">            int nNP = 0, nSP = 0, nNA = 0, nSA = 0;</span>
+            
+<span class="fc" id="L563">            Rectangle rNP = new Rectangle(0,0,       midx,midy);</span>
+<span class="fc" id="L564">            Rectangle rSP = new Rectangle(0,midy,    midx,maxy-midy);</span>
+<span class="fc" id="L565">            Rectangle rNA = new Rectangle(midx,0,    maxx-midx,midy);</span>
+<span class="fc" id="L566">            Rectangle rSA = new Rectangle(midx,midy, maxx-midx,maxy-midy);</span>
+<span class="pc bpc" id="L567" title="1 of 2 branches missed.">            if (tNP != null) nNP += fillOcean(map, tNP, northPacific,  rNP);</span>
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">            if (tSP != null) nSP += fillOcean(map, tSP, southPacific,  rSP);</span>
+<span class="pc bpc" id="L569" title="1 of 2 branches missed.">            if (tNA != null) nNA += fillOcean(map, tNA, northAtlantic, rNA);</span>
+<span class="pc bpc" id="L570" title="1 of 2 branches missed.">            if (tSA != null) nSA += fillOcean(map, tSA, southAtlantic, rSA);</span>
+
+<span class="fc" id="L572">            Rectangle rN = new Rectangle(0,0,    maxx,midy);</span>
+<span class="fc" id="L573">            Rectangle rS = new Rectangle(0,midy, maxx,maxy-midy);</span>
+<span class="pc bpc" id="L574" title="1 of 2 branches missed.">            if (tNP != null) nNP += fillOcean(map, tNP, northPacific,  rN);</span>
+<span class="pc bpc" id="L575" title="1 of 2 branches missed.">            if (tSP != null) nSP += fillOcean(map, tSP, southPacific,  rS);</span>
+<span class="pc bpc" id="L576" title="1 of 2 branches missed.">            if (tNA != null) nNA += fillOcean(map, tNA, northAtlantic, rN);</span>
+<span class="pc bpc" id="L577" title="1 of 2 branches missed.">            if (tSA != null) nSA += fillOcean(map, tSA, southAtlantic, rS);</span>
+
+<span class="fc" id="L579">            Rectangle rAll = new Rectangle(0,0, maxx,maxy);</span>
+<span class="pc bpc" id="L580" title="1 of 2 branches missed.">            if (tNP != null) nNP += fillOcean(map, tNP, northPacific,  rAll);</span>
+<span class="pc bpc" id="L581" title="1 of 2 branches missed.">            if (tSP != null) nSP += fillOcean(map, tSP, southPacific,  rAll);</span>
+<span class="pc bpc" id="L582" title="1 of 2 branches missed.">            if (tNA != null) nNA += fillOcean(map, tNA, northAtlantic, rAll);</span>
+<span class="pc bpc" id="L583" title="1 of 2 branches missed.">            if (tSA != null) nSA += fillOcean(map, tSA, southAtlantic, rAll);</span>
+<span class="fc" id="L584">            lb.add(&quot; filled ocean regions &quot;,</span>
+<span class="fc" id="L585">                nNP, &quot; North Pacific, &quot;,</span>
+<span class="fc" id="L586">                nSP, &quot; South Pacific, &quot;,</span>
+<span class="fc" id="L587">                nNA, &quot; North Atlantic, &quot;,</span>
+<span class="fc" id="L588">                nSA, &quot; South Atlantic.\n&quot;);</span>
+        }
+<span class="fc" id="L590">        return result;</span>
+    }
+
+    /**
+     * Flood fill ocean regions.
+     *
+     * @param map The {@code Map} to fill in.
+     * @param tile A valid starting {@code Tile}.
+     * @param region A {@code ServerRegion} to fill with.
+     * @param bounds A {@code Rectangle} that bounds the filling.
+     * @return The number of tiles filled.
+     */
+    private static int fillOcean(Map map, Tile tile, ServerRegion region,
+                                 Rectangle bounds) {
+<span class="fc" id="L604">        Queue&lt;Tile&gt; q = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L605">        int n = 0;</span>
+<span class="fc" id="L606">        boolean[][] visited = new boolean[map.getWidth()][map.getHeight()];</span>
+<span class="fc" id="L607">        visited[tile.getX()][tile.getY()] = true;</span>
+<span class="fc" id="L608">        q.add(tile);</span>
+
+<span class="fc bfc" id="L610" title="All 2 branches covered.">        while ((tile = q.poll()) != null) {</span>
+<span class="fc" id="L611">            region.addTile(tile);</span>
+<span class="fc" id="L612">            n++;</span>
+
+<span class="fc bfc" id="L614" title="All 2 branches covered.">            for (Direction direction : Direction.values()) {</span>
+<span class="fc" id="L615">                Tile t = map.getAdjacentTile(tile, direction);</span>
+<span class="fc bfc" id="L616" title="All 2 branches covered.">                if (t != null</span>
+<span class="fc bfc" id="L617" title="All 2 branches covered.">                    &amp;&amp; !visited[t.getX()][t.getY()]</span>
+<span class="fc bfc" id="L618" title="All 2 branches covered.">                    &amp;&amp; bounds.contains(t.getX(), t.getY())) {</span>
+<span class="fc" id="L619">                    visited[t.getX()][t.getY()] = true;</span>
+<span class="fc bfc" id="L620" title="All 4 branches covered.">                    if ((t.getRegion() == null || t.getRegion() == region)</span>
+<span class="fc bfc" id="L621" title="All 2 branches covered.">                        &amp;&amp; !t.isLand()) {</span>
+<span class="fc" id="L622">                        q.add(t);</span>
+                    }
+                }
+            }
+        }
+<span class="fc" id="L627">        return n;</span>
+    }
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L638">        StringBuilder sb = new StringBuilder(32);</span>
+<span class="fc" id="L639">        sb.append(super.toString());</span>
+<span class="fc" id="L640">        sb.setLength(sb.length() - 1);</span>
+<span class="fc" id="L641">        sb.append(' ').append(size).append(' ').append(bounds)</span>
+<span class="fc" id="L642">            .append(']');</span>
+<span class="fc" id="L643">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

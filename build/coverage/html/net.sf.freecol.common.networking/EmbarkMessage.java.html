@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EmbarkMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">EmbarkMessage.java</span></div><h1>EmbarkMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+import net.sf.freecol.server.model.ServerUnit;
+
+
+/**
+ * The message sent when embarking.
+ */
+public class EmbarkMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;embark&quot;;
+    private static final String CARRIER_TAG = &quot;carrier&quot;;
+    private static final String DIRECTION_TAG = &quot;direction&quot;;
+    private static final String UNIT_TAG = &quot;unit&quot;;
+
+
+    /**
+     * Create a new {@code EmbarkMessage} with the
+     * supplied unit, carrier and optional direction.
+     *
+     * @param unit The {@code Unit} to embark.
+     * @param carrier The carrier {@code Unit} to embark on.
+     * @param direction An option direction to embark in.
+     */
+    public EmbarkMessage(Unit unit, Unit carrier, Direction direction) {
+<span class="nc" id="L55">        super(TAG, UNIT_TAG, unit.getId(), CARRIER_TAG, carrier.getId(),</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">              DIRECTION_TAG, (direction == null) ? null : String.valueOf(direction));</span>
+<span class="nc" id="L57">    }</span>
+
+    /**
+     * Create a new {@code EmbarkMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public EmbarkMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L68">        super(TAG, xr, UNIT_TAG, CARRIER_TAG, DIRECTION_TAG);</span>
+<span class="nc" id="L69">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean currentPlayerMessage() {
+<span class="nc" id="L77">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L85">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc" id="L94">        final String unitId = getStringAttribute(UNIT_TAG);</span>
+<span class="nc" id="L95">        final String carrierId = getStringAttribute(CARRIER_TAG);</span>
+<span class="nc" id="L96">        final String directionString = getStringAttribute(DIRECTION_TAG);</span>
+
+        ServerUnit unit;
+        try {
+<span class="nc" id="L100">            unit = serverPlayer.getOurFreeColGameObject(unitId, ServerUnit.class);</span>
+<span class="nc" id="L101">        } catch (Exception e) {</span>
+<span class="nc" id="L102">            return serverPlayer.clientError(e.getMessage());</span>
+<span class="nc" id="L103">        }</span>
+
+        Unit carrier;
+        try {
+<span class="nc" id="L107">            carrier = serverPlayer.getOurFreeColGameObject(carrierId, Unit.class);</span>
+<span class="nc" id="L108">        } catch (Exception e) {</span>
+<span class="nc" id="L109">            return serverPlayer.clientError(e.getMessage());</span>
+<span class="nc" id="L110">        }</span>
+
+<span class="nc" id="L112">        Location sourceLocation = unit.getLocation();</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        if (directionString == null) {</span>
+            // Locations must be the same, or the source is also a
+            // carrier in the same location as the carrier, or they
+            // must be on the same tile.
+<span class="nc bnc" id="L117" title="All 2 branches missed.">            if (!carrier.isAtLocation(sourceLocation)) {</span>
+<span class="nc" id="L118">                return serverPlayer.clientError(&quot;Unit &quot; + unitId</span>
+<span class="nc" id="L119">                    + &quot; at &quot; + sourceLocation.getId()</span>
+                    + &quot; and carrier &quot; + carrierId
+<span class="nc" id="L121">                    + &quot; at &quot; + carrier.getLocation().getId()</span>
+                    + &quot; are not co-located.&quot;);
+            }
+        } else {
+            // Units have to be on the map and have moves left if a
+            // move is involved.
+<span class="nc bnc" id="L127" title="All 2 branches missed.">            if (unit.getMovesLeft() &lt;= 0) {</span>
+<span class="nc" id="L128">                return serverPlayer.clientError(&quot;Unit has no moves left: &quot;</span>
+                    + unitId);
+            }
+
+<span class="nc" id="L132">            Tile destinationTile = null;</span>
+            try {
+<span class="nc" id="L134">                destinationTile = unit.getNeighbourTile(directionString);</span>
+<span class="nc" id="L135">            } catch (Exception e) {</span>
+<span class="nc" id="L136">                return serverPlayer.clientError(e.getMessage());</span>
+<span class="nc" id="L137">            }</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">            if (carrier.getTile() != destinationTile) {</span>
+<span class="nc" id="L139">                return serverPlayer.clientError(&quot;Carrier: &quot; + carrierId</span>
+                    + &quot; is not at destination tile: &quot; + destinationTile);
+            }
+        }
+
+        // Proceed to embark
+<span class="nc" id="L145">        return igc(freeColServer)</span>
+<span class="nc" id="L146">            .embarkUnit(serverPlayer, unit, carrier);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

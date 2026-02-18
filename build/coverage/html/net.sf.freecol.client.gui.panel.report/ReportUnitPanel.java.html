@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportUnitPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel.report</a> &gt; <span class="el_source">ReportUnitPanel.java</span></div><h1>ReportUnitPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel.report;
+
+import static net.sf.freecol.common.util.CollectionUtils.appendToMapList;
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.sort;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JSeparator;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.label.GoodsLabel;
+import net.sf.freecol.client.gui.label.UnitLabel;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.AbstractUnit;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Europe;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Nation;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Role;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitType;
+
+
+/**
+ * This panel displays a unit Report.
+ */
+public abstract class ReportUnitPanel extends ReportPanel {
+
+    /** Simple comparator to order miscellaneous locations. */
+<span class="nc" id="L65">    private static final Comparator&lt;Location&gt; locationComparator</span>
+<span class="nc" id="L66">        = new Comparator&lt;Location&gt;() {</span>
+                public int compare(Location l1, Location l2) {
+<span class="nc" id="L68">                    return l1.getId().compareTo(l2.getId());</span>
+                }
+            };
+
+    /**
+     * Comparator to order abstract unit lists with most common
+     * type+role first.
+     */
+<span class="nc" id="L76">    private static final Comparator&lt;AbstractUnit&gt; auComparator</span>
+<span class="nc" id="L77">        = Comparator.comparingInt(AbstractUnit::getNumber).reversed();</span>
+
+    /** Where are the players reportable units? */
+<span class="nc" id="L80">    private final Map&lt;Location, List&lt;Unit&gt;&gt; where = new HashMap&lt;&gt;();</span>
+    
+    /** Count the number of units of each type+role. */
+<span class="nc" id="L83">    private final List&lt;AbstractUnit&gt; reportables = new ArrayList&lt;&gt;();</span>
+
+    /** Count the relevant REF units. */
+<span class="nc" id="L86">    private final List&lt;AbstractUnit&gt; reportableREF = new ArrayList&lt;&gt;();</span>
+    
+    /** Locations in the order to display them. */
+<span class="nc" id="L89">    private final List&lt;Location&gt; orderedLocations = new ArrayList&lt;&gt;();</span>
+    
+    /** Whether to show colonies even if no selected units are present. */
+<span class="nc" id="L92">    private boolean showColonies = false;</span>
+
+
+    /**
+     * The constructor that will add the items to this panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param key The report name key.
+     * @param showColonies Whether to show colonies with no selected units.
+     */
+    protected ReportUnitPanel(FreeColClient freeColClient, String key,
+                              boolean showColonies) {
+<span class="nc" id="L104">        super(freeColClient, key);</span>
+
+        // Override default layout
+<span class="nc" id="L107">        this.reportPanel.setLayout(new MigLayout(&quot;fillx, wrap 12&quot;, &quot;&quot;, &quot;&quot;));</span>
+
+<span class="nc" id="L109">        this.showColonies = showColonies;</span>
+
+<span class="nc" id="L111">        gatherData();</span>
+<span class="nc" id="L112">        display();</span>
+<span class="nc" id="L113">    }</span>
+
+
+    private final void gatherData() {
+        // Add entries to where and reportables for the players units
+<span class="nc" id="L118">        final Player player = getMyPlayer();</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        for (Unit u : transform(player.getUnits(), u -&gt; isReportable(u))) {</span>
+<span class="nc" id="L120">            appendToMapList(this.where, u.getLocation().up(), u);</span>
+<span class="nc" id="L121">            AbstractUnit au = find(this.reportables, AbstractUnit.matcher(u));</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">            if (au == null) {</span>
+<span class="nc" id="L123">                this.reportables.add(new AbstractUnit(u.getType(),</span>
+<span class="nc" id="L124">                        u.getRole().getId(), 1));</span>
+            } else {
+<span class="nc" id="L126">                au.addToNumber(1);</span>
+            }
+<span class="nc" id="L128">        }</span>
+<span class="nc" id="L129">        this.reportables.sort(auComparator);</span>
+
+        // Create the list of reportable REF abstract units
+<span class="nc" id="L132">        List&lt;AbstractUnit&gt; refUnits = player.getREFUnits();</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (refUnits != null) {</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">            for (AbstractUnit au : refUnits) {</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">                if (isReportableREF(au)) {</span>
+<span class="nc" id="L136">                    this.reportableREF.add(au);</span>
+                }
+<span class="nc" id="L138">            }</span>
+        }
+<span class="nc" id="L140">        this.reportableREF.sort(auComparator);</span>
+
+        // Build a list of locations, colonies first, then Europe, then other
+<span class="nc" id="L143">        this.orderedLocations.addAll(transform(this.where.keySet(),</span>
+<span class="nc bnc" id="L144" title="All 4 branches missed.">                l -&gt; !(l instanceof Colony || l instanceof Europe),</span>
+<span class="nc" id="L145">                Function.&lt;Location&gt;identity(), locationComparator));</span>
+<span class="nc" id="L146">        Europe europe = player.getEurope();</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (europe != null) this.orderedLocations.add(0, europe);</span>
+<span class="nc" id="L148">        List&lt;Colony&gt; colonies = player.getSortedColonies(getClientOptions()</span>
+<span class="nc" id="L149">            .getColonyComparator());</span>
+<span class="nc" id="L150">        this.orderedLocations.addAll(0, colonies);</span>
+<span class="nc" id="L151">    }</span>
+
+    private final void display() {
+<span class="nc" id="L154">        final Player player = getMyPlayer();</span>
+        // Display REF
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        if (!this.reportableREF.isEmpty()) {</span>
+<span class="nc" id="L157">            final Nation refNation = player.getNation().getREFNation();</span>
+<span class="nc" id="L158">            this.reportPanel.add(new JLabel(Messages.getName(refNation)),</span>
+                                SPAN_SPLIT_2);
+<span class="nc" id="L160">            this.reportPanel.add(new JSeparator(JSeparator.HORIZONTAL),</span>
+                                 &quot;growx&quot;);
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            for (AbstractUnit au : this.reportableREF) {</span>
+<span class="nc" id="L163">                this.reportPanel.add(createUnitTypeLabel(au), &quot;sg&quot;);</span>
+<span class="nc" id="L164">            }</span>
+        }
+
+        // Display our units
+<span class="nc" id="L168">        reportPanel.add(Utility.localizedLabel(player.getForcesLabel()),</span>
+                        NL_SPAN_SPLIT_2);
+<span class="nc" id="L170">        reportPanel.add(new JSeparator(JSeparator.HORIZONTAL), &quot;growx&quot;);</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        for (AbstractUnit au : this.reportables) {</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">            if (au.getNumber() &lt;= 0) continue;</span>
+<span class="nc" id="L173">            reportPanel.add(createUnitTypeLabel(au), &quot;sg&quot;);</span>
+<span class="nc" id="L174">        }</span>
+
+        // Display again by location
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        for (Location loc : orderedLocations) {</span>
+<span class="nc" id="L178">            List&lt;Unit&gt; present = this.where.get(loc);</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">            if (present == null) {</span>
+<span class="nc" id="L180">                present = Collections.&lt;Unit&gt;emptyList();</span>
+            } else {
+<span class="nc" id="L182">                present = sort(present, Unit.typeRoleComparator);</span>
+            }
+<span class="nc bnc" id="L184" title="All 4 branches missed.">            if (!this.showColonies &amp;&amp; present.isEmpty()) continue;</span>
+<span class="nc" id="L185">            String locName = Messages.message(loc.getLocationLabelFor(player));</span>
+<span class="nc" id="L186">            JButton button = Utility.getLinkButton(locName, null, loc.getId());</span>
+<span class="nc" id="L187">            button.addActionListener(this);</span>
+<span class="nc" id="L188">            this.reportPanel.add(button, NL_SPAN_SPLIT_2);</span>
+<span class="nc" id="L189">            this.reportPanel.add(new JSeparator(JSeparator.HORIZONTAL),</span>
+                                 &quot;growx&quot;);
+<span class="nc bnc" id="L191" title="All 2 branches missed.">            if (present.isEmpty()) {</span>
+<span class="nc" id="L192">                this.reportPanel.add(Utility.localizedLabel(&quot;none&quot;), &quot;sg&quot;);</span>
+            } else {
+<span class="nc" id="L194">                final FreeColClient fcc = getFreeColClient();</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">                for (Unit u : sort(present, Unit.typeRoleComparator)) {</span>
+<span class="nc" id="L196">                    JButton unitButton = getUnitButton(u);</span>
+<span class="nc bnc" id="L197" title="All 2 branches missed.">                    if (u.isCarrier()) {</span>
+<span class="nc" id="L198">                        this.reportPanel.add(unitButton, &quot;newline, sg&quot;);</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">                        for (Goods goods : u.getGoodsList()) {</span>
+<span class="nc" id="L200">                            GoodsLabel goodsLabel = new GoodsLabel(fcc, goods);</span>
+<span class="nc" id="L201">                            this.reportPanel.add(goodsLabel);</span>
+<span class="nc" id="L202">                        }</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">                        for (Unit unitLoaded : u.getUnitList()) {</span>
+<span class="nc" id="L204">                            UnitLabel unitLoadedLabel</span>
+                                = new UnitLabel(fcc, unitLoaded, true);
+<span class="nc" id="L206">                            this.reportPanel.add(unitLoadedLabel);</span>
+<span class="nc" id="L207">                        }</span>
+                    } else {
+<span class="nc" id="L209">                        this.reportPanel.add(unitButton, &quot;sg&quot;);</span>
+                    }
+<span class="nc" id="L211">                }</span>
+            }
+<span class="nc" id="L213">        }</span>
+
+<span class="nc" id="L215">        revalidate();</span>
+<span class="nc" id="L216">        repaint();</span>
+<span class="nc" id="L217">    }</span>
+
+    /**
+     * Get a button for a unit.
+     *
+     * @param unit The {@code Unit} that needs a button.
+     * @return A suitable {@code JButton}.
+     */
+    private JButton getUnitButton(Unit unit) {
+<span class="nc" id="L226">        ImageIcon icon = new ImageIcon(getImageLibrary().getScaledUnitImage(unit));</span>
+<span class="nc" id="L227">        JButton button = Utility.getLinkButton(&quot;&quot;, icon,</span>
+<span class="nc" id="L228">                                               unit.getLocation().up().getId());</span>
+<span class="nc" id="L229">        button.addActionListener(this);</span>
+<span class="nc" id="L230">        StringTemplate tip = StringTemplate.label(&quot;\n&quot;)</span>
+<span class="nc" id="L231">                                           .addStringTemplate(unit.getLabel());</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        if (unit.getDestination() != null) {</span>
+<span class="nc" id="L233">            tip.addStringTemplate(unit.getDestinationLabel());</span>
+        }
+<span class="nc" id="L235">        Utility.localizeToolTip(button, tip);</span>
+<span class="nc" id="L236">        return button;</span>
+    }
+
+
+    // To be implemented by specific unit panels.
+
+    /**
+     * Is this unit from the player's units reportable?
+     *
+     * @param unit The {@code Unit} to check.
+     * @return True if the unit should appear in this panel.
+     */
+    protected abstract boolean isReportable(Unit unit);
+
+    /**
+     * Is a unit type and role reportable as a combination usable by
+     * the player?
+     *
+     * @param unitType The {@code UnitType} to check.
+     * @param role The {@code Role} to check.
+     * @return True if the unit type and role should appear in this panel.
+     */
+    protected abstract boolean isReportable(UnitType unitType, Role role);
+    
+    /**
+     * Is a REF unit reportable?
+     *
+     * @param au The {@code AbstractUnit} to check.
+     * @return True if REF unit should appear in this panel.
+     */
+    protected abstract boolean isReportableREF(AbstractUnit au);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

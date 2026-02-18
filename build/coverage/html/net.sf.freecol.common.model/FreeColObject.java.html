@@ -1,0 +1,1432 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FreeColObject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">FreeColObject.java</span></div><h1>FreeColObject.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeSupport;
+import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.nio.file.Files;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.ObjectWithId;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.io.FreeColXMLWriter.WriteScope;
+import net.sf.freecol.common.util.Introspector;
+import net.sf.freecol.common.util.LogBuilder;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import static net.sf.freecol.common.util.StringUtils.*;
+import net.sf.freecol.common.util.Utils;
+
+
+/**
+ * The FreeCol root class.  Maintains an identifier, and an optional link
+ * to the specification this object uses.
+ *
+ * All FreeColObjects are trivially sortable on the basis of their
+ * identifiers as a consequence of the Comparable implementation here.
+ * Do not override this any further, use explicit comparators if more fully
+ * featured sorting is required.
+ */
+<span class="fc" id="L60">public abstract class FreeColObject</span>
+    implements Comparable&lt;FreeColObject&gt;, ObjectWithId {
+
+<span class="fc" id="L63">    protected static final Logger logger = Logger.getLogger(FreeColObject.class.getName());</span>
+
+    /** Comparator by FCO identifier. */
+<span class="fc" id="L66">    public static final Comparator&lt;? super FreeColObject&gt; fcoComparator</span>
+<span class="fc" id="L67">        = new Comparator&lt;FreeColObject&gt;() {</span>
+                public int compare(FreeColObject fco1, FreeColObject fco2) {
+<span class="fc" id="L69">                    return FreeColObject.compareIds(fco1, fco2);</span>
+                }
+            };
+
+
+    /** Fallback class index. */
+    protected static final int DEFAULT_CLASS_INDEX = 1000;
+
+
+    /** The identifier of an object. */
+    private String id;
+
+    /** An optional property change container, allocated on demand. */
+<span class="fc" id="L82">    private PropertyChangeSupport pcs = null;</span>
+
+
+    // Note: no constructors here.  There are some nasty cases where
+    // we can not easily determine the identifier at construction
+    // time, so it is better to just let things call setId() when
+    // ready.  However we do have this utility.
+
+    /**
+     * Get the FreeColObject class corresponding to a class name.
+     *
+     * @param &lt;T&gt; A FreeColObject subclass.
+     * @param name The class name.
+     * @return The class, or null if none found.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T extends FreeColObject&gt; Class&lt;T&gt; getFreeColObjectClassByName(String name) {
+<span class="nc" id="L99">        final String type = &quot;net.sf.freecol.common.model.&quot;</span>
+<span class="nc" id="L100">            + capitalize(name);</span>
+<span class="nc" id="L101">        final Class&lt;T&gt; c = (Class&lt;T&gt;)Introspector.getClassByName(type);</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (c != null) return c;</span>
+<span class="nc" id="L103">        logger.warning(&quot;getFreeColObjectClass could not find: &quot; + type);</span>
+<span class="nc" id="L104">        return null;</span>
+    }
+
+    /**
+     * Get the FreeColObject class for this object.
+     *
+     * @param &lt;T&gt; A FreeColObject subclass.
+     * @return The class, or null on error.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public &lt;T extends FreeColObject&gt; Class&lt;T&gt; getFreeColObjectClass() {
+<span class="nc" id="L115">        return (Class&lt;T&gt;)this.getClass();</span>
+    }
+
+
+    // Identifier handling
+
+    /**
+     * Get the object unique identifier.
+     *
+     * @return The identifier.
+     */
+    public String getId() {
+<span class="fc" id="L127">        return this.id;</span>
+    }
+
+    /**
+     * Set the object identifier.
+     *
+     * @param newId The new object identifier.
+     */
+    public void setId(final String newId) {
+<span class="fc" id="L136">        this.id = newId;</span>
+<span class="fc" id="L137">    }</span>
+
+    /**
+     * Does another FreeColObject have the same identifier?
+     *
+     * @param other The other {@code FreeColObject} to check.
+     * @return True if the identifiers are non-null and equal.
+     */
+    public boolean idEquals(FreeColObject other) {
+<span class="pc bpc" id="L146" title="2 of 4 branches missed.">        return other != null &amp;&amp; this.id != null</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">            &amp;&amp; this.id.equals(other.getId());</span>
+    }
+
+    /**
+     * Gets the identifier of this object with the given prefix
+     * removed if the id of the object starts with the prefix, and the
+     * entire id otherwise.
+     *
+     * @param prefix The prefix to test.
+     * @return An identifier.
+     */
+    public final String getSuffix(String prefix) {
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">        return (getId().startsWith(prefix))</span>
+<span class="fc" id="L160">            ? getId().substring(prefix.length())</span>
+<span class="nc" id="L161">            : getId();</span>
+    }
+
+    /**
+     * Gets the usual suffix of this object's identifier, that is
+     * everything after the last '.'.
+     *
+     * @return The usual identifier suffix.
+     */
+    public final String getSuffix() {
+<span class="fc" id="L171">        String id = getId();</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        return (id == null) ? null : lastPart(id, &quot;.&quot;);</span>
+    }
+
+    /**
+     * Get the type part of the identifier.
+     *
+     * @param id The identifier to examine.
+     * @return The type part of the identifier, or null on error.
+     */
+    public static String getIdTypeByName(String id) {
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        if (id != null) {</span>
+<span class="fc" id="L183">            int col = id.lastIndexOf(':');</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            return (col &gt;= 0) ? id.substring(0, col) : id;</span>
+        }
+<span class="nc" id="L186">        return null;</span>
+    }
+
+    /**
+     * Get the type part of the identifier of this object.
+     *
+     * @return The type part of the identifier, or null on error.
+     */
+    public String getIdType() {
+<span class="fc" id="L195">        return getIdTypeByName(getId());</span>
+    }
+
+    /**
+     * Gets the numeric part of the identifier.
+     *
+     * @return The numeric part of the identifier, or negative on error.
+     */
+    public int getIdNumber() {
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        if (id != null) {</span>
+<span class="fc" id="L205">            int col = id.lastIndexOf(':');</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">            if (col &gt;= 0) {</span>
+<span class="fc" id="L207">                String s = id.substring(col + 1);</span>
+                // @compat 0.11.6
+                // AI used to generate ids with &lt;thing&gt;:am&lt;number&gt;
+                // which changed to &lt;thing&gt;:am:&lt;number&gt;
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">                if (s.startsWith(&quot;am&quot;)) s = s.substring(2);</span>
+                // end @compat 0.11.6
+                try {
+<span class="fc" id="L214">                    return Integer.parseInt(s);</span>
+<span class="nc" id="L215">                } catch (NumberFormatException nfe) {}</span>
+            }
+        }
+<span class="fc" id="L218">        return -1;</span>
+    }
+
+    /**
+     * Compare two FreeColObjects by their identifiers.
+     *
+     * @param fco1 The first {@code FreeColObject} to compare.
+     * @param fco2 The second {@code FreeColObject} to compare.
+     * @return The comparison result.
+     */
+    public static int compareIds(FreeColObject fco1, FreeColObject fco2) {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        if (fco1 == null) {</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">            return (fco2 == null) ? 0 : -1;</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        } else if (fco2 == null) {</span>
+<span class="nc" id="L232">            return 1;</span>
+        }
+<span class="fc" id="L234">        String id1 = fco1.getId();</span>
+<span class="fc" id="L235">        String id2 = fco2.getId();</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        if (id1 == null) {</span>
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">            return (id2 == null) ? 0 : -1;</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">        } else if (id2 == null) {</span>
+<span class="nc" id="L239">            return 1;</span>
+        }
+<span class="fc" id="L241">        int cmp = fco1.getIdType().compareTo(fco2.getIdType());</span>
+<span class="fc bfc" id="L242" title="All 4 branches covered.">        return (cmp &gt; 0) ? 1 : (cmp &lt; 0) ? -1</span>
+<span class="fc" id="L243">            : Integer.compare(fco1.getIdNumber(), fco2.getIdNumber());</span>
+    }
+
+    /**
+     * Accessor for the class index.
+     *
+     * @return The class index used by
+     *      {@link net.sf.freecol.client.ClientOptions}.
+     */
+    public int getClassIndex () {
+<span class="nc" id="L253">        return DEFAULT_CLASS_INDEX;</span>
+    }
+
+    /**
+     * Get the class index, handling null and non-FCO objects.
+     *
+     * @param o The object to examine.
+     * @return The class index.
+     */
+    public static int getObjectClassIndex(Object o) {
+<span class="nc bnc" id="L263" title="All 2 branches missed.">        return (o instanceof FreeColObject) ? ((FreeColObject)o).getClassIndex()</span>
+<span class="nc" id="L264">            : DEFAULT_CLASS_INDEX;</span>
+    }
+    
+
+    // Specification handling.
+    //
+    // Base FreeColObjects do not contain a Specification, but
+    // FreeColSpecObjects do, and FreeColGameObjects have access to
+    // the Specification in the Game.  Noop implementations here, to
+    // be overridden by subclasses.
+    
+    /**
+     * Get the specification.
+     *
+     * @return The {@code Specification} used by this object.
+     */
+    public Specification getSpecification() {
+<span class="nc" id="L281">        return null;</span>
+    }
+
+    /**
+     * Sets the specification for this object. 
+     *
+     * @param specification The {@code Specification} to use.
+     */
+    protected void setSpecification(@SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L290">                                    Specification specification) {}</span>
+
+
+    // Game handling.
+    // Base FreeColObjects do not contain a Game, but several subclasses
+    // (like FreeColGameObject) do.
+    
+    /**
+     * Gets the game this object belongs to.
+     *
+     * @return The {@code Game} this object belongs to.
+     */
+    public Game getGame() {
+<span class="fc" id="L303">        return null;</span>
+    }
+
+    /**
+     * Sets the game object this object belongs to.
+     *
+     * @param game The {@code Game} to set.
+     */
+<span class="nc" id="L311">    public void setGame(@SuppressWarnings(&quot;unused&quot;) Game game) {}</span>
+        
+
+    // Property change support
+
+    protected PropertyChangeSupport getPropertyChangeSupport() {
+<span class="nc" id="L317">        return this.pcs;</span>
+    }
+
+    public void addPropertyChangeListener(PropertyChangeListener listener) {
+<span class="nc bnc" id="L321" title="All 2 branches missed.">        if (this.pcs == null) this.pcs = new PropertyChangeSupport(this);</span>
+<span class="nc" id="L322">        this.pcs.addPropertyChangeListener(listener);</span>
+<span class="nc" id="L323">    }</span>
+
+    public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        if (this.pcs == null) this.pcs = new PropertyChangeSupport(this);</span>
+<span class="fc" id="L327">        this.pcs.addPropertyChangeListener(propertyName, listener);</span>
+<span class="fc" id="L328">    }</span>
+
+    public void fireIndexedPropertyChange(String propertyName, int index, boolean oldValue, boolean newValue) {
+<span class="nc bnc" id="L331" title="All 2 branches missed.">        if (this.pcs != null) {</span>
+<span class="nc" id="L332">            this.pcs.fireIndexedPropertyChange(propertyName, index, oldValue, newValue);</span>
+        }
+<span class="nc" id="L334">    }</span>
+
+    public void fireIndexedPropertyChange(String propertyName, int index, int oldValue, int newValue) {
+<span class="nc bnc" id="L337" title="All 2 branches missed.">        if (this.pcs != null) {</span>
+<span class="nc" id="L338">            this.pcs.fireIndexedPropertyChange(propertyName, index, oldValue, newValue);</span>
+        }
+<span class="nc" id="L340">    }</span>
+
+    public void fireIndexedPropertyChange(String propertyName, int index, Object oldValue, Object newValue) {
+<span class="nc bnc" id="L343" title="All 2 branches missed.">        if (this.pcs != null) {</span>
+<span class="nc" id="L344">            this.pcs.fireIndexedPropertyChange(propertyName, index, oldValue, newValue);</span>
+        }
+<span class="nc" id="L346">    }</span>
+
+    public void firePropertyChange(PropertyChangeEvent event) {
+<span class="nc bnc" id="L349" title="All 2 branches missed.">        if (this.pcs != null) {</span>
+<span class="nc" id="L350">            this.pcs.firePropertyChange(event);</span>
+        }
+<span class="nc" id="L352">    }</span>
+
+    public void firePropertyChange(String propertyName, boolean oldValue, boolean newValue) {
+<span class="fc bfc" id="L355" title="All 2 branches covered.">        if (this.pcs != null) {</span>
+<span class="fc" id="L356">            this.pcs.firePropertyChange(propertyName, oldValue, newValue);</span>
+        }
+<span class="fc" id="L358">    }</span>
+
+    public void firePropertyChange(String propertyName, int oldValue, int newValue) {
+<span class="pc bpc" id="L361" title="1 of 2 branches missed.">        if (this.pcs != null) {</span>
+<span class="nc" id="L362">            this.pcs.firePropertyChange(propertyName, oldValue, newValue);</span>
+        }
+<span class="fc" id="L364">    }</span>
+
+    public void firePropertyChange(String propertyName, Object oldValue, Object newValue) {
+<span class="pc bpc" id="L367" title="1 of 2 branches missed.">        if (this.pcs != null) {</span>
+<span class="nc" id="L368">            this.pcs.firePropertyChange(propertyName, oldValue, newValue);</span>
+        }
+<span class="fc" id="L370">    }</span>
+
+    public PropertyChangeListener[] getPropertyChangeListeners() {
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">        return (this.pcs == null) ? new PropertyChangeListener[0]</span>
+<span class="nc" id="L374">            : this.pcs.getPropertyChangeListeners();</span>
+    }
+
+    public PropertyChangeListener[] getPropertyChangeListeners(String propertyName) {
+<span class="nc bnc" id="L378" title="All 2 branches missed.">        return (this.pcs == null) ? new PropertyChangeListener[0]</span>
+<span class="nc" id="L379">            : this.pcs.getPropertyChangeListeners(propertyName);</span>
+    }
+
+    public boolean hasListeners(String propertyName) {
+<span class="nc bnc" id="L383" title="All 2 branches missed.">        return (this.pcs == null) ? false : this.pcs.hasListeners(propertyName);</span>
+    }
+
+    public void removePropertyChangeListener(PropertyChangeListener listener) {
+<span class="nc bnc" id="L387" title="All 2 branches missed.">        if (this.pcs != null) {</span>
+<span class="nc" id="L388">            this.pcs.removePropertyChangeListener(listener);</span>
+        }
+<span class="nc" id="L390">    }</span>
+
+    public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
+<span class="nc bnc" id="L393" title="All 2 branches missed.">        if (this.pcs != null) {</span>
+<span class="nc" id="L394">            this.pcs.removePropertyChangeListener(propertyName, listener);</span>
+        }
+<span class="nc" id="L396">    }</span>
+
+
+    // Feature container support
+    //
+    // Base FreeColObjects do not directly implement a feature container,
+    // but some subclasses provide them.  As long as getFeatureContainer()
+    // works, these routines should too.
+
+    /**
+     * Gets the feature container for this object, if any.
+     *
+     * @return The {@code FeatureContainer} for this object.
+     */
+    public FeatureContainer getFeatureContainer() {
+<span class="fc" id="L411">        return null;</span>
+    }
+
+    /**
+     * Is an ability present in this object?
+     *
+     * @param id The object identifier.
+     * @return True if the ability is present.
+     */
+    public final boolean hasAbility(String id) {
+<span class="fc" id="L421">        return hasAbility(id, null);</span>
+    }
+
+    /**
+     * Is an ability present in this object?
+     *
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     ability applies to.
+     * @return True if the ability is present.
+     */
+    public final boolean hasAbility(String id, FreeColSpecObjectType fcgot) {
+<span class="fc" id="L433">        return hasAbility(id, fcgot, null);</span>
+    }
+
+    /**
+     * Is an ability present in this object?
+     *
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     ability applies to.
+     * @param turn An optional applicable {@code Turn}.
+     * @return True if the ability is present.
+     */
+    public final boolean hasAbility(String id, FreeColSpecObjectType fcgot,
+                                    Turn turn) {
+<span class="fc" id="L447">        return FeatureContainer.allAbilities(getAbilities(id, fcgot, turn));</span>
+    }
+
+    /**
+     * Checks if this object contains a given ability key.
+     *
+     * @param key The key to check.
+     * @return True if the key is present.
+     */
+    public boolean containsAbilityKey(String key) {
+<span class="pc bpc" id="L457" title="1 of 2 branches missed.">        return first(getAbilities(key, null, null)) != null;</span>
+    }
+
+    /**
+     * Gets a sorted copy of the abilities of this object.
+     *
+     * @return A list of abilities.
+     */
+    public final List&lt;Ability&gt; getSortedAbilities() {
+<span class="fc" id="L466">        return sort(getAbilities());</span>
+    }
+
+    /**
+     * Gets a copy of the abilities of this object.
+     *
+     * @return A stream of abilities.
+     */
+    public final Stream&lt;Ability&gt; getAbilities() {
+<span class="fc" id="L475">        return getAbilities(null);</span>
+    }
+
+    /**
+     * Gets the set of abilities with the given identifier from this object.
+     *
+     * @param id The object identifier.
+     * @return A stream of abilities.
+     */
+    public final Stream&lt;Ability&gt; getAbilities(String id) {
+<span class="fc" id="L485">        return getAbilities(id, null);</span>
+    }
+
+    /**
+     * Gets the set of abilities with the given identifier from this object.
+     *
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     ability applies to.
+     * @return A stream of abilities.
+     */
+    public final Stream&lt;Ability&gt; getAbilities(String id,
+                                              FreeColSpecObjectType fcgot) {
+<span class="fc" id="L498">        return getAbilities(id, fcgot, null);</span>
+    }
+
+    /**
+     * Gets the set of abilities with the given identifier from this
+     * object.  Subclasses with complex ability handling should
+     * override this as all prior routines are derived from it.
+     *
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     ability applies to.
+     * @param turn An optional applicable {@code Turn}.
+     * @return A set of abilities.
+     */
+    public Stream&lt;Ability&gt; getAbilities(String id,
+                                        FreeColSpecObjectType fcgot,
+                                        Turn turn) {
+<span class="fc" id="L515">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="fc bfc" id="L516" title="All 2 branches covered.">        return (fc == null) ? Stream.&lt;Ability&gt;empty()</span>
+<span class="fc" id="L517">            : fc.getAbilities(id, fcgot, turn);</span>
+    }
+
+    /**
+     * Add the given ability to this object.
+     *
+     * @param ability An {@code Ability} to add.
+     * @return True if the ability was added.
+     */
+    public boolean addAbility(Ability ability) {
+<span class="fc" id="L527">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="pc bpc" id="L528" title="1 of 2 branches missed.">        return (fc == null) ? false : fc.addAbility(ability);</span>
+    }
+
+    /**
+     * Remove the given ability from this object.
+     *
+     * @param ability An {@code Ability} to remove.
+     * @return The ability removed or null on failure.
+     */
+    public Ability removeAbility(Ability ability) {
+<span class="nc" id="L538">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="nc bnc" id="L539" title="All 2 branches missed.">        return (fc == null) ? null : fc.removeAbility(ability);</span>
+    }
+
+    /**
+     * Remove all abilities with a given identifier.
+     *
+     * @param id The object identifier.
+     */
+    public void removeAbilities(String id) {
+<span class="nc" id="L548">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="nc bnc" id="L549" title="All 2 branches missed.">        if (fc != null) fc.removeAbilities(id);</span>
+<span class="nc" id="L550">    }</span>
+
+
+    /**
+     * Is an modifier present in this object?
+     *
+     * @param id The object identifier.
+     * @return True if the modifier is present.
+     */
+    public final boolean hasModifier(String id) {
+<span class="fc" id="L560">        return hasModifier(id, null);</span>
+    }
+
+    /**
+     * Is an modifier present in this object?
+     *
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     modifier applies to.
+     * @return True if the modifier is present.
+     */
+    public final boolean hasModifier(String id, FreeColSpecObjectType fcgot) {
+<span class="fc" id="L572">        return hasModifier(id, fcgot, null);</span>
+    }
+
+    /**
+     * Is an modifier present in this object?
+     *
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     modifier applies to.
+     * @param turn An optional applicable {@code Turn}.
+     * @return True if the modifier is present.
+     */
+    public boolean hasModifier(String id, FreeColSpecObjectType fcgot,
+                               Turn turn) {
+<span class="fc" id="L586">        return any(getModifiers(id, fcgot, turn));</span>
+    }
+
+    /**
+     * Checks if this object contains a given modifier key.
+     *
+     * @param key The key to check.
+     * @return True if the key is present.
+     */
+    public final boolean containsModifierKey(String key) {
+<span class="fc" id="L596">        return any(getModifiers(key));</span>
+    }
+
+    /**
+     * Gets a sorted copy of the modifiers of this object.
+     *
+     * @return A list of modifiers.
+     */
+    public final List&lt;Modifier&gt; getSortedModifiers() {
+<span class="fc" id="L605">        return sort(getModifiers(), Modifier.ascendingModifierIndexComparator);</span>
+    }
+
+    /**
+     * Gets a copy of the modifiers of this object.
+     *
+     * @return A set of modifiers.
+     */
+    public final Stream&lt;Modifier&gt; getModifiers() {
+<span class="fc" id="L614">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="pc bpc" id="L615" title="1 of 2 branches missed.">        return (fc == null) ? Stream.&lt;Modifier&gt;empty()</span>
+<span class="fc" id="L616">            : fc.getModifierValues().stream();</span>
+    }
+
+    /**
+     * Gets the set of modifiers with the given identifier from this object.
+     *
+     * @param id The object identifier.
+     * @return A set of modifiers.
+     */
+    public final Stream&lt;Modifier&gt; getModifiers(String id) {
+<span class="fc" id="L626">        return getModifiers(id, null);</span>
+    }
+
+    /**
+     * Gets the set of modifiers with the given identifier from this object.
+     *
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     modifier applies to.
+     * @return A set of modifiers.
+     */
+    public final Stream&lt;Modifier&gt; getModifiers(String id,
+                                               FreeColSpecObjectType fcgot) {
+<span class="fc" id="L639">        return getModifiers(id, fcgot, null);</span>
+    }
+
+    /**
+     * Gets the set of modifiers with the given identifier from this object.
+     *
+     * Subclasses with complex modifier handling may override this
+     * routine.
+     *
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     modifier applies to.
+     * @param turn An optional applicable {@code Turn}.
+     * @return A set of modifiers.
+     */
+    public Stream&lt;Modifier&gt; getModifiers(String id,
+                                         FreeColSpecObjectType fcgot,
+                                         Turn turn) {
+<span class="fc" id="L657">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="fc bfc" id="L658" title="All 2 branches covered.">        return (fc == null) ? Stream.&lt;Modifier&gt;empty()</span>
+<span class="fc" id="L659">            : fc.getModifiers(id, fcgot, turn);</span>
+    }
+
+    /**
+     * Applies this objects modifiers with the given identifier to the
+     * given number.
+     *
+     * @param number The number to modify.
+     * @param turn An optional applicable {@code Turn}.
+     * @param id The object identifier.
+     * @return The modified number.
+     */
+    public final float apply(float number, Turn turn, String id) {
+<span class="fc" id="L672">        return apply(number, turn, id, null);</span>
+    }
+
+    /**
+     * Applies this objects modifiers with the given identifier to the
+     * given number.
+     *
+     * @param number The number to modify.
+     * @param turn An optional applicable {@code Turn}.
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     modifier applies to.
+     * @return The modified number.
+     */
+    public final float apply(float number, Turn turn, String id,
+                             FreeColSpecObjectType fcgot) {
+<span class="fc" id="L688">        return applyModifiers(number, turn, getModifiers(id, fcgot, turn));</span>
+    }
+
+    /**
+     * Applies a stream of modifiers to the given number.
+     *
+     * @param number The number to modify.
+     * @param turn An optional applicable {@code Turn}.
+     * @param mods The {@code Modifier}s to apply.
+     * @return The modified number.
+     */
+    public static final float applyModifiers(float number, Turn turn,
+                                             Stream&lt;Modifier&gt; mods) {
+<span class="fc" id="L701">        return FeatureContainer.applyModifiers(number, turn, mods);</span>
+    }
+
+    /**
+     * Applies a collection of modifiers to the given number.
+     *
+     * @param number The number to modify.
+     * @param turn An optional applicable {@code Turn}.
+     * @param mods The {@code Modifier}s to apply.
+     * @return The modified number.
+     */
+    public static final float applyModifiers(float number, Turn turn,
+                                             Collection&lt;Modifier&gt; mods) {
+<span class="fc" id="L714">        return FeatureContainer.applyModifiers(number, turn, mods);</span>
+    }
+
+    /**
+     * Add the given modifier to this object.
+     *
+     * @param modifier An {@code Modifier} to add.
+     * @return True if the modifier was added.
+     */
+    public boolean addModifier(Modifier modifier) {
+<span class="fc" id="L724">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="pc bpc" id="L725" title="1 of 2 branches missed.">        if (fc == null) return false;</span>
+<span class="fc" id="L726">        return fc.addModifier(modifier);</span>
+    }
+
+    /**
+     * Remove the given modifier from this object.
+     *
+     * @param modifier An {@code Modifier} to remove.
+     * @return The modifier removed.
+     */
+    public Modifier removeModifier(Modifier modifier) {
+<span class="nc" id="L736">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="nc bnc" id="L737" title="All 2 branches missed.">        if (fc == null) return null;</span>
+<span class="nc" id="L738">        return fc.removeModifier(modifier);</span>
+    }
+
+    /**
+     * Remove all abilities with a given identifier.
+     *
+     * @param id The object identifier.
+     */
+    public void removeModifiers(String id) {
+<span class="fc" id="L747">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="pc bpc" id="L748" title="1 of 2 branches missed.">        if (fc != null) fc.removeModifiers(id);</span>
+<span class="fc" id="L749">    }</span>
+
+
+    /**
+     * Adds all the features in an object to this object.
+     *
+     * @param fco The {@code FreeColObject} to add features from.
+     */
+    public void addFeatures(FreeColObject fco) {
+<span class="fc" id="L758">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="pc bpc" id="L759" title="1 of 2 branches missed.">        if (fc != null) fc.addFeatures(fco);</span>
+<span class="fc" id="L760">    }</span>
+
+    /**
+     * Removes all the features in an object from this object.
+     *
+     * @param fco The {@code FreeColObject} to find features to remove in.
+     */
+    public void removeFeatures(FreeColObject fco) {
+<span class="fc" id="L768">        FeatureContainer fc = getFeatureContainer();</span>
+<span class="pc bpc" id="L769" title="1 of 2 branches missed.">        if (fc != null) fc.removeFeatures(fco);</span>
+<span class="fc" id="L770">    }</span>
+
+    /**
+     * Get the defence modifiers applicable to this object.
+     *
+     * @return A list of defence {@code Modifier}s.
+     */
+    public List&lt;Modifier&gt; getDefenceModifiers() {
+<span class="fc" id="L778">        return toList(getModifiers(Modifier.DEFENCE));</span>
+    }
+
+
+    // Comparison support
+
+    /**
+     * Base for Comparable implementations.
+     *
+     * @param other The other {@code FreeColObject} subclass to compare.
+     * @return The comparison result.
+     */
+    @Override
+    public int compareTo(FreeColObject other) {
+<span class="fc" id="L792">        return compareIds(this, other);</span>
+    }
+
+
+    // Miscellaneous routines
+
+    /**
+     * Log a collection of {@code FreeColObject}s.
+     *
+     * @param &lt;T&gt; The collection member type.
+     * @param c The {@code Collection} to log.
+     * @param lb A {@code LogBuilder} to log to.
+     */
+    public static &lt;T extends FreeColObject&gt; void logFreeColObjects(Collection&lt;T&gt; c, LogBuilder lb) {
+<span class="fc" id="L806">        lb.add(&quot;[&quot;);</span>
+<span class="fc bfc" id="L807" title="All 2 branches covered.">        for (T t : c) lb.add(t.getSuffix(), &quot; &quot;);</span>
+<span class="fc" id="L808">        lb.shrink(&quot; &quot;);</span>
+<span class="fc" id="L809">        lb.add(&quot;]&quot;);</span>
+<span class="fc" id="L810">    }</span>
+
+    /**
+     * Invoke a method for this object.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param methodName The name of the method.
+     * @param returnClass The expected return class.
+     * @param defaultValue The default value.
+     * @return The result of invoking the method, or the default value
+     *     on failure.
+     */
+    protected &lt;T&gt; T invokeMethod(String methodName, Class&lt;T&gt; returnClass,
+                                 T defaultValue) {
+<span class="pc bpc" id="L824" title="2 of 4 branches missed.">        if (methodName != null &amp;&amp; returnClass != null) {</span>
+            try {
+<span class="fc" id="L826">                return Introspector.invokeMethod(this, methodName, returnClass);</span>
+<span class="nc" id="L827">            } catch (Exception ex) {</span>
+<span class="nc" id="L828">                logger.log(Level.WARNING, &quot;Invoke failed: &quot; + methodName, ex);</span>
+            }
+        }
+<span class="nc" id="L831">        return defaultValue;</span>
+    }
+
+    /**
+     * Get an object to display when showing the user messages for this object.
+     *
+     * Example: If this object is a Building, the object to display will be the
+     * BuildingType.
+     *
+     * @return A suitable {@code FreeColObject} to display, defaults to this.
+     */
+    public FreeColObject getDisplayObject() {
+<span class="nc" id="L843">        return this;</span>
+    }
+           
+    
+    // Serialization
+
+    /** XML tag name for identifier attribute. */
+    public static final String ID_ATTRIBUTE_TAG = &quot;id&quot;;
+
+    /** XML tag name for array elements. */
+    public static final String ARRAY_SIZE_TAG = &quot;xLength&quot;;
+
+    /** XML attribute tag to denote partial updates. */
+    public static final String PARTIAL_ATTRIBUTE_TAG = &quot;partial&quot;;
+
+    /** XML tag name for value attributes, used in many places. */
+    protected static final String VALUE_TAG = &quot;value&quot;;
+
+
+    /**
+     * Debugging tool, dump object XML to System.err.
+     */
+    public void dumpObject() {
+<span class="nc" id="L866">        save(System.err, WriteScope.toSave(), false);</span>
+<span class="nc" id="L867">    }</span>
+
+    /**
+     * Writes the object to the given file.
+     *
+     * @param file The {@code File} to write to.
+     * @return True if the save proceeded without error.
+     */
+    public boolean save(File file) {
+<span class="nc" id="L876">        return save(file, WriteScope.toSave());</span>
+    }
+
+    /**
+     * Writes the object to the given file.
+     *
+     * @param file The {@code File} to write to.
+     * @param scope The {@code WriteScope} to use.
+     * @return True if the save proceeded without error.
+     */
+    public boolean save(File file, WriteScope scope) {
+<span class="nc" id="L887">        return save(file, scope, false);</span>
+    }
+
+    /**
+     * Writes the object to the given file.
+     *
+     * @param file The {@code File} to write to.
+     * @param scope The {@code WriteScope} to use.
+     * @param pretty Attempt to indent the output nicely.
+     * @return True if the save proceeded without error.
+     */
+    public boolean save(File file, WriteScope scope, boolean pretty) {
+<span class="nc" id="L899">        try (OutputStream fos = Files.newOutputStream(file.toPath())) {</span>
+<span class="nc" id="L900">            return save(fos, scope, pretty);</span>
+<span class="nc" id="L901">        } catch (IOException ioe) {</span>
+<span class="nc" id="L902">            logger.log(Level.WARNING, &quot;Error creating output stream&quot;, ioe);</span>
+        }
+<span class="nc" id="L904">        return false;</span>
+    }
+
+    /**
+     * Writes the object to the given output stream
+     *
+     * @param out The {@code OutputStream} to write to.
+     * @param scope The {@code WriteScope} to use.
+     * @param pretty Attempt to indent the output nicely.
+     * @return True if the save proceeded without error.
+     */
+    public boolean save(OutputStream out, WriteScope scope, boolean pretty) {
+<span class="nc" id="L916">        boolean ret = false;</span>
+<span class="nc bnc" id="L917" title="All 2 branches missed.">        if (scope == null) scope = FreeColXMLWriter.WriteScope.toSave();</span>
+        try (
+<span class="nc" id="L919">            FreeColXMLWriter xw = new FreeColXMLWriter(out, scope, pretty);</span>
+        ) {
+<span class="nc" id="L921">            xw.writeStartDocument(&quot;UTF-8&quot;, &quot;1.0&quot;);</span>
+
+<span class="nc" id="L923">            this.toXML(xw);</span>
+
+<span class="nc" id="L925">            xw.writeEndDocument();</span>
+
+<span class="nc" id="L927">            ret = true;</span>
+<span class="nc" id="L928">        } catch (XMLStreamException xse) {</span>
+<span class="nc" id="L929">            logger.log(Level.WARNING, &quot;Exception writing object.&quot;, xse);</span>
+
+<span class="nc" id="L931">        } catch (IOException ioe) {</span>
+<span class="nc" id="L932">            logger.log(Level.WARNING, &quot;Error creating FreeColXMLWriter.&quot;, ioe);</span>
+<span class="nc" id="L933">        }</span>
+<span class="nc" id="L934">        return ret;</span>
+    }
+
+    /**
+     * Serialize this FreeColObject to a string.
+     *
+     * @return The serialized object, or null if the stream could not be
+     *     created.
+     * @exception XMLStreamException if there are any problems writing
+     *     to the stream.
+     */
+    public String serialize() throws XMLStreamException {
+<span class="fc" id="L946">        return serialize(WriteScope.toServer());</span>
+    }
+
+    /**
+     * Serialize this FreeColObject to a string for a target player.
+     *
+     * @param player The {@code Player} to serialize the object to.
+     * @return The serialized object, or null if the stream could not be
+     *     created.
+     * @exception XMLStreamException if there are any problems writing
+     *     to the stream.
+     */
+    public String serialize(Player player) throws XMLStreamException {
+<span class="fc" id="L959">        return serialize(WriteScope.toClient(player));</span>
+    }
+
+    /**
+     * Serialize this FreeColObject to a string.
+     *
+     * @param scope The write scope to use.
+     * @return The serialized object, or null if the stream could not be
+     *     created.
+     * @exception XMLStreamException if there are any problems writing
+     *     to the stream.
+     */
+    public String serialize(WriteScope scope) throws XMLStreamException {
+<span class="fc" id="L972">        return serialize(scope, null);</span>
+    }
+
+    /**
+     * Serialize this FreeColObject to a string, possibly partially.
+     *
+     * @param scope The write scope to use.
+     * @param fields A list of field names, which if non-null indicates this
+     *     should be a partial write.
+     * @return The serialized object, or null if the stream could not be
+     *     created.
+     * @exception XMLStreamException if there are any problems writing
+     *     to the stream.
+     */
+    public String serialize(WriteScope scope, List&lt;String&gt; fields)
+        throws XMLStreamException {
+<span class="fc" id="L988">        StringWriter sw = new StringWriter();</span>
+        try (
+<span class="fc" id="L990">            FreeColXMLWriter xw = new FreeColXMLWriter(sw, scope);</span>
+        ) {
+<span class="pc bpc" id="L992" title="1 of 2 branches missed.">            if (fields == null) {</span>
+<span class="fc" id="L993">                this.toXML(xw);</span>
+            } else {
+<span class="nc" id="L995">                this.toXMLPartial(xw, fields);</span>
+            }
+<span class="nc" id="L997">        } catch (IOException ioe) {</span>
+<span class="nc" id="L998">            logger.log(Level.WARNING, &quot;Error creating FreeColXMLWriter,&quot;, ioe);</span>
+<span class="nc" id="L999">            return null;</span>
+<span class="fc" id="L1000">        }</span>
+
+<span class="fc" id="L1002">        return sw.toString();</span>
+    }
+
+    /**
+     * Copy a FreeColObject.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to add the object to.
+     * @return The copied object, or null on error.
+     */
+    public &lt;T extends FreeColObject&gt; T copy(Game game) {
+<span class="fc" id="L1013">        @SuppressWarnings(&quot;unchecked&quot;) Class&lt;T&gt; returnClass</span>
+<span class="fc" id="L1014">            = (Class&lt;T&gt;)this.getClass();</span>
+<span class="fc" id="L1015">        return this.copy(game, returnClass);</span>
+    }
+
+    /**
+     * Copy a FreeColObject for a player.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to add the object to.
+     * @param player The {@code Player} to copy for,
+     * @return The copied object, or null on error.
+     */
+    public &lt;T extends FreeColObject&gt; T copy(Game game, Player player) {
+<span class="fc" id="L1027">        @SuppressWarnings(&quot;unchecked&quot;) Class&lt;T&gt; returnClass</span>
+<span class="fc" id="L1028">            = (Class&lt;T&gt;)this.getClass();</span>
+<span class="fc" id="L1029">        return this.copy(game, returnClass, player);</span>
+    }
+
+    /**
+     * Copy a FreeColObject.
+     *
+     * The copied object and its internal descendents will be
+     * identical to the original objects, but not present in the game.
+     * Newly created objects will prefer to refer to other newly
+     * created objects.  Thus if you copy a tile, an internal colony
+     * on the tile will also be copied, and the copied tile will refer
+     * to the copied colony and the copied colony refer to the copied
+     * tile, but both will refer to the original uncopied owning player. 
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to add the object to.
+     * @param returnClass The expected return class.
+     * @return The copied object, or null on error.
+     */
+    public &lt;T extends FreeColObject&gt; T copy(Game game, Class&lt;T&gt; returnClass) {
+<span class="fc" id="L1049">        T ret = null;</span>
+<span class="fc" id="L1050">        try (FreeColXMLReader xr</span>
+<span class="fc" id="L1051">            = new FreeColXMLReader(new StringReader(this.serialize()))) {</span>
+<span class="fc" id="L1052">            ret = xr.copy(game, returnClass);</span>
+<span class="nc" id="L1053">        } catch (XMLStreamException xse) {</span>
+<span class="nc" id="L1054">            logger.log(Level.WARNING, &quot;Copy of &quot; + getId()</span>
+<span class="nc" id="L1055">                + &quot; to &quot; + returnClass.getName() + &quot;failed&quot;, xse);</span>
+<span class="fc" id="L1056">        }</span>
+<span class="fc" id="L1057">        return ret;</span>
+    }
+
+    /**
+     * Copy a FreeColObject for a target player.
+     *
+     * @param &lt;T&gt; The actual return type.
+     * @param game The {@code Game} to add the object to.
+     * @param returnClass The expected return class.
+     * @param player The {@code Player} that will see the result.
+     * @return The copied object, or null on error.
+     */
+    public &lt;T extends FreeColObject&gt; T copy(Game game, Class&lt;T&gt; returnClass,
+        Player player) {
+<span class="fc" id="L1071">        T ret = null;</span>
+<span class="fc" id="L1072">        try (FreeColXMLReader xr</span>
+<span class="fc" id="L1073">            = new FreeColXMLReader(new StringReader(this.serialize(player)))) {</span>
+<span class="fc" id="L1074">            ret = xr.copy(game, returnClass);</span>
+<span class="nc" id="L1075">        } catch (XMLStreamException xse) {</span>
+<span class="nc" id="L1076">            logger.log(Level.WARNING, &quot;Copy of &quot; + getId()</span>
+<span class="nc" id="L1077">                + &quot; to &quot; + returnClass.getName()</span>
+<span class="nc" id="L1078">                + &quot; for &quot; + player.getId() + &quot;failed&quot;, xse);</span>
+<span class="fc" id="L1079">        }</span>
+<span class="fc" id="L1080">        return ret;</span>
+    }
+
+    /**
+     * Copy another FreeColObject into this one if it is compatible.
+     *
+     * @param &lt;T&gt; The {@code FreeColObject} subclass of the object to copy in.
+     * @param other The other object.
+     * @return True if the copy in is succesful.
+     */
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="fc" id="L1091">        FreeColObject fco = copyInCast(other, FreeColObject.class);</span>
+<span class="pc bpc" id="L1092" title="1 of 2 branches missed.">        if (fco == null) return false;</span>
+<span class="pc bpc" id="L1093" title="1 of 2 branches missed.">        for (PropertyChangeListener pcl : fco.getPropertyChangeListeners()) {</span>
+<span class="nc" id="L1094">            fco.removePropertyChangeListener(pcl);</span>
+<span class="nc" id="L1095">            this.addPropertyChangeListener(pcl);</span>
+        }
+<span class="fc" id="L1097">        return true;</span>
+    } 
+
+    /**
+     * If another object can be copied into this one, 
+     *
+     * @param &lt;T&gt; The {@code FreeColObject} subclass of the object to copy in.
+     * @param other The {@code FreeColObject} to copy in.
+     * @param &lt;R&gt; The {@code FreeColObject} subclass to copy in to.
+     * @param returnClass The return class.
+     * @return The other object cast to the return class, or null
+     *     if incompatible in any way.
+     */
+    protected &lt;T extends FreeColObject, R extends FreeColObject&gt; R
+        copyInCast(T other, Class&lt;R&gt; returnClass) {
+<span class="pc bpc" id="L1112" title="1 of 2 branches missed.">        if (other == null) return (R)null;</span>
+<span class="pc bpc" id="L1113" title="1 of 2 branches missed.">        if (!idEquals(other)) {</span>
+<span class="nc" id="L1114">            logger.warning(&quot;copyInCast &quot; + other.getId() + &quot; onto &quot; + getId());</span>
+<span class="nc" id="L1115">            return (R)null;</span>
+        }
+        try {
+<span class="fc" id="L1118">            return returnClass.cast(other);</span>
+<span class="nc" id="L1119">        } catch (ClassCastException cce) {}</span>
+<span class="nc" id="L1120">        return (R)null;</span>
+    }
+
+    /**
+     * This method writes an XML-representation of this object to
+     * the given stream.
+     *
+     * All attributes will be made visible.
+     *
+     * @param xw The {@code FreeColXMLWriter} to write to.
+     * @exception XMLStreamException if there are any problems writing
+     *      to the stream.
+     */
+    public void toXML(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L1134">        toXML(xw, getXMLTagName());</span>
+<span class="fc" id="L1135">    }</span>
+
+    /**
+     * This method writes an XML-representation of this object with
+     * a specified tag to the given stream.
+     *
+     * Almost all FreeColObjects end up calling these, and implementing
+     * their own write{Attributes,Children} methods which begin by
+     * calling their superclass.  This allows a clean nesting of the
+     * serialization routines throughout the class hierarchy.
+     *
+     * All attributes will be made visible.
+     *
+     * @param xw The {@code FreeColXMLWriter} to write to.
+     * @param tag The tag to use.
+     * @exception XMLStreamException if there are any problems writing
+     *     to the stream.
+     */
+    public void toXML(FreeColXMLWriter xw, String tag) throws XMLStreamException {
+<span class="fc" id="L1154">        xw.writeStartElement(tag);</span>
+
+<span class="fc" id="L1156">        writeAttributes(xw);</span>
+
+<span class="fc" id="L1158">        writeChildren(xw);</span>
+
+<span class="fc" id="L1160">        xw.writeEndElement();</span>
+<span class="fc" id="L1161">    }</span>
+
+    /**
+     * Write the attributes of this object to a stream.
+     *
+     * To be overridden if required by any object that has attributes
+     * and uses the toXML(FreeColXMLWriter, String) call.
+     *
+     * @param xw The {@code FreeColXMLWriter} to write to.
+     * @exception XMLStreamException if there are any problems writing
+     *     to the stream.
+     */
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="pc bpc" id="L1174" title="1 of 2 branches missed.">        if (getId() == null) {</span>
+<span class="nc" id="L1175">            logger.warning(&quot;FreeColObject with null identifier: &quot; + this);</span>
+        } else {
+<span class="fc" id="L1177">            xw.writeAttribute(ID_ATTRIBUTE_TAG, getId());</span>
+        }
+<span class="fc" id="L1179">    }</span>
+
+    /**
+     * Write the children of this object to a stream.
+     *
+     * To be overridden if required by any object that has children
+     * and uses the toXML(FreeColXMLWriter, String) call.
+     *
+     * @param xw The {@code FreeColXMLWriter} to write to.
+     * @exception XMLStreamException if there are any problems writing
+     *     to the stream.
+     */
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+        // do nothing
+<span class="fc" id="L1193">    }</span>
+
+    /**
+     * This method writes a partial XML-representation of this object to
+     * the given stream using only the mandatory and specified fields.
+     *
+     * All attributes are considered visible as this is
+     * server-to-owner-client functionality, but it depends ultimately
+     * on the presence of a getFieldName() method that returns a type
+     * compatible with String.valueOf.
+     *
+     * @param xw The {@code FreeColXMLWriter} to write to.
+     * @param fields The fields to write.
+     * @exception XMLStreamException if there are any problems writing
+     *      to the stream.
+     */
+    public final void toXMLPartial(FreeColXMLWriter xw,
+                                   String[] fields) throws XMLStreamException {
+<span class="nc" id="L1211">        final Class&lt;?&gt; theClass = getClass();</span>
+
+<span class="nc" id="L1213">        xw.writeStartElement(getXMLTagName());</span>
+
+<span class="nc" id="L1215">        xw.writeAttribute(ID_ATTRIBUTE_TAG, getId());</span>
+
+<span class="nc" id="L1217">        xw.writeAttribute(PARTIAL_ATTRIBUTE_TAG, true);</span>
+
+<span class="nc bnc" id="L1219" title="All 2 branches missed.">        for (String field : fields) {</span>
+<span class="nc" id="L1220">            Introspector intro = new Introspector(theClass, field);</span>
+            try {
+<span class="nc" id="L1222">                String value = intro.getter(this);</span>
+<span class="nc" id="L1223">                xw.writeAttribute(field, value);</span>
+<span class="nc" id="L1224">            } catch (Introspector.IntrospectorException ie) {</span>
+<span class="nc" id="L1225">                logger.log(Level.WARNING, &quot;Failed to write field: &quot; + field, ie);</span>
+<span class="nc" id="L1226">            }</span>
+        }
+
+<span class="nc" id="L1229">        xw.writeEndElement();</span>
+<span class="nc" id="L1230">    }</span>
+
+    /**
+     * Simpler version of toXMLPartial, where the fields are pre-filled
+     * with key,value pairs.  We thus no longer need call the introspector.
+     *
+     * @param xw The {@code FreeColXMLWriter} to write to.
+     * @param fields The fields to write.
+     * @exception XMLStreamException if there are any problems writing
+     *      to the stream.
+     */
+    public final void toXMLPartial(FreeColXMLWriter xw,
+                                   List&lt;String&gt; fields) throws XMLStreamException {
+<span class="nc" id="L1243">        final Class&lt;?&gt; theClass = getClass();</span>
+
+        try {
+<span class="nc" id="L1246">            xw.writeStartElement(getXMLTagName());</span>
+
+<span class="nc" id="L1248">            xw.writeAttribute(ID_ATTRIBUTE_TAG, getId());</span>
+
+<span class="nc" id="L1250">            xw.writeAttribute(PARTIAL_ATTRIBUTE_TAG, true);</span>
+
+<span class="nc" id="L1252">            int n = fields.size();</span>
+<span class="nc bnc" id="L1253" title="All 2 branches missed.">            for (int i = 0; i &lt; n-1; i += 2) {</span>
+<span class="nc" id="L1254">                xw.writeAttribute(fields.get(i), fields.get(i+1));</span>
+            }
+
+<span class="nc" id="L1257">            xw.writeEndElement();</span>
+
+<span class="nc" id="L1259">        } catch (Exception e) {</span>
+<span class="nc" id="L1260">            logger.log(Level.WARNING, &quot;Partial write failed for &quot;</span>
+<span class="nc" id="L1261">                       + theClass.getName(), e);</span>
+<span class="nc" id="L1262">        }</span>
+<span class="nc" id="L1263">    }</span>
+    
+
+    /**
+     * Initializes this object from an XML-representation of this object,
+     * unless the PARTIAL_ATTRIBUTE tag is present which indicates
+     * a partial update of an existing object.
+     *
+     * @param xr The input stream with the XML.
+     * @exception XMLStreamException if there are any problems reading
+     *     the stream.
+     */
+    public void readFromXML(FreeColXMLReader xr) throws XMLStreamException {
+<span class="pc bpc" id="L1276" title="1 of 2 branches missed.">        if (xr.hasAttribute(PARTIAL_ATTRIBUTE_TAG)) {</span>
+<span class="nc" id="L1277">            readFromXMLPartial(xr);</span>
+        } else {
+<span class="pc bpc" id="L1279" title="1 of 2 branches missed.">            if (xr.shouldClearContainers()) {</span>
+<span class="fc" id="L1280">                clearContainers(xr);</span>
+            }
+<span class="pc bpc" id="L1282" title="1 of 2 branches missed.">            if (xr.shouldReadAttributes()) {</span>
+<span class="fc" id="L1283">                readAttributes(xr);</span>
+            }
+<span class="fc" id="L1285">            readChildren(xr);</span>
+        }
+<span class="fc" id="L1287">    }</span>
+    
+    /**
+     * Clears containers before reading the object.
+     * 
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @throws XMLStreamException if there is a problem reading the stream.
+     */
+    protected void clearContainers(FreeColXMLReader xr) throws XMLStreamException {
+
+<span class="fc" id="L1297">    }</span>
+
+    /**
+     * Reads the attributes of this object from an XML stream.
+     *
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L1306">        String newId = xr.readId();</span>
+<span class="fc bfc" id="L1307" title="All 2 branches covered.">        if (newId != null) setId(newId);</span>
+<span class="fc" id="L1308">    }</span>
+
+    /**
+     * Reads the children of this object from an XML stream.
+     *
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L1317">        String tag = xr.getLocalName();</span>
+<span class="pc bpc" id="L1318" title="1 of 2 branches missed.">        if (tag == null) {</span>
+<span class="nc" id="L1319">            throw new XMLStreamException(&quot;Parse error, null opening tag: &quot; + this);</span>
+        }
+        try {
+<span class="fc bfc" id="L1322" title="All 2 branches covered.">            while (xr.moreTags()) {</span>
+<span class="fc" id="L1323">                readChild(xr);</span>
+            }
+<span class="nc" id="L1325">        } catch (XMLStreamException xse) {</span>
+<span class="nc" id="L1326">            logger.log(Level.SEVERE, &quot;nextTag failed at &quot; + tag, xse);</span>
+<span class="fc" id="L1327">        }</span>
+<span class="fc" id="L1328">        xr.expectTag(tag);</span>
+<span class="fc" id="L1329">    }</span>
+
+    /**
+     * Reads a single child object.  Subclasses must override to read
+     * their enclosed elements.  This particular instance of the
+     * routine always throws XMLStreamException because we should
+     * never arrive here.  However it is very useful to always call
+     * super.readChild() when an unexpected tag is encountered, as the
+     * exception thrown here provides some useful debugging context.
+     *
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L1343">        xr.unexpectedTag(getXMLTagName());</span>
+<span class="nc" id="L1344">    }</span>
+
+    /**
+     * Updates this object from an XML-representation of this object.
+     *
+     * All attributes are considered visible as this is
+     * server-to-owner-client functionality.  It depends ultimately on
+     * the presence of a setFieldName() method that takes a parameter
+     * type T where T.valueOf(String) exists.
+     *
+     * @param xr The input stream with the XML.
+     * @exception XMLStreamException if a problem was encountered
+     *      during parsing.
+     */
+    public final void readFromXMLPartial(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L1359">        final Class&lt;?&gt; theClass = getClass();</span>
+<span class="nc" id="L1360">        final String tag = xr.getLocalName();</span>
+<span class="nc" id="L1361">        int n = xr.getAttributeCount();</span>
+
+<span class="nc" id="L1363">        setId(xr.readId());</span>
+
+<span class="nc bnc" id="L1365" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1366">            String name = xr.getAttributeLocalName(i);</span>
+
+<span class="nc bnc" id="L1368" title="All 2 branches missed.">            if (ID_ATTRIBUTE_TAG.equals(name)</span>
+<span class="nc bnc" id="L1369" title="All 2 branches missed.">                || PARTIAL_ATTRIBUTE_TAG.equals(name)) continue;</span>
+
+            try {
+<span class="nc" id="L1372">                Introspector intro = new Introspector(theClass, name);</span>
+<span class="nc" id="L1373">                intro.setter(this, xr.getAttributeValue(i));</span>
+
+<span class="nc" id="L1375">            } catch (Exception e) {</span>
+<span class="nc" id="L1376">                logger.log(Level.WARNING, &quot;Could not set field &quot; + name, e);</span>
+<span class="nc" id="L1377">            }</span>
+        }
+
+<span class="nc" id="L1380">        xr.closeTag(tag);</span>
+<span class="nc" id="L1381">    }</span>
+
+    /**
+     * Make the standard array key.
+     *
+     * @param i The array index.
+     * @return The array key.
+     */
+    public static String arrayKey(int i) {
+<span class="fc" id="L1390">        return &quot;x&quot; + String.valueOf(i);</span>
+    }
+
+    /**
+     * Get the serialization tag for this object.
+     *
+     * @return The tag.
+     */
+    public abstract String getXMLTagName();
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="fc bfc" id="L1408" title="All 2 branches covered.">        if (o instanceof FreeColObject) {</span>
+<span class="fc" id="L1409">            FreeColObject other = (FreeColObject)o;</span>
+<span class="fc" id="L1410">            return Utils.equals(this.id, other.id);</span>
+        }
+<span class="fc" id="L1412">        return false;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L1420">        return Utils.hashCode(this.id);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L1428">        return getClass().getName() + &quot;:&quot; + getId();</span>
+        //+ &quot; (super hashcode: &quot; + Integer.toHexString(super.hashCode()) + &quot;)&quot;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

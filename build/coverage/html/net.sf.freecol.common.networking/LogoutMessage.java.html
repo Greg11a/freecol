@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogoutMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">LogoutMessage.java</span></div><h1>LogoutMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Game.LogoutReason;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.networking.ChangeSet.See;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+import net.sf.freecol.server.model.ServerPlayer;
+import net.sf.freecol.server.model.Session;
+
+
+/**
+ * The message sent when logging out.
+ */
+public class LogoutMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;logout&quot;;
+    private static final String PLAYER_TAG = &quot;player&quot;;
+    private static final String REASON_TAG = &quot;reason&quot;;
+
+
+    /**
+     * Create a new {@code LogoutMessage}.
+     *
+     * Note: The logout reason is non-i18n for now as it is just logged.
+     *
+     * @param player The {@code Player} that has logged out.
+     * @param reason A reason for logging out.
+     */
+    public LogoutMessage(Player player, LogoutReason reason) {
+<span class="nc" id="L55">        super(TAG, PLAYER_TAG, player.getId(),</span>
+<span class="nc" id="L56">              REASON_TAG, String.valueOf(reason));</span>
+<span class="nc" id="L57">    }</span>
+
+    /**
+     * Create a new {@code LogoutMessage} from a stream.
+     *
+     * @param game The {@code Game} to read within.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public LogoutMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L68">        super(TAG, xr, PLAYER_TAG, REASON_TAG);</span>
+<span class="nc" id="L69">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    public MessagePriority getPriority() {
+<span class="nc" id="L76">        return MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+        // Ignored
+<span class="nc" id="L85">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L92">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L93">        final Player player = getPlayer(game);</span>
+<span class="nc" id="L94">        final LogoutReason reason = getReason();</span>
+
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (player == null) return;</span>
+
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (freeColClient.isInGame()) {</span>
+<span class="nc" id="L99">            igc(freeColClient).logoutHandler(player, reason);</span>
+
+        } else {
+<span class="nc" id="L102">            pgc(freeColClient).logoutHandler(player, reason);</span>
+        }
+<span class="nc" id="L104">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (serverPlayer == null) return null;</span>
+<span class="nc" id="L113">        logger.info(&quot;Handling logout by &quot; + serverPlayer.getName());</span>
+
+<span class="nc" id="L115">        LogoutReason reason = getReason();</span>
+<span class="nc" id="L116">        ChangeSet cs = null;</span>
+<span class="nc bnc" id="L117" title="All 4 branches missed.">        switch (freeColServer.getServerState()) {</span>
+        case PRE_GAME:
+        case LOAD_GAME:
+<span class="nc" id="L120">            break;</span>
+        case IN_GAME:
+<span class="nc" id="L122">            boolean endTurn = false;</span>
+<span class="nc bnc" id="L123" title="All 4 branches missed.">            switch (reason) {</span>
+            case DEFEATED:
+<span class="nc" id="L125">                endTurn = true;</span>
+<span class="nc" id="L126">                break;</span>
+            case LOGIN: // FIXME: should go away
+            case LOGOUT:
+<span class="nc" id="L129">                break;</span>
+            case MAIN_TITLE: case NEW_GAME: case QUIT:
+<span class="nc bnc" id="L131" title="All 4 branches missed.">                if (freeColServer.getSinglePlayer() || serverPlayer.isAdmin()) {</span>
+                    // End completely for single player, or multiplayer admin
+<span class="nc" id="L133">                    freeColServer.endGame();</span>
+                } else {
+<span class="nc" id="L135">                    endTurn = true;</span>
+                    // FIXME: turn multiplayer withdrawing player into an AI?
+                }
+<span class="nc" id="L138">                break;</span>
+            case RECONNECT:
+                break;
+            }
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            if (endTurn</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">                &amp;&amp; freeColServer.getGame().getCurrentPlayer() == serverPlayer) {</span>
+<span class="nc" id="L144">                cs = freeColServer.getInGameController().endTurn(serverPlayer);</span>
+            }
+            break;
+        case END_GAME:
+<span class="nc" id="L148">            return null;</span>
+        }
+
+        // Confirm the logout with the given reason.
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (cs == null) cs = new ChangeSet();</span>
+        
+        // TODO: Do other players need to know about the results?
+<span class="nc" id="L155">        Session.completeAll(new ChangeSet());</span>
+        
+<span class="nc" id="L157">        cs.add(See.only(serverPlayer), new LogoutMessage(serverPlayer, reason));</span>
+
+        // Update the metaserver
+<span class="nc" id="L160">        freeColServer.updateMetaServer();</span>
+
+<span class="nc" id="L162">        return cs;</span>
+    }
+
+
+    // Public interface
+
+    /**
+     * Get the player logging out.
+     *
+     * @param game A {@code Game} to find the player in.
+     * @return The player found.
+     */
+    public Player getPlayer(Game game) {
+<span class="nc" id="L175">        return game.getFreeColGameObject(getStringAttribute(PLAYER_TAG), Player.class);</span>
+    }
+
+    /**
+     * Get the reason for logging out.
+     *
+     * @return The {@code LogoutReason}.
+     */
+    public LogoutReason getReason() {
+<span class="nc" id="L184">        return Enum.valueOf(LogoutReason.class, getStringAttribute(REASON_TAG));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

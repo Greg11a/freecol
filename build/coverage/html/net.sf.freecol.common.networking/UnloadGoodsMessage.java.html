@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnloadGoodsMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">UnloadGoodsMessage.java</span></div><h1>UnloadGoodsMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent when unloading goods.
+ */
+public class UnloadGoodsMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;unloadGoods&quot;;
+    private static final String AMOUNT_TAG = &quot;amount&quot;;
+    private static final String CARRIER_TAG = &quot;carrier&quot;;
+    private static final String TYPE_TAG = &quot;type&quot;;
+
+
+    /**
+     * Create a new {@code UnloadGoodsMessage}.
+     *
+     * @param goodsType The {@code GoodsType} to unload.
+     * @param amount The amount of goods to unload.
+     * @param carrier The {@code Unit} carrying the goods.
+     */
+    public UnloadGoodsMessage(GoodsType goodsType, int amount, Unit carrier) {
+<span class="nc" id="L52">        super(TAG, TYPE_TAG, goodsType.getId(),</span>
+<span class="nc" id="L53">              AMOUNT_TAG, String.valueOf(amount),</span>
+<span class="nc" id="L54">              CARRIER_TAG, carrier.getId());</span>
+<span class="nc" id="L55">    }</span>
+
+    /**
+     * Create a new {@code UnloadGoodsMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to (null here).
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public UnloadGoodsMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L66">        super(TAG, xr, TYPE_TAG, AMOUNT_TAG, CARRIER_TAG);</span>
+<span class="nc" id="L67">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean currentPlayerMessage() {
+<span class="nc" id="L75">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L83">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc" id="L92">        final Specification spec = freeColServer.getSpecification();</span>
+<span class="nc" id="L93">        final String typeId = getStringAttribute(TYPE_TAG);</span>
+<span class="nc" id="L94">        final int amount = getIntegerAttribute(AMOUNT_TAG, -1);</span>
+<span class="nc" id="L95">        final String carrierId = getStringAttribute(CARRIER_TAG);</span>
+        
+        Unit carrier;
+        try {
+<span class="nc" id="L99">            carrier = serverPlayer.getOurFreeColGameObject(carrierId, Unit.class);</span>
+<span class="nc" id="L100">        } catch (Exception e) {</span>
+<span class="nc" id="L101">            return serverPlayer.clientError(e.getMessage());</span>
+<span class="nc" id="L102">        }</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (!carrier.canCarryGoods()) {</span>
+<span class="nc" id="L104">            return serverPlayer.clientError(&quot;Not a goods carrier: &quot;</span>
+                + carrierId);
+        }
+        // Do not check location, carriers can dump goods anywhere
+
+<span class="nc" id="L109">        GoodsType type = spec.getGoodsType(typeId);</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L111">            return serverPlayer.clientError(&quot;Not a goods type: &quot; + typeId);</span>
+        }
+
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (amount &lt;= 0) {</span>
+<span class="nc" id="L115">            return serverPlayer.clientError(&quot;Invalid amount: &quot; + amount);</span>
+        }
+<span class="nc" id="L117">        int present = carrier.getGoodsCount(type);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (present &lt; amount) {</span>
+<span class="nc" id="L119">            return serverPlayer.clientError(&quot;Attempt to unload &quot; + amount</span>
+<span class="nc" id="L120">                + &quot; &quot; + type.getId() + &quot; but only &quot; + present + &quot; present&quot;);</span>
+        }
+
+        // Try to unload.
+<span class="nc" id="L124">        return igc(freeColServer)</span>
+<span class="nc" id="L125">            .unloadGoods(serverPlayer, type, amount, carrier);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

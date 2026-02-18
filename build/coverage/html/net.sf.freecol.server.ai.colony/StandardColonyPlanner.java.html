@@ -1,0 +1,1020 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StandardColonyPlanner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.colony</a> &gt; <span class="el_source">StandardColonyPlanner.java</span></div><h1>StandardColonyPlanner.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai.colony;
+
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.BuildingType;
+import net.sf.freecol.common.model.FeatureContainer;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Modifier;
+import net.sf.freecol.common.model.ProductionInfo;
+import net.sf.freecol.common.model.ProductionType;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Turn;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.model.production.BuildingProductionCalculator;
+import net.sf.freecol.common.model.production.WorkerAssignment;
+import net.sf.freecol.server.ai.colony.TentativeColonyPlan.TentativeColonyTilePlan;
+import net.sf.freecol.server.ai.colony.TentativeColonyPlan.TentativeProduction;
+import net.sf.freecol.server.ai.colony.plan.InitialSteps;
+
+/**
+ * The default {@code ColonyPlanner} for European players.
+ */
+public final class StandardColonyPlanner implements ColonyPlanner {
+
+<span class="nc" id="L54">    public StandardColonyPlanner() {</span>
+        
+<span class="nc" id="L56">    }</span>
+    
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ColonyPlan createPlan(Tile centerTile) {
+<span class="nc" id="L64">        final TentativeColonyPlan tcp = new TentativeColonyPlan(centerTile);</span>
+        
+<span class="nc" id="L66">        InitialSteps.produceGoodsTypesEnhancedByBonusResources(tcp);</span>
+<span class="nc" id="L67">        InitialSteps.produceFoodOnTilesWhereNoOtherPossibleOutputExists(tcp);</span>
+<span class="nc" id="L68">        InitialSteps.produceRawAndManufactoredUnstorableBuildingMaterials(tcp);</span>
+
+<span class="nc" id="L70">        stopWhenNoMoreFoodIsAvailable(tcp,</span>
+            /*
+             *  If needed, this ensures sufficient food by reorganizing the workers
+             *  assigned above.
+             *  
+             *  Every other step adds just a single colonist, at a time, before
+             *  checking if more food need to be produced.
+             */
+            StandardColonyPlanner::produceFoodForConsumption,
+            
+            StandardColonyPlanner::produceLibertyBells,
+            StandardColonyPlanner::produceRawMaterialForStorableBuildingMaterials, // ore.
+            StandardColonyPlanner::produceStorableBuildingMaterials, // tools+muskets
+            StandardColonyPlanner::produceRefinedGoods,
+            StandardColonyPlanner::produceLibertyBells,
+            
+            StandardColonyPlanner::produceRawMaterialsToAvoidDeficits,
+            StandardColonyPlanner::produceMoreOfExistingRefinedGoodsAlongWithRequiredRawMaterials,
+            
+            StandardColonyPlanner::produceRawMaterialsToAvoidDeficits,
+            StandardColonyPlanner::produceMoreOfExistingRefinedGoodsAlongWithRequiredRawMaterials,
+            
+            StandardColonyPlanner::produceGoodsTypeForWeapons, // muskets
+
+            StandardColonyPlanner::produceNewRawMaterialAndRefine,
+            StandardColonyPlanner::produceRawMaterialsToAvoidDeficits,
+            StandardColonyPlanner::produceMoreOfExistingRefinedGoodsAlongWithRequiredRawMaterials,
+
+            StandardColonyPlanner::produceLibertyBells,
+            
+            StandardColonyPlanner::produceRawMaterialsJustForExportIfNoIndustry,
+            StandardColonyPlanner::produceRawMaterialsJustForExportIfNoIndustry,
+            StandardColonyPlanner::produceRawMaterialsJustForExportIfNoIndustry,
+            
+            StandardColonyPlanner::produceEducation,
+            
+            StandardColonyPlanner::produceFoodOnRemainingTiles,
+            
+            StandardColonyPlanner::produceImmigrationGoods // crosses
+        );
+        
+<span class="nc" id="L111">        buildDocks(tcp);</span>
+<span class="nc" id="L112">        buildShipyard(tcp);</span>
+<span class="nc" id="L113">        buildExportBuildings(tcp); // custom house</span>
+<span class="nc" id="L114">        buildDefensiveBuildings(tcp);</span>
+<span class="nc" id="L115">        buildRequirementsForMilitaryLandUnitBuilding(tcp); // armory for artillery</span>
+<span class="nc" id="L116">        buildAutoProductionBuildings(tcp); // stables</span>
+<span class="nc" id="L117">        buildStorage(tcp);</span>
+
+<span class="nc" id="L119">        return tcp.toColonyPlan();</span>
+    }
+    
+    
+    public void buildAutoProductionBuildings(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L125">            return;</span>
+        }
+        
+<span class="nc" id="L128">        final Specification s = tcp.getSpecification();</span>
+<span class="nc" id="L129">        final List&lt;BuildingType&gt; autoProducers = s.getTypesWithAbility(BuildingType.class, Ability.AUTO_PRODUCTION).stream()</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                .filter(bt -&gt; bt.getUpgradesTo() == null)</span>
+<span class="nc" id="L131">                .collect(Collectors.toList());</span>
+<span class="nc" id="L132">        final TentativeProduction production = tcp.determineTentativeProductionAndDeficits();</span>
+        
+<span class="nc" id="L134">        final int MINIMUM_INPUT_REQUIRED = 8;</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        for (BuildingType buildingType : autoProducers) {</span>
+<span class="nc" id="L136">            final boolean requiredInputProduced = buildingType.getAvailableProductionTypes(true).stream()</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">                    .filter(pt -&gt; pt.getInputs().allMatch(ag -&gt; production.getAmountProduced(ag.getType().getStoredAs()) &gt; MINIMUM_INPUT_REQUIRED))</span>
+<span class="nc" id="L138">                    .findAny()</span>
+<span class="nc" id="L139">                    .isPresent();</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">            if (!requiredInputProduced) {</span>
+<span class="nc" id="L141">                continue;</span>
+            }
+            
+<span class="nc" id="L144">            tcp.addBuildable(buildingType);</span>
+<span class="nc" id="L145">        }</span>
+<span class="nc" id="L146">    }</span>
+
+
+    public void buildShipyard(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L151">            return;</span>
+        }
+        
+<span class="nc" id="L154">        final Tile centerTile = tcp.getCenterTile();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (!centerTile.isHighSeasConnected()) {</span>
+<span class="nc" id="L156">            return;</span>
+        }
+        
+        // TODO: Don't produce shipyard if artillery production already allowed.
+        
+<span class="nc" id="L161">        final Specification s = tcp.getSpecification();</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        for (BuildingType bt : shipEnablingBuildings(s)) {</span>
+<span class="nc" id="L163">            tcp.addBuildable(bt);</span>
+<span class="nc" id="L164">            break;</span>
+        }
+<span class="nc" id="L166">    }</span>
+    
+    public void buildStorage(TentativeColonyPlan tcp) {
+<span class="nc" id="L169">        final Specification s = tcp.getSpecification();</span>
+<span class="nc" id="L170">        final List&lt;BuildingType&gt; warehouseBuildingTypes = s.getBuildingTypeList()</span>
+<span class="nc" id="L171">                .stream()</span>
+<span class="nc bnc" id="L172" title="All 4 branches missed.">                .filter(bt -&gt; bt.hasModifier(Modifier.WAREHOUSE_STORAGE) &amp;&amp; bt.getUpgradesTo() == null)</span>
+<span class="nc" id="L173">                .collect(Collectors.toList());</span>
+<span class="nc" id="L174">        warehouseBuildingTypes.stream().forEach(bt -&gt; tcp.addBuildable(bt));</span>
+<span class="nc" id="L175">    }</span>
+
+
+    public void buildDocks(TentativeColonyPlan tcp) {
+<span class="nc" id="L179">        final boolean needsDocks = tcp.getTentativeColonyTilePlans().stream()</span>
+<span class="nc bnc" id="L180" title="All 4 branches missed.">            .filter(tp -&gt; tp != null &amp;&amp; tp.getTile() != null)</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">            .anyMatch(tp -&gt; !tp.getTile().isLand());</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (!needsDocks) {</span>
+<span class="nc" id="L183">            return;</span>
+        }
+<span class="nc" id="L185">        final BuildingType docks = tcp.getSpecification().getBuildingTypeList()</span>
+<span class="nc" id="L186">                .stream()</span>
+<span class="nc" id="L187">                .filter(bt -&gt; bt.hasAbility(Ability.PRODUCE_IN_WATER))</span>
+<span class="nc" id="L188">                .findFirst()</span>
+<span class="nc" id="L189">                .orElse(null);</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (docks == null) {</span>
+<span class="nc" id="L191">            return;</span>
+        }
+<span class="nc" id="L193">        tcp.addBuildable(docks);</span>
+<span class="nc" id="L194">    }</span>
+
+    public void buildRequirementsForMilitaryLandUnitBuilding(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L198">            return;</span>
+        }
+        
+<span class="nc" id="L201">        final Tile centerTile = tcp.getCenterTile();</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">        if (centerTile.isHighSeasConnected()) {</span>
+            // Shipyard already built.
+<span class="nc" id="L204">            return;</span>
+        }
+        
+<span class="nc" id="L207">        final Specification s = tcp.getSpecification();</span>
+<span class="nc" id="L208">        final BuildingType bt = lowestLevelMilitaryLandUnitEnablingBuildings(s);</span>
+<span class="nc" id="L209">        tcp.addBuildable(bt);</span>
+<span class="nc" id="L210">    }</span>
+
+
+    public void buildDefensiveBuildings(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L215">            return;</span>
+        }
+        
+<span class="nc" id="L218">        final Specification s = tcp.getSpecification();</span>
+<span class="nc" id="L219">        final List&lt;BuildingType&gt; defensiveBuildings = s.getBuildingTypeList().stream()</span>
+<span class="nc" id="L220">                .filter(bt -&gt; bt.isDefenceType())</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">                .filter(bt -&gt; bt.getUpgradesTo() == null)</span>
+<span class="nc" id="L222">                .collect(Collectors.toList());</span>
+        
+<span class="nc bnc" id="L224" title="All 2 branches missed.">        for (BuildingType bt : defensiveBuildings) {</span>
+<span class="nc" id="L225">            tcp.addBuildable(bt);</span>
+<span class="nc" id="L226">        }</span>
+<span class="nc" id="L227">    }</span>
+
+
+    public void buildExportBuildings(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L232">            return;</span>
+        }
+        
+<span class="nc" id="L235">        final Specification s = tcp.getSpecification();</span>
+        
+<span class="nc" id="L237">        final List&lt;BuildingType&gt; exportBuildings = s.getTypesWithAbility(BuildingType.class, Ability.EXPORT).stream()</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">                .filter(bt -&gt; bt.getUpgradesTo() == null)</span>
+<span class="nc" id="L239">                .collect(Collectors.toList());</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        for (BuildingType bt : exportBuildings) {</span>
+<span class="nc" id="L241">            tcp.addBuildable(bt);</span>
+<span class="nc" id="L242">            break;</span>
+        }
+<span class="nc" id="L244">    }</span>
+
+
+    @SafeVarargs
+    public static void stopWhenNoMoreFoodIsAvailable(TentativeColonyPlan tcp, Function&lt;TentativeColonyPlan, Boolean&gt;... functions) {
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        for (Function&lt;TentativeColonyPlan, Boolean&gt; function : functions) {</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">            if (!function.apply(tcp)) {</span>
+<span class="nc" id="L251">                return;</span>
+            }
+        }
+<span class="nc" id="L254">    }</span>
+    
+    public static boolean produceRawMaterialsToAvoidDeficits(TentativeColonyPlan tcp) {
+<span class="nc" id="L257">        final TentativeProduction tentativeProduction = tcp.determineTentativeProductionAndDeficits();</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        for (AbstractGoods deficitGoods : tentativeProduction.getDeficits()) {</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">            if (deficitGoods.getAmount() == 0) {</span>
+<span class="nc" id="L260">                continue;</span>
+            }
+            
+<span class="nc" id="L263">            final Tile bestTileToAvoidDeficit = tcp.findBestUnassignedTileForProducing(deficitGoods.getType());</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">            if (bestTileToAvoidDeficit == null) {</span>
+<span class="nc" id="L265">                continue;</span>
+            }
+<span class="nc" id="L267">            tcp.addOrReplace(TentativeColonyTilePlan.expertProduction(bestTileToAvoidDeficit, deficitGoods.getType()));</span>
+            
+<span class="nc bnc" id="L269" title="All 2 branches missed.">            if (!produceFoodForConsumption(tcp)) {</span>
+<span class="nc" id="L270">                return false;</span>
+            }
+<span class="nc" id="L272">        }</span>
+<span class="nc" id="L273">        return true;</span>
+    }
+    
+    public static boolean produceMoreOfExistingRefinedGoodsAlongWithRequiredRawMaterials(TentativeColonyPlan tcp) {
+<span class="nc" id="L277">        final Map&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; buildingWorkerPlansByType = tcp.getBuildingWorkerPlansByType();</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">        for (Entry&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; building : buildingWorkerPlansByType.entrySet()) {</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">            if (building.getKey().getWorkPlaces() &lt;= building.getValue().size()) {</span>
+<span class="nc" id="L280">                continue;</span>
+            }
+<span class="nc" id="L282">            final List&lt;ProductionType&gt; productionTypes = building.getKey().getAvailableProductionTypes(false);</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">            if (productionTypes.isEmpty()) {</span>
+<span class="nc" id="L284">                continue;</span>
+            }
+<span class="nc" id="L286">            final ProductionType pt = productionTypes.get(0);</span>
+<span class="nc bnc" id="L287" title="All 6 branches missed.">            if (!pt.getInputs().allMatch(ag -&gt; ag.getType().isRawMaterial() &amp;&amp; !ag.getType().isRawBuildingMaterial() )) {</span>
+<span class="nc" id="L288">                continue;</span>
+            }
+<span class="nc bnc" id="L290" title="All 2 branches missed.">            for (AbstractGoods rawMaterial : pt.getInputList()) {</span>
+<span class="nc" id="L291">                final Tile bestTile = tcp.findBestUnassignedTileForProducing(rawMaterial.getType());</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">                if (bestTile == null) {</span>
+<span class="nc" id="L293">                    continue;</span>
+                }
+<span class="nc" id="L295">                tcp.addOrReplace(TentativeColonyTilePlan.expertProduction(bestTile, rawMaterial.getType()));</span>
+                
+<span class="nc bnc" id="L297" title="All 2 branches missed.">                if (!produceRefinedGoods(tcp)) {</span>
+<span class="nc" id="L298">                    return false;</span>
+                }
+<span class="nc" id="L300">            }</span>
+<span class="nc" id="L301">        }</span>
+<span class="nc" id="L302">        return true;</span>
+    }
+    
+    public static boolean produceFoodOnRemainingTiles(TentativeColonyPlan tcp) {
+<span class="nc" id="L306">        final int consumedByOneWorker = tcp.foodConsumedByOneWorker();</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        for (Tile workTile : tcp.unassignedWorkTiles()) {</span>
+<span class="nc" id="L308">            final AbstractGoods ag = workTile.getMaximumPotentialFoodProductionWithExpert();</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">            if (ag.getAmount() &lt;= consumedByOneWorker) {</span>
+<span class="nc" id="L310">                continue;</span>
+            }
+<span class="nc" id="L312">            tcp.addOrReplace(TentativeColonyTilePlan.expertProduction(workTile, ag.getType()));</span>
+<span class="nc" id="L313">        }</span>
+<span class="nc" id="L314">        return true;</span>
+    }
+    
+    public static boolean produceRefinedGoods(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L318" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L319">            return true;</span>
+        }
+<span class="nc" id="L321">        final List&lt;AbstractGoods&gt; tentativeProduction = tcp.determineTentativeProduction();</span>
+<span class="nc" id="L322">        final List&lt;AbstractGoods&gt; existingRawGoods = tentativeProduction.stream()</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">                .filter(ag -&gt; ag.getType().isRawMaterial()</span>
+                        //&amp;&amp; ag.getType().isNewWorldGoodsType()
+<span class="nc bnc" id="L325" title="All 2 branches missed.">                        &amp;&amp; ag.getAmount() &gt; 0</span>
+<span class="nc bnc" id="L326" title="All 2 branches missed.">                        &amp;&amp; !ag.getType().isRawBuildingMaterial()</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">                        &amp;&amp; !ag.getType().isBuildingMaterial())</span>
+<span class="nc" id="L328">                .sorted((a, b) -&gt; Integer.compare(b.getAmount(), a.getAmount()))</span>
+<span class="nc" id="L329">                .collect(Collectors.toList());</span>
+        
+<span class="nc bnc" id="L331" title="All 2 branches missed.">        for (AbstractGoods inputGoods : existingRawGoods) {</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">            if (!produceRefinedGoodsOf(tcp, inputGoods.getType())) {</span>
+<span class="nc" id="L333">                return false;</span>
+            }
+<span class="nc" id="L335">        }</span>
+        
+<span class="nc" id="L337">        return true;</span>
+    }
+    
+    private static boolean produceRefinedGoodsOf(TentativeColonyPlan tcp, GoodsType inputGoods) {
+<span class="nc" id="L341">        List&lt;AbstractGoods&gt; tentativeProduction = tcp.determineTentativeProduction();</span>
+
+<span class="nc" id="L343">        final Specification s = tcp.getSpecification();</span>
+<span class="nc" id="L344">        final List&lt;BuildingType&gt; topLevelBuildings = s.getBuildingTypeList().stream()</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">                .filter(bt -&gt; bt.getUpgradesTo() == null)</span>
+<span class="nc" id="L346">                .collect(Collectors.toList());</span>
+        
+<span class="nc bnc" id="L348" title="All 2 branches missed.">        for (BuildingType buildingType : topLevelBuildings) {</span>
+<span class="nc" id="L349">            final List&lt;ProductionType&gt; productionTypes = buildingType.getAvailableProductionTypes(false)</span>
+<span class="nc" id="L350">                    .stream()</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">                    .filter(pt -&gt; pt.getInputs().anyMatch(ag -&gt; ag.getType() == inputGoods))</span>
+<span class="nc" id="L352">                    .sorted((a, b) -&gt; Integer.compare(b.getOutputs().collect(Collectors.summingInt(AbstractGoods::getAmount)),</span>
+<span class="nc" id="L353">                            a.getOutputs().collect(Collectors.summingInt(AbstractGoods::getAmount))))</span>
+<span class="nc" id="L354">                    .collect(Collectors.toList());</span>
+            
+<span class="nc bnc" id="L356" title="All 2 branches missed.">            if (productionTypes.isEmpty()) {</span>
+<span class="nc" id="L357">                continue;</span>
+            }
+            
+<span class="nc" id="L360">            final ProductionType productionType = productionTypes.get(0);</span>
+<span class="nc" id="L361">            final GoodsType producedGoodsType = productionType.getBestOutputType();</span>
+<span class="nc" id="L362">            final UnitType unitType = s.getExpertForProducing(producedGoodsType);</span>
+            
+<span class="nc" id="L364">            final int maximumWorkPlaces = buildingType.getWorkPlaces();</span>
+
+<span class="nc" id="L366">            final BuildingProductionCalculator bpc = new BuildingProductionCalculator(null, new FeatureContainer(), 2);</span>
+<span class="nc" id="L367">            final ProductionInfo pi = bpc.getAdjustedProductionInfo(buildingType, new Turn(0), List.of(new WorkerAssignment(unitType, productionType)), List.of(), List.of(), 10_000);</span>
+            
+<span class="nc" id="L369">            final int inputUsedPerWorker = pi.getMaximumConsumption().stream()</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">                    .filter(ag -&gt; ag.getType() == inputGoods)</span>
+<span class="nc" id="L371">                    .map(ag -&gt; ag.getAmount())</span>
+<span class="nc" id="L372">                    .findFirst()</span>
+<span class="nc" id="L373">                    .orElse(0);</span>
+
+<span class="nc" id="L375">            final int maximumAvailableInput = tentativeProduction.stream()</span>
+<span class="nc" id="L376">                    .filter(g -&gt; g.getType().equals(inputGoods))</span>
+<span class="nc" id="L377">                    .findFirst()</span>
+<span class="nc" id="L378">                    .orElseThrow()</span>
+<span class="nc" id="L379">                    .getAmount();</span>
+            
+<span class="nc" id="L381">            int workPlacesUsedBefore = tcp.getBuildingWorkerPlansByType().getOrDefault(buildingType, List.of()).size();</span>
+<span class="nc" id="L382">            int workPlacesUsedNow = 0;</span>
+<span class="nc bnc" id="L383" title="All 4 branches missed.">            while (workPlacesUsedNow + workPlacesUsedBefore &lt; maximumWorkPlaces &amp;&amp; inputUsedPerWorker * (workPlacesUsedNow + 1) &lt; maximumAvailableInput) {</span>
+<span class="nc" id="L384">                tcp.addBuildable(buildingType);</span>
+<span class="nc" id="L385">                final WorkerPlan workerPlan = new WorkerPlan(unitType, new PlannedWorkLocation(buildingType), List.of(producedGoodsType));</span>
+<span class="nc" id="L386">                tcp.addBuildingWorkerPlan(workerPlan);</span>
+<span class="nc" id="L387">                workPlacesUsedNow++;</span>
+<span class="nc bnc" id="L388" title="All 2 branches missed.">                if (!produceFoodForConsumption(tcp)) {</span>
+<span class="nc" id="L389">                    return false;</span>
+                }
+<span class="nc" id="L391">            }</span>
+<span class="nc" id="L392">        }</span>
+<span class="nc" id="L393">        return true;</span>
+    }
+    
+    public static boolean produceImmigrationGoods(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L397" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L398">            return true;</span>
+        }
+        
+<span class="nc" id="L401">        final Specification s = tcp.getSpecification();</span>
+<span class="nc bnc" id="L402" title="All 2 branches missed.">        for (BuildingType bt : immigrationProductionBuildings(s)) {</span>
+<span class="nc" id="L403">            final List&lt;WorkerPlan&gt; currentWorkers = tcp.getTentativeBuildingPlans(bt);</span>
+<span class="nc bnc" id="L404" title="All 2 branches missed.">            if (currentWorkers.size() &gt;= bt.getWorkPlaces()) {</span>
+<span class="nc" id="L405">                continue;</span>
+            }
+            
+<span class="nc" id="L408">            tcp.addBuildable(bt);</span>
+            
+<span class="nc" id="L410">            final GoodsType producedGoodsType = bt.getProducedGoodsType();</span>
+<span class="nc" id="L411">            final UnitType unitType = s.getExpertForProducing(producedGoodsType);</span>
+            
+<span class="nc bnc" id="L413" title="All 2 branches missed.">            for (int i=0; i&lt;bt.getWorkPlaces() - currentWorkers.size(); i++) {</span>
+<span class="nc" id="L414">                final WorkerPlan workerPlan = new WorkerPlan(unitType, new PlannedWorkLocation(bt), List.of(producedGoodsType));</span>
+<span class="nc" id="L415">                tcp.addBuildingWorkerPlan(workerPlan);</span>
+            
+<span class="nc bnc" id="L417" title="All 2 branches missed.">                if (!produceFoodForConsumption(tcp)) {</span>
+<span class="nc" id="L418">                    return false;</span>
+                }
+            }
+<span class="nc" id="L421">        }</span>
+<span class="nc" id="L422">        return true;</span>
+    }
+    
+    public static boolean produceEducation(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L426" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L427">            return true;</span>
+        }
+        
+<span class="nc" id="L430">        int foodSurplus = tcp.determineFoodSurplus();</span>
+<span class="nc bnc" id="L431" title="All 2 branches missed.">        if (foodSurplus &lt; tcp.foodConsumedByOneWorker() * 6) {</span>
+<span class="nc bnc" id="L432" title="All 2 branches missed.">            for (Tile foodTile : tcp.prioritizeUnassignedTilesForFoodProduction()) {</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">                if (foodTile == null) {</span>
+<span class="nc" id="L434">                    break;</span>
+                }
+<span class="nc" id="L436">                final AbstractGoods foodGoods = foodTile.getMaximumPotentialFoodProductionWithExpert();</span>
+<span class="nc bnc" id="L437" title="All 4 branches missed.">                if (foodGoods == null || foodGoods.getAmount() &lt; 5) {</span>
+<span class="nc" id="L438">                    break;</span>
+                }
+<span class="nc" id="L440">                tcp.addOrReplace(TentativeColonyTilePlan.expertProduction(foodTile, foodGoods.getType()));</span>
+<span class="nc" id="L441">                foodSurplus = tcp.determineFoodSurplus();</span>
+<span class="nc bnc" id="L442" title="All 2 branches missed.">                if (foodSurplus &gt;= tcp.foodConsumedByOneWorker() * 6) {</span>
+<span class="nc" id="L443">                    break;</span>
+                }
+<span class="nc" id="L445">            }</span>
+        }
+<span class="nc" id="L447">        final Specification s = tcp.getSpecification();</span>
+        
+        final int teachers;
+        final int convertExistingUnitsToStudents;
+<span class="nc bnc" id="L451" title="All 2 branches missed.">        if (foodSurplus &gt;= tcp.foodConsumedByOneWorker() * 6) {</span>
+<span class="nc" id="L452">            teachers = 3;</span>
+<span class="nc" id="L453">            convertExistingUnitsToStudents = 0;</span>
+<span class="nc bnc" id="L454" title="All 2 branches missed.">        } else if (foodSurplus &gt;= tcp.foodConsumedByOneWorker() * 5) {</span>
+<span class="nc" id="L455">            teachers = 3;</span>
+<span class="nc" id="L456">            convertExistingUnitsToStudents = 1;</span>
+<span class="nc bnc" id="L457" title="All 2 branches missed.">        } else if (foodSurplus &gt;= tcp.foodConsumedByOneWorker() * 4) {</span>
+<span class="nc" id="L458">            teachers = 3;</span>
+<span class="nc" id="L459">            convertExistingUnitsToStudents = 2;</span>
+<span class="nc bnc" id="L460" title="All 2 branches missed.">        } else if (foodSurplus &gt;= tcp.foodConsumedByOneWorker() * 3) {</span>
+<span class="nc" id="L461">            teachers = 2;</span>
+<span class="nc" id="L462">            convertExistingUnitsToStudents = 1;</span>
+<span class="nc bnc" id="L463" title="All 2 branches missed.">        } else if (foodSurplus &gt;= tcp.foodConsumedByOneWorker() * 2) {</span>
+<span class="nc" id="L464">            teachers = 2;</span>
+<span class="nc" id="L465">            convertExistingUnitsToStudents = 2;</span>
+        } else {
+<span class="nc" id="L467">            teachers = 1;</span>
+<span class="nc" id="L468">            convertExistingUnitsToStudents = 1;</span>
+        }
+<span class="nc" id="L470">        final int newStudents = teachers - convertExistingUnitsToStudents;</span>
+        
+<span class="nc" id="L472">        final List&lt;BuildingType&gt; teachingBuildings = s.getTypesWithAbility(BuildingType.class, Ability.TEACH);</span>
+        
+<span class="nc" id="L474">        final BuildingType educationBuildingType = teachingBuildings.stream()</span>
+<span class="nc bnc" id="L475" title="All 2 branches missed.">                .filter(bt -&gt; (bt.getWorkPlaces() == teachers))</span>
+<span class="nc" id="L476">                .findAny()</span>
+<span class="nc" id="L477">                .orElse(null);</span>
+        
+<span class="nc bnc" id="L479" title="All 2 branches missed.">        if (educationBuildingType == null) {</span>
+<span class="nc" id="L480">            return true;</span>
+        }
+        
+        // TODO: Use a generalized type for the teacher.
+<span class="nc" id="L484">        final UnitType defaultUnitType = s.getUnitTypeList().stream()</span>
+<span class="nc bnc" id="L485" title="All 4 branches missed.">                .filter(ut -&gt; ut.getSkill() &lt;= educationBuildingType.getMaximumSkill() &amp;&amp; educationBuildingType.canAdd(ut))</span>
+<span class="nc bnc" id="L486" title="All 2 branches missed.">                .filter(ut -&gt; ut.getSkillTaught() != null)</span>
+<span class="nc bnc" id="L487" title="All 2 branches missed.">                .filter(ut -&gt; ut.getPrice() &gt; 0)</span>
+<span class="nc" id="L488">                .sorted(Comparator.&lt;UnitType&gt;comparingInt(ut -&gt; {</span>
+<span class="nc" id="L489">                        final UnitType studentType = ut.getSkillTaught();</span>
+<span class="nc bnc" id="L490" title="All 2 branches missed.">                        if (studentType == null) {</span>
+<span class="nc" id="L491">                            return 0;</span>
+                        }
+<span class="nc" id="L493">                        return studentType.getSkill();</span>
+                    })
+<span class="nc" id="L495">                    .thenComparingInt(ut -&gt; {</span>
+<span class="nc" id="L496">                        final UnitType studentType = ut.getSkillTaught();</span>
+<span class="nc bnc" id="L497" title="All 2 branches missed.">                        if (studentType == null) {</span>
+<span class="nc" id="L498">                            return 0;</span>
+                        }
+<span class="nc" id="L500">                        return studentType.getPrice();</span>
+                    })
+<span class="nc" id="L502">                    .reversed()</span>
+                )
+<span class="nc" id="L504">                .findFirst()</span>
+<span class="nc" id="L505">                .orElse(null);</span>
+        
+<span class="nc bnc" id="L507" title="All 2 branches missed.">        if (defaultUnitType == null) {</span>
+<span class="nc" id="L508">            return true;</span>
+        }
+        
+<span class="nc" id="L511">        tcp.addBuildable(educationBuildingType);</span>
+        
+<span class="nc bnc" id="L513" title="All 2 branches missed.">        for (int i=0; i&lt;teachers; i++) {</span>
+<span class="nc" id="L514">            tcp.addBuildingWorkerPlan(new WorkerPlan(defaultUnitType, new PlannedWorkLocation(educationBuildingType), List.of()));</span>
+        }
+        
+<span class="nc" id="L517">        int convertExistingUnitsToStudentsLeft = convertExistingUnitsToStudents;</span>
+<span class="nc" id="L518">        int newStudentsLeft = newStudents;</span>
+<span class="nc" id="L519">        int removeUnits = 0;</span>
+
+        // First check if an expert can be replaced by two students.
+<span class="nc bnc" id="L522" title="All 4 branches missed.">        if (convertExistingUnitsToStudentsLeft + newStudentsLeft &gt;= 2 || newStudentsLeft &gt;= 1) {</span>
+<span class="nc bnc" id="L523" title="All 2 branches missed.">            for (Entry&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; buildings : tcp.getBuildingWorkerPlansByType().entrySet()) {</span>
+<span class="nc" id="L524">                final BuildingType bt = buildings.getKey();</span>
+<span class="nc bnc" id="L525" title="All 2 branches missed.">                if (bt == educationBuildingType) {</span>
+<span class="nc" id="L526">                    continue;</span>
+                }
+                
+<span class="nc" id="L529">                final List&lt;WorkerPlan&gt; workers = buildings.getValue();</span>
+<span class="nc bnc" id="L530" title="All 4 branches missed.">                if (workers.isEmpty() || bt.getWorkPlaces() &lt;= workers.size()) {</span>
+<span class="nc" id="L531">                    continue;</span>
+                }
+                
+<span class="nc" id="L534">                final WorkerPlan workerPlan = workers.stream()</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">                        .filter(wp -&gt; wp.getUnitType() != s.getDefaultUnitType())</span>
+<span class="nc" id="L536">                        .findAny()</span>
+<span class="nc" id="L537">                        .orElse(null);</span>
+                
+<span class="nc bnc" id="L539" title="All 2 branches missed.">                if (workerPlan == null) {</span>
+<span class="nc" id="L540">                    continue;</span>
+                }
+                
+<span class="nc" id="L543">                final WorkerPlan newWorkerPlan1 = new WorkerPlan(s.getDefaultUnitType(), workerPlan.getPlannedWorkLocation(), workerPlan.getProductionTypes());</span>
+<span class="nc" id="L544">                final WorkerPlan newWorkerPlan2 = new WorkerPlan(s.getDefaultUnitType(), workerPlan.getPlannedWorkLocation(), workerPlan.getProductionTypes());</span>
+                
+<span class="nc" id="L546">                tcp.removeBuildingWorkerPlan(workerPlan);</span>
+<span class="nc" id="L547">                tcp.addBuildingWorkerPlan(newWorkerPlan1);</span>
+<span class="nc" id="L548">                tcp.addBuildingWorkerPlan(newWorkerPlan2);</span>
+                
+<span class="nc bnc" id="L550" title="All 4 branches missed.">                if (convertExistingUnitsToStudentsLeft &gt;= 1 &amp;&amp; newStudentsLeft &gt;= 1) {</span>
+<span class="nc" id="L551">                    convertExistingUnitsToStudentsLeft--;</span>
+<span class="nc" id="L552">                    newStudentsLeft--;</span>
+<span class="nc bnc" id="L553" title="All 2 branches missed.">                } else if (convertExistingUnitsToStudentsLeft &gt;= 2) {</span>
+<span class="nc" id="L554">                    convertExistingUnitsToStudentsLeft -= 2;</span>
+<span class="nc" id="L555">                    removeUnits++;</span>
+<span class="nc bnc" id="L556" title="All 2 branches missed.">                } else if (newStudentsLeft &gt;= 1) {</span>
+<span class="nc" id="L557">                    newStudentsLeft -= 2;</span>
+<span class="nc bnc" id="L558" title="All 2 branches missed.">                    if (newStudentsLeft &lt; 0) {</span>
+<span class="nc" id="L559">                        newStudentsLeft = 0;</span>
+                    }
+                } else {
+<span class="nc" id="L562">                    throw new IllegalArgumentException(&quot;All cases should be covered above: &quot; + newStudentsLeft + &quot;, &quot; + convertExistingUnitsToStudentsLeft);</span>
+                }
+                
+<span class="nc bnc" id="L565" title="All 4 branches missed.">                if (!(convertExistingUnitsToStudentsLeft + newStudentsLeft &gt;= 2 || newStudentsLeft &gt;= 1)) {</span>
+<span class="nc" id="L566">                    break;</span>
+                }
+<span class="nc" id="L568">            }</span>
+        }
+
+<span class="nc" id="L571">        final Set&lt;BuildingType&gt; libertyBellsProductionBuildings = libertyBellsProductionBuildings(s);</span>
+        
+<span class="nc" id="L573">        final int maxTries = convertExistingUnitsToStudentsLeft + removeUnits;</span>
+<span class="nc bnc" id="L574" title="All 4 branches missed.">        for (int i=0; i&lt;maxTries &amp;&amp; convertExistingUnitsToStudentsLeft + removeUnits &gt; 0; i++) {</span>
+            // TODO: First factories without max consumption, then cross producers, then statesmen only as the last step.
+            
+            // Replace statesmen:
+<span class="nc bnc" id="L578" title="All 2 branches missed.">            for (Entry&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; buildings : tcp.getBuildingWorkerPlansByType().entrySet()) {</span>
+<span class="nc" id="L579">                final BuildingType bt = buildings.getKey();</span>
+<span class="nc bnc" id="L580" title="All 2 branches missed.">                if (bt == educationBuildingType) {</span>
+<span class="nc" id="L581">                    continue;</span>
+                }
+<span class="nc bnc" id="L583" title="All 2 branches missed.">                if (!libertyBellsProductionBuildings.contains(bt)) {</span>
+<span class="nc" id="L584">                    continue;</span>
+                }
+                
+<span class="nc" id="L587">                final List&lt;WorkerPlan&gt; workers = buildings.getValue();</span>
+<span class="nc bnc" id="L588" title="All 2 branches missed.">                if (workers.isEmpty()) {</span>
+<span class="nc" id="L589">                    continue;</span>
+                }
+                
+<span class="nc" id="L592">                final WorkerPlan workerPlan = workers.stream()</span>
+<span class="nc bnc" id="L593" title="All 2 branches missed.">                        .filter(wp -&gt; wp.getUnitType() != s.getDefaultUnitType())</span>
+<span class="nc" id="L594">                        .findAny()</span>
+<span class="nc" id="L595">                        .orElse(null);</span>
+                
+<span class="nc bnc" id="L597" title="All 2 branches missed.">                if (workerPlan == null) {</span>
+<span class="nc" id="L598">                    continue;</span>
+                }
+                
+<span class="nc" id="L601">                final WorkerPlan newWorkerPlan1 = new WorkerPlan(s.getDefaultUnitType(), workerPlan.getPlannedWorkLocation(), workerPlan.getProductionTypes());</span>
+<span class="nc" id="L602">                tcp.removeBuildingWorkerPlan(workerPlan);</span>
+<span class="nc bnc" id="L603" title="All 2 branches missed.">                if (removeUnits &gt; 0) {</span>
+<span class="nc" id="L604">                    removeUnits--;</span>
+                } else {
+<span class="nc" id="L606">                    tcp.addBuildingWorkerPlan(newWorkerPlan1);</span>
+<span class="nc" id="L607">                    convertExistingUnitsToStudentsLeft--;</span>
+                }
+                
+<span class="nc bnc" id="L610" title="All 2 branches missed.">                if (convertExistingUnitsToStudentsLeft + removeUnits &lt;= 0) {</span>
+<span class="nc" id="L611">                    break;</span>
+                }
+<span class="nc" id="L613">            }</span>
+        }
+        /*
+         * TODO: Handle if we could not remove or replace sufficient units in the step above.
+         *       However, it should not happen since there are always three statesmen added
+         *       before this step with the current setup. Ideally, we do want this code to
+         *       handle if that is no longer the case, however.
+         */
+        
+        
+<span class="nc bnc" id="L623" title="All 2 branches missed.">        if (newStudentsLeft &gt; 0) {</span>
+<span class="nc bnc" id="L624" title="All 2 branches missed.">            for (Entry&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; buildings : tcp.getBuildingWorkerPlansByType().entrySet()) {</span>
+<span class="nc" id="L625">                final BuildingType bt = buildings.getKey();</span>
+<span class="nc bnc" id="L626" title="All 2 branches missed.">                if (bt == educationBuildingType) {</span>
+<span class="nc" id="L627">                    continue;</span>
+                }
+<span class="nc bnc" id="L629" title="All 2 branches missed.">                if (!libertyBellsProductionBuildings.contains(bt)) {</span>
+<span class="nc" id="L630">                    continue;</span>
+                }
+                
+<span class="nc" id="L633">                final List&lt;WorkerPlan&gt; workers = buildings.getValue();</span>
+<span class="nc bnc" id="L634" title="All 2 branches missed.">                if (workers.size() &gt;= bt.getWorkPlaces()) {</span>
+<span class="nc" id="L635">                    continue;</span>
+                }
+                
+<span class="nc" id="L638">                final GoodsType producedGoodsType = bt.getProducedGoodsType();</span>
+<span class="nc" id="L639">                final WorkerPlan newWorkerPlan = new WorkerPlan(s.getDefaultUnitType(), new PlannedWorkLocation(bt), List.of(producedGoodsType));</span>
+<span class="nc" id="L640">                tcp.addBuildingWorkerPlan(newWorkerPlan);</span>
+<span class="nc" id="L641">                newStudentsLeft--;</span>
+                
+<span class="nc bnc" id="L643" title="All 2 branches missed.">                if (newStudentsLeft &lt;= 0) {</span>
+<span class="nc" id="L644">                    break;</span>
+                }
+<span class="nc" id="L646">            }</span>
+        }
+        
+        // TODO: Prioritize increasing production, an especially crosses, before choosing whatever location:
+<span class="nc bnc" id="L650" title="All 2 branches missed.">        if (newStudentsLeft &gt; 0) {</span>
+<span class="nc bnc" id="L651" title="All 2 branches missed.">            for (Entry&lt;BuildingType, List&lt;WorkerPlan&gt;&gt; buildings : tcp.getBuildingWorkerPlansByType().entrySet()) {</span>
+<span class="nc" id="L652">                final BuildingType bt = buildings.getKey();</span>
+<span class="nc bnc" id="L653" title="All 2 branches missed.">                if (bt == educationBuildingType) {</span>
+<span class="nc" id="L654">                    continue;</span>
+                }
+                
+<span class="nc" id="L657">                final List&lt;WorkerPlan&gt; workers = buildings.getValue();</span>
+<span class="nc bnc" id="L658" title="All 2 branches missed.">                if (workers.size() &gt;= bt.getWorkPlaces()) {</span>
+<span class="nc" id="L659">                    continue;</span>
+                }
+                
+<span class="nc" id="L662">                final GoodsType producedGoodsType = bt.getProducedGoodsType();</span>
+<span class="nc" id="L663">                final WorkerPlan newWorkerPlan = new WorkerPlan(s.getDefaultUnitType(), new PlannedWorkLocation(bt), List.of(producedGoodsType));</span>
+<span class="nc" id="L664">                tcp.addBuildingWorkerPlan(newWorkerPlan);</span>
+<span class="nc" id="L665">                newStudentsLeft--;</span>
+                
+<span class="nc bnc" id="L667" title="All 2 branches missed.">                if (newStudentsLeft &lt;= 0) {</span>
+<span class="nc" id="L668">                    break;</span>
+                }
+<span class="nc" id="L670">            }</span>
+        }
+        
+<span class="nc" id="L673">        return produceFoodForConsumption(tcp);</span>
+    }
+    
+    public static boolean produceStorableBuildingMaterials(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L677" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L678">            return true;</span>
+        }
+<span class="nc" id="L680">        return internalProduceGenericStorableBuildingMaterials(tcp, false, 0.5D);</span>
+    }
+    
+    public static boolean produceRawMaterialsJustForExportIfNoIndustry(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L684" title="All 2 branches missed.">        if (tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L685">            return true;</span>
+        }
+        
+<span class="nc" id="L688">        final Specification s = tcp.getSpecification();</span>
+<span class="nc" id="L689">        final List&lt;AbstractGoods&gt; tentativeProduction = tcp.determineTentativeProduction();</span>
+<span class="nc" id="L690">        final List&lt;GoodsType&gt; rawGoodsTypes = s.getGoodsTypeList()</span>
+<span class="nc" id="L691">                .stream()</span>
+<span class="nc bnc" id="L692" title="All 4 branches missed.">                .filter(gt -&gt; gt.isRawMaterial() &amp;&amp; !gt.isRawBuildingMaterial())</span>
+<span class="nc" id="L693">                .collect(Collectors.toList());</span>
+        
+<span class="nc" id="L695">        final List&lt;AbstractGoods&gt; leastProduced = rawGoodsTypes.stream()</span>
+<span class="nc" id="L696">            .map(gt -&gt; {</span>
+<span class="nc" id="L697">                final int amount = tentativeProduction.stream()</span>
+<span class="nc bnc" id="L698" title="All 2 branches missed.">                        .filter(ag -&gt; ag.getType() == gt)</span>
+<span class="nc" id="L699">                        .map(AbstractGoods::getAmount)</span>
+<span class="nc" id="L700">                        .findAny()</span>
+<span class="nc" id="L701">                        .orElse(0);</span>
+<span class="nc" id="L702">                return new AbstractGoods(gt, amount);</span>
+            })
+<span class="nc" id="L704">            .sorted(Comparator.comparingInt(AbstractGoods::getAmount))</span>
+<span class="nc" id="L705">            .collect(Collectors.toList());</span>
+        
+<span class="nc bnc" id="L707" title="All 2 branches missed.">        for (AbstractGoods ag : leastProduced) {</span>
+<span class="nc" id="L708">            final Tile tile = tcp.findBestUnassignedTileForProducing(ag.getType());</span>
+<span class="nc bnc" id="L709" title="All 2 branches missed.">            if (tile == null) {</span>
+<span class="nc" id="L710">                continue;</span>
+            }
+<span class="nc bnc" id="L712" title="All 2 branches missed.">            if (tile.getMaximumPotential(ag.getType(), s.getExpertForProducing(ag.getType())) &lt; 5) {</span>
+<span class="nc" id="L713">                continue;</span>
+            }
+            
+<span class="nc" id="L716">            tcp.addOrReplace(TentativeColonyTilePlan.expertProduction(tile, ag.getType()));</span>
+            
+<span class="nc" id="L718">            return produceFoodForConsumption(tcp);</span>
+        }
+        
+<span class="nc" id="L721">        return true;</span>
+    }
+    
+    public static boolean produceNewRawMaterialAndRefine(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L725" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L726">            return true;</span>
+        }
+        
+<span class="nc" id="L729">        final Specification s = tcp.getSpecification();</span>
+        
+<span class="nc" id="L731">        int foodSurplus = tcp.determineFoodSurplus();</span>
+<span class="nc bnc" id="L732" title="All 2 branches missed.">        if (foodSurplus &lt; tcp.foodConsumedByOneWorker() * 3) {</span>
+<span class="nc bnc" id="L733" title="All 2 branches missed.">            for (Tile foodTile : tcp.prioritizeUnassignedTilesForFoodProduction()) {</span>
+<span class="nc" id="L734">                tcp.addOrReplace(TentativeColonyTilePlan.expertProduction(foodTile, foodTile.getBestFoodProduction().getType()));</span>
+<span class="nc" id="L735">                foodSurplus = tcp.determineFoodSurplus();</span>
+<span class="nc bnc" id="L736" title="All 2 branches missed.">                if (foodSurplus &gt;= tcp.foodConsumedByOneWorker() * 3) {</span>
+<span class="nc" id="L737">                    break;</span>
+                }
+<span class="nc" id="L739">            }</span>
+        }
+<span class="nc bnc" id="L741" title="All 2 branches missed.">        if (foodSurplus &lt; tcp.foodConsumedByOneWorker() * 3) {</span>
+<span class="nc" id="L742">            return true;</span>
+        }
+        
+<span class="nc" id="L745">        final List&lt;Tile&gt; unassignedWorkTiles = tcp.unassignedWorkTiles();</span>
+<span class="nc" id="L746">        final List&lt;GoodsType&gt; rawGoodsTypes = s.getGoodsTypeList()</span>
+<span class="nc" id="L747">                .stream()</span>
+<span class="nc bnc" id="L748" title="All 4 branches missed.">                .filter(gt -&gt; gt.isRawMaterial() &amp;&amp; !gt.isRawBuildingMaterial())</span>
+<span class="nc" id="L749">                .collect(Collectors.toList());</span>
+        
+<span class="nc" id="L751">        final Map&lt;GoodsType, Integer&gt; maxProduction = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L752" title="All 2 branches missed.">        for (GoodsType gt : rawGoodsTypes) {</span>
+<span class="nc" id="L753">            int amount = 0;</span>
+<span class="nc bnc" id="L754" title="All 2 branches missed.">            for (Tile tile : unassignedWorkTiles) {</span>
+<span class="nc" id="L755">                final int newAmount = tile.getMaximumPotential(gt, s.getExpertForProducing(gt));</span>
+<span class="nc bnc" id="L756" title="All 2 branches missed.">                if (newAmount &gt; 2) {</span>
+<span class="nc" id="L757">                    amount += newAmount;</span>
+                }
+<span class="nc" id="L759">            }</span>
+<span class="nc" id="L760">            maxProduction.put(gt, amount);</span>
+<span class="nc" id="L761">        }</span>
+        
+<span class="nc" id="L763">        final Set&lt;GoodsType&gt; alreadyProducing = tcp.determineRawMaterialTypesProduced();</span>
+        
+<span class="nc" id="L765">        final Entry&lt;GoodsType, Integer&gt; bestRawMaterial = maxProduction.entrySet().stream()</span>
+<span class="nc bnc" id="L766" title="All 2 branches missed.">                .filter(e -&gt; !alreadyProducing.contains(e.getKey()))</span>
+<span class="nc" id="L767">                .max(Comparator.comparingInt(Entry::getValue))</span>
+<span class="nc" id="L768">                .orElse(null);</span>
+<span class="nc bnc" id="L769" title="All 2 branches missed.">        if (bestRawMaterial == null) {</span>
+<span class="nc" id="L770">            return true;</span>
+        }
+<span class="nc bnc" id="L772" title="All 2 branches missed.">        if (bestRawMaterial.getValue() &lt; 10) {</span>
+<span class="nc" id="L773">            return true;</span>
+        }
+        
+<span class="nc" id="L776">        final Tile raw1 = tcp.findBestUnassignedTileForProducing(bestRawMaterial.getKey());</span>
+<span class="nc bnc" id="L777" title="All 2 branches missed.">        if (raw1 == null) {</span>
+<span class="nc" id="L778">            return true;</span>
+        }
+<span class="nc" id="L780">        tcp.addOrReplace(TentativeColonyTilePlan.expertProduction(raw1, bestRawMaterial.getKey()));</span>
+        
+<span class="nc" id="L782">        final Tile raw2 = tcp.findBestUnassignedTileForProducing(bestRawMaterial.getKey());</span>
+<span class="nc bnc" id="L783" title="All 2 branches missed.">        if (raw2 == null) {</span>
+<span class="nc" id="L784">            return produceRefinedGoods(tcp);</span>
+        }
+<span class="nc" id="L786">        tcp.addOrReplace(TentativeColonyTilePlan.expertProduction(raw2, bestRawMaterial.getKey()));</span>
+        
+<span class="nc" id="L788">        return produceRefinedGoods(tcp);</span>
+    }
+    
+    public static boolean produceGoodsTypeForWeapons(TentativeColonyPlan tcp) {
+<span class="nc bnc" id="L792" title="All 2 branches missed.">        if (!tcp.canConstructBuildings()) {</span>
+<span class="nc" id="L793">            return true;</span>
+        }
+<span class="nc" id="L795">        return internalProduceGenericStorableBuildingMaterials(tcp, true, 1.0D);</span>
+    }
+    
+    private static boolean internalProduceGenericStorableBuildingMaterials(TentativeColonyPlan tcp, boolean militaryEquipment, double minimumProductionRatio) {
+        // Expert needed? Better building needed? An extra expert needed?
+        
+<span class="nc" id="L801">        final Specification s = tcp.getSpecification();</span>
+<span class="nc" id="L802">        final List&lt;BuildingType&gt; storableBuildablesProductionBuildings = storableBuildablesProductionBuildings(s); // produces tools / muskets</span>
+<span class="nc bnc" id="L803" title="All 2 branches missed.">        for (BuildingType buildingType : storableBuildablesProductionBuildings) {</span>
+<span class="nc bnc" id="L804" title="All 2 branches missed.">            if (buildingType.getWorkPlaces() &lt;= 0) {</span>
+<span class="nc" id="L805">                continue;</span>
+            }
+            
+<span class="nc" id="L808">            final List&lt;ProductionType&gt; productionTypes = buildingType.getAvailableProductionTypes(false).stream()</span>
+<span class="nc bnc" id="L809" title="All 2 branches missed.">                    .filter(productionType -&gt; productionType.getOutputs().anyMatch(g -&gt; g.getAmount() &gt; 0))</span>
+<span class="nc" id="L810">                    .collect(Collectors.toList());</span>
+            
+<span class="nc bnc" id="L812" title="All 2 branches missed.">            if (productionTypes.isEmpty()) {</span>
+<span class="nc" id="L813">                continue;</span>
+            }
+<span class="nc" id="L815">            final ProductionType productionType = productionTypes.get(0);</span>
+<span class="nc" id="L816">            final boolean producesMilitaryEquipment = productionType.getOutputs().anyMatch(ag -&gt; ag.getType().getMilitary());</span>
+<span class="nc bnc" id="L817" title="All 8 branches missed.">            if (!militaryEquipment &amp;&amp; producesMilitaryEquipment</span>
+                    || militaryEquipment &amp;&amp; !producesMilitaryEquipment) {
+<span class="nc" id="L819">                continue;</span>
+            }
+            
+<span class="nc bnc" id="L822" title="All 2 branches missed.">            for (int i=0; i&lt;buildingType.getWorkPlaces(); i++) {</span>
+                /*
+                 * TODO: Support autoproduction for buildings. We should call the calculator
+                 *       with all workers at the same time, rather than one at the time.
+                 */
+<span class="nc" id="L827">                final List&lt;AbstractGoods&gt; tentativeProduction = tcp.determineTentativeProduction();</span>
+
+<span class="nc" id="L829">                final GoodsType producedGoodsType = buildingType.getProducedGoodsType();</span>
+<span class="nc" id="L830">                final UnitType unitType = s.getExpertForProducing(producedGoodsType);</span>
+<span class="nc" id="L831">                final WorkerPlan workerPlan = new WorkerPlan(unitType, new PlannedWorkLocation(buildingType), List.of(producedGoodsType));</span>
+                
+<span class="nc" id="L833">                final BuildingProductionCalculator bpc = new BuildingProductionCalculator(null, new FeatureContainer(), 2);</span>
+<span class="nc" id="L834">                final ProductionInfo pi = bpc.getAdjustedProductionInfo(buildingType,</span>
+                        new Turn(0),
+<span class="nc" id="L836">                        List.of(new WorkerAssignment(unitType, productionType)),</span>
+                        tentativeProduction,
+                        tentativeProduction,
+                        100000);
+                
+                // Demand at least half of the input for every new expert:
+<span class="nc bnc" id="L842" title="All 4 branches missed.">                if (pi.getProduction().stream().noneMatch(ag -&gt; ag.getAmount() &gt; 0</span>
+<span class="nc bnc" id="L843" title="All 2 branches missed.">                        &amp;&amp; pi.getMaximumProduction().stream().noneMatch(maxAg -&gt; {</span>
+<span class="nc bnc" id="L844" title="All 4 branches missed.">                            return ag.getType() == maxAg.getType() &amp;&amp; ag.getAmount() &lt; maxAg.getAmount() * minimumProductionRatio;</span>
+                        }))) {
+<span class="nc" id="L846">                    break;</span>
+                }
+                
+<span class="nc" id="L849">                tcp.addBuildable(buildingType);</span>
+<span class="nc" id="L850">                tcp.addBuildingWorkerPlan(workerPlan);</span>
+               
+<span class="nc bnc" id="L852" title="All 2 branches missed.">                if (!produceFoodForConsumption(tcp)) {</span>
+<span class="nc" id="L853">                    return false;</span>
+                }
+            }
+<span class="nc" id="L856">        }</span>
+
+
+<span class="nc" id="L859">        return true;</span>
+    }
+
+    public static boolean produceRawMaterialForStorableBuildingMaterials(TentativeColonyPlan tcp) {
+<span class="nc" id="L863">        final Specification s = tcp.getSpecification();</span>
+<span class="nc bnc" id="L864" title="All 2 branches missed.">        for (GoodsType goodsType : s.getRawMaterialsForStorableBuildingMaterials()) {</span>
+            while (true) {
+<span class="nc" id="L866">                final Tile tile = tcp.findBestUnassignedTileForProducing(goodsType);</span>
+<span class="nc bnc" id="L867" title="All 2 branches missed.">                if (tile == null) {</span>
+<span class="nc" id="L868">                    break;</span>
+                }
+<span class="nc" id="L870">                final int goodsTypeAmount = tile.getMaximumPotential(goodsType, s.getExpertForProducing(goodsType));</span>
+<span class="nc bnc" id="L871" title="All 2 branches missed.">                if (goodsTypeAmount &lt;= 2) {</span>
+<span class="nc" id="L872">                    break;</span>
+                }
+                
+<span class="nc" id="L875">                final AbstractGoods foodProduction = tile.getMaximumPotentialFoodProductionWithExpert();</span>
+<span class="nc bnc" id="L876" title="All 2 branches missed.">                final int foodAmount = (foodProduction != null) ? foodProduction.getAmount() : 0;</span>
+<span class="nc bnc" id="L877" title="All 2 branches missed.">                if (foodAmount &gt; goodsTypeAmount) {</span>
+<span class="nc" id="L878">                    break;</span>
+                }
+<span class="nc" id="L880">                tcp.addOrReplace(TentativeColonyTilePlan.expertProduction(tile, goodsType));</span>
+<span class="nc bnc" id="L881" title="All 2 branches missed.">                if (!produceFoodForConsumption(tcp)) {</span>
+<span class="nc" id="L882">                    return false;</span>
+                }
+<span class="nc" id="L884">            }</span>
+<span class="nc" id="L885">        }</span>
+<span class="nc" id="L886">        return true;</span>
+    }
+    
+    public static boolean produceLibertyBells(TentativeColonyPlan tcp) {
+<span class="nc" id="L890">        final Specification s = tcp.getSpecification();</span>
+<span class="nc" id="L891">        final Set&lt;BuildingType&gt; libertyBellsProductionBuildings = libertyBellsProductionBuildings(s);</span>
+<span class="nc" id="L892">        boolean canAddMoreWorkers = true; </span>
+<span class="nc bnc" id="L893" title="All 2 branches missed.">        for (BuildingType buildingType : libertyBellsProductionBuildings) {</span>
+<span class="nc" id="L894">            tcp.addBuildable(buildingType);</span>
+<span class="nc bnc" id="L895" title="All 4 branches missed.">            if (buildingType.getWorkPlaces() &lt;= 0 || !canAddMoreWorkers) {</span>
+<span class="nc" id="L896">                continue;</span>
+            }
+<span class="nc" id="L898">            final GoodsType producedGoodsType = buildingType.getProducedGoodsType();</span>
+<span class="nc" id="L899">            final UnitType unitType = s.getExpertForProducing(producedGoodsType);</span>
+<span class="nc" id="L900">            final WorkerPlan workerPlan = new WorkerPlan(unitType, new PlannedWorkLocation(buildingType), List.of(producedGoodsType));</span>
+<span class="nc" id="L901">            tcp.addBuildingWorkerPlan(workerPlan);</span>
+            
+<span class="nc" id="L903">            canAddMoreWorkers = produceFoodForConsumption(tcp);</span>
+<span class="nc" id="L904">        }</span>
+        
+<span class="nc bnc" id="L906" title="All 2 branches missed.">        for (GoodsType libertyGoodsType : s.getLibertyGoodsTypeList()) {</span>
+<span class="nc" id="L907">            final List&lt;BuildingType&gt; buildingsIncreasingLibertyProduction = s.getBuildingTypeList().stream()</span>
+<span class="nc bnc" id="L908" title="All 4 branches missed.">                .filter(buildingType -&gt; buildingType.getUpgradesTo() == null &amp;&amp; buildingType.getModifiers(libertyGoodsType.getId()).count() &gt; 0L)</span>
+<span class="nc" id="L909">                .collect(Collectors.toList());</span>
+            
+<span class="nc bnc" id="L911" title="All 2 branches missed.">            for (BuildingType buildingType : buildingsIncreasingLibertyProduction) {</span>
+<span class="nc" id="L912">                tcp.addBuildable(buildingType);</span>
+<span class="nc" id="L913">            }</span>
+<span class="nc" id="L914">        }</span>
+        
+<span class="nc" id="L916">        return canAddMoreWorkers;</span>
+    }
+    
+    private static List&lt;BuildingType&gt; storableBuildablesProductionBuildings(Specification s) {
+<span class="nc" id="L920">        return s.getBuildingTypeList().stream().filter(buildingType -&gt; {</span>
+<span class="nc" id="L921">            final GoodsType producedGoodsType = buildingType.getProducedGoodsType();</span>
+<span class="nc bnc" id="L922" title="All 2 branches missed.">            return producedGoodsType != null</span>
+<span class="nc bnc" id="L923" title="All 2 branches missed.">                    &amp;&amp; producedGoodsType.isBuildingMaterial()</span>
+<span class="nc bnc" id="L924" title="All 2 branches missed.">                    &amp;&amp; producedGoodsType.isStorable()</span>
+<span class="nc bnc" id="L925" title="All 2 branches missed.">                    &amp;&amp; buildingType.getUpgradesTo() == null; // Make the ideal plan based on the most upgraded building.</span>
+<span class="nc" id="L926">        }).collect(Collectors.toList());</span>
+    }
+
+    private static Set&lt;BuildingType&gt; libertyBellsProductionBuildings(Specification s) {
+<span class="nc" id="L930">        return s.getBuildingTypeList().stream().filter(buildingType -&gt; {</span>
+<span class="nc" id="L931">            final GoodsType producedGoodsType = buildingType.getProducedGoodsType();</span>
+<span class="nc bnc" id="L932" title="All 2 branches missed.">            return producedGoodsType != null</span>
+<span class="nc bnc" id="L933" title="All 2 branches missed.">                    &amp;&amp; producedGoodsType.isLibertyType()</span>
+<span class="nc bnc" id="L934" title="All 2 branches missed.">                    &amp;&amp; buildingType.getUpgradesTo() == null; // Make the ideal plan based on the most upgraded building.</span>
+<span class="nc" id="L935">        }).collect(Collectors.toSet());</span>
+    }
+    
+    private static Set&lt;BuildingType&gt; immigrationProductionBuildings(Specification s) {
+<span class="nc" id="L939">        return s.getBuildingTypeList().stream().filter(buildingType -&gt; {</span>
+<span class="nc" id="L940">            final GoodsType producedGoodsType = buildingType.getProducedGoodsType();</span>
+<span class="nc bnc" id="L941" title="All 2 branches missed.">            return producedGoodsType != null</span>
+<span class="nc bnc" id="L942" title="All 2 branches missed.">                    &amp;&amp; producedGoodsType.isImmigrationType()</span>
+<span class="nc bnc" id="L943" title="All 2 branches missed.">                    &amp;&amp; buildingType.getUpgradesTo() == null; // Make the ideal plan based on the most upgraded building.</span>
+<span class="nc" id="L944">        }).collect(Collectors.toSet());</span>
+    }
+    
+    private static Set&lt;BuildingType&gt; shipEnablingBuildings(Specification s) {
+<span class="nc" id="L948">        return s.getBuildingTypeList().stream().filter(buildingType -&gt; {</span>
+<span class="nc" id="L949">            final boolean enablesBuildingShip = s.getBuildableUnitTypes().stream()</span>
+<span class="nc" id="L950">                    .filter(ut -&gt; ut.isNaval()).anyMatch(ut -&gt; buildingType.hasAbility(Ability.BUILD, ut));</span>
+<span class="nc bnc" id="L951" title="All 4 branches missed.">            return enablesBuildingShip &amp;&amp; buildingType.getUpgradesTo() == null; // Make the ideal plan based on the most upgraded building.</span>
+<span class="nc" id="L952">        }).collect(Collectors.toSet());</span>
+    }
+    
+    private static BuildingType lowestLevelMilitaryLandUnitEnablingBuildings(Specification s) {
+<span class="nc" id="L956">        return s.getBuildingTypeList().stream().filter(buildingType -&gt; {</span>
+<span class="nc" id="L957">            final boolean enablesBuildingArtillery = s.getBuildableUnitTypes().stream()</span>
+<span class="nc bnc" id="L958" title="All 4 branches missed.">                    .filter(ut -&gt; !ut.isNaval() &amp;&amp; ut.hasAbility(Ability.BOMBARD)).anyMatch(ut -&gt; buildingType.hasAbility(Ability.BUILD, ut));</span>
+<span class="nc" id="L959">            return enablesBuildingArtillery;</span>
+<span class="nc" id="L960">        }).sorted(Comparator.comparingInt(BuildingType::getLevel)).findAny().orElse(null);</span>
+    }
+
+    public static boolean produceFoodForConsumption(TentativeColonyPlan tcp) {
+        // TODO: Support generic consumables instead of just food.
+        
+<span class="nc" id="L966">        final int consumedByOneWorker = tcp.foodConsumedByOneWorker();</span>
+        
+<span class="nc" id="L968">        int foodSurplus = tcp.determineFoodSurplus();</span>
+<span class="nc bnc" id="L969" title="All 2 branches missed.">        if (foodSurplus &gt;= consumedByOneWorker) {</span>
+<span class="nc" id="L970">            return true;</span>
+        }
+        
+<span class="nc" id="L973">        int index = 0;</span>
+<span class="nc" id="L974">        final List&lt;Tile&gt; foodProductionCandidates = tcp.prioritizeUnassignedTilesForFoodProduction();</span>
+<span class="nc bnc" id="L975" title="All 4 branches missed.">        while (index &lt; foodProductionCandidates.size() &amp;&amp; foodSurplus &lt; consumedByOneWorker) {</span>
+<span class="nc" id="L976">            final Tile tile = foodProductionCandidates.get(index);</span>
+<span class="nc" id="L977">            final AbstractGoods bestFoodProduction = tile.getMaximumPotentialFoodProductionWithExpert();</span>
+
+<span class="nc" id="L979">            final GoodsType foodType = bestFoodProduction.getType();</span>
+<span class="nc" id="L980">            final TentativeColonyTilePlan tentativeColonyTilePlan = TentativeColonyTilePlan.expertProduction(tile, foodType);</span>
+<span class="nc" id="L981">            tcp.addOrReplace(tentativeColonyTilePlan);</span>
+            
+<span class="nc" id="L983">            foodSurplus = tcp.determineFoodSurplus();</span>
+<span class="nc" id="L984">            index++;</span>
+<span class="nc" id="L985">        }</span>
+        
+<span class="nc bnc" id="L987" title="All 2 branches missed.">        if (foodSurplus &lt; 0) {</span>
+<span class="nc" id="L988">            return forceReallocateColonistsForFoodProduction(tcp);</span>
+        }
+        
+<span class="nc bnc" id="L991" title="All 2 branches missed.">        return foodSurplus &gt;= consumedByOneWorker;</span>
+    }
+    
+    private static boolean forceReallocateColonistsForFoodProduction(TentativeColonyPlan tcp) {
+        /*
+         * This should almost never happen. Yet the code is here to handle extreme cases like:
+         * 1. No productive tiles (acrtic/desert).
+         * 2. Almost all tiles are bonus resources not yielding any food by default.
+         */
+        
+<span class="nc" id="L1001">        final List&lt;Tile&gt; candidateTilesForProducingFood = tcp.getTentativeColonyTilePlans().stream()</span>
+<span class="nc" id="L1002">                .filter(tctp -&gt; tctp.getProduction().stream().noneMatch(g -&gt; g.getType().isFoodType()))</span>
+<span class="nc" id="L1003">                .map(TentativeColonyTilePlan::getTile)</span>
+<span class="nc" id="L1004">                .collect(Collectors.toList());</span>
+<span class="nc" id="L1005">        final List&lt;Tile&gt; sortedTilesForProducingFood = tcp.prioritizeTilesForFoodProduction(candidateTilesForProducingFood);</span>
+<span class="nc" id="L1006">        int index = 0;</span>
+<span class="nc" id="L1007">        int foodSurplus = tcp.determineFoodSurplus();</span>
+<span class="nc bnc" id="L1008" title="All 4 branches missed.">        while (foodSurplus &lt; 0 &amp;&amp; index &lt; sortedTilesForProducingFood.size()) {</span>
+<span class="nc" id="L1009">            final Tile tile = sortedTilesForProducingFood.get(index);</span>
+<span class="nc" id="L1010">            final GoodsType goodsType = tile.getMaximumPotentialFoodProductionWithExpert().getType();</span>
+<span class="nc" id="L1011">            final TentativeColonyTilePlan tentativeColonyTilePlan = TentativeColonyTilePlan.expertProduction(tile, goodsType);</span>
+<span class="nc" id="L1012">            tcp.addOrReplace(tentativeColonyTilePlan);</span>
+            
+<span class="nc" id="L1014">            index++;</span>
+<span class="nc" id="L1015">            foodSurplus = tcp.determineFoodSurplus();</span>
+<span class="nc" id="L1016">        }</span>
+<span class="nc bnc" id="L1017" title="All 2 branches missed.">        return foodSurplus &gt;= tcp.foodConsumedByOneWorker();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Texture2Tile.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.tools</a> &gt; <span class="el_source">Texture2Tile.java</span></div><h1>Texture2Tile.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.tools;
+
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+
+import javax.imageio.ImageIO;
+
+import net.sf.freecol.common.util.ImageUtils;
+
+
+/**
+ * Utility for making a seamless tilable 512x256 tile from a seamless tilable texture.
+ * 
+ * Recommended texture size (the input image) is either 512x512 or 256x128. Other sizes
+ * will be seamlessly rescaled with interpolation.
+ */
+<span class="nc" id="L39">public class Texture2Tile {</span>
+    
+    private static final int RESULT_WIDTH = 512;
+    private static final int RESULT_HEIGHT = 256;
+
+    public static void main(String[] args) throws Exception {
+<span class="nc bnc" id="L45" title="All 6 branches missed.">        if (args.length == 0 || args[0].equals(&quot;-h&quot;) || args[0].equals(&quot;--help&quot;)) {</span>
+<span class="nc" id="L46">            printUsage();</span>
+<span class="nc" id="L47">            System.exit(0);</span>
+        }
+        
+<span class="nc" id="L50">        final File inputImageFile = new File(args[0]);</span>
+<span class="nc" id="L51">        final BufferedImage inputImage = ImageIO.read(inputImageFile);</span>
+        
+        // Preferred input image of size 512x512:
+<span class="nc" id="L54">        createRotatedResult(inputImage);</span>
+        
+        // Preferred input image of size 256x128:
+<span class="nc" id="L57">        createNonRotatedResult(inputImage);</span>
+<span class="nc" id="L58">    }</span>
+
+
+    private static void printUsage() {
+<span class="nc" id="L62">        System.out.println(&quot;Creates an isometric base tile image from a tiling texture.&quot;);</span>
+<span class="nc" id="L63">        System.out.println();</span>
+<span class="nc" id="L64">        System.out.println(&quot;Usage: java -cp FreeCol.jar net.sf.freecol.tools.Texture2Tile IMAGE_FILE&quot;);</span>
+<span class="nc" id="L65">        System.out.println();</span>
+<span class="nc" id="L66">        System.out.println(&quot;IMAGE_FILE  - A seamlessly tiling texture to be used for creating a seamlessly&quot;);</span>
+<span class="nc" id="L67">        System.out.println(&quot;              tiling isometric base tile.&quot;);</span>
+<span class="nc" id="L68">        System.out.println();</span>
+<span class="nc" id="L69">        System.out.println(&quot;Two results are produced by this tool: \&quot;generated.png\&quot; and \&quot;generated-rotated.png\&quot;&quot;);</span>
+<span class="nc" id="L70">        System.out.println(&quot;The best one to use depends on the texture.&quot;);</span>
+<span class="nc" id="L71">    }</span>
+
+
+    private static void createRotatedResult(BufferedImage inputImage) throws IOException {
+<span class="nc" id="L75">        final File resultImagefile = new File(&quot;generated-rotated.png&quot;);</span>
+<span class="nc" id="L76">        final BufferedImage tileMaskImage = ImageIO.read(new File(&quot;data/base/resources/images/masks/mask-center.size9.png&quot;));</span>
+        
+<span class="nc" id="L78">        BufferedImage tempImage = tileThreeByThreeAndRescaledTo(inputImage, RESULT_WIDTH, RESULT_HEIGHT * 2);</span>
+<span class="nc" id="L79">        tempImage = createRotatedImage(tempImage, 45);</span>
+<span class="nc" id="L80">        tempImage = ImageUtils.createResizedImage(tempImage, RESULT_WIDTH * 3, RESULT_HEIGHT * 3, true);</span>
+<span class="nc" id="L81">        tempImage = tempImage.getSubimage(</span>
+<span class="nc" id="L82">                (tempImage.getWidth() - RESULT_WIDTH) / 2,</span>
+<span class="nc" id="L83">                (tempImage.getHeight() - RESULT_HEIGHT) / 2,</span>
+                RESULT_WIDTH,
+                RESULT_HEIGHT);
+<span class="nc" id="L86">        tempImage = ImageUtils.imageWithAlphaFromMask(tempImage, tileMaskImage);</span>
+        
+<span class="nc" id="L88">        ImageIO.write(tempImage, &quot;png&quot;, resultImagefile);</span>
+<span class="nc" id="L89">        System.out.println(&quot;Image written to: &quot; + resultImagefile.getAbsolutePath().toString());</span>
+<span class="nc" id="L90">    }</span>
+
+
+    private static void createNonRotatedResult(BufferedImage inputImage) throws Exception, IOException {
+<span class="nc" id="L94">        final File resultImagefile = new File(&quot;generated.png&quot;);</span>
+        
+<span class="nc" id="L96">        final int quarterTileWidth = RESULT_WIDTH / 2;</span>
+<span class="nc" id="L97">        final int quarterTileHeight = RESULT_HEIGHT / 2;</span>
+        
+<span class="nc" id="L99">        inputImage = seamlessRescaleTextureIfNeeded(inputImage, quarterTileWidth, quarterTileHeight);</span>
+                
+<span class="nc" id="L101">        final BufferedImage imageA = extractQuarterTileA(inputImage, quarterTileWidth, quarterTileHeight);</span>
+<span class="nc" id="L102">        final BufferedImage imageB = extractQuarterTileB(inputImage, quarterTileWidth, quarterTileHeight);</span>
+<span class="nc" id="L103">        final BufferedImage resultImage = combineQuarterTiles(imageA, imageB);</span>
+        
+<span class="nc" id="L105">        ImageIO.write(resultImage, &quot;png&quot;, resultImagefile);</span>
+<span class="nc" id="L106">        System.out.println(&quot;Image written to: &quot; + resultImagefile.getAbsolutePath().toString());</span>
+<span class="nc" id="L107">    }</span>
+
+
+    private static BufferedImage seamlessRescaleTextureIfNeeded(BufferedImage inputImage, final int quarterTileWidth, final int quarterTileHeight) {
+<span class="nc bnc" id="L111" title="All 4 branches missed.">        if (inputImage.getWidth() == quarterTileWidth &amp;&amp; inputImage.getHeight() == quarterTileHeight) {</span>
+<span class="nc" id="L112">            return inputImage;</span>
+        }
+        
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        if (closerToCorrectAspectWithoutDoublingHorizontally(inputImage)) {</span>
+<span class="nc" id="L116">            return seamlessRescaleTexture(inputImage, quarterTileWidth, quarterTileHeight);</span>
+        }
+        
+<span class="nc" id="L119">        final BufferedImage tempImage = createImageWithTextureFill(inputImage, inputImage.getWidth() * 2, inputImage.getHeight());       </span>
+<span class="nc bnc" id="L120" title="All 4 branches missed.">        if (tempImage.getWidth() == quarterTileWidth &amp;&amp; tempImage.getHeight() == quarterTileHeight) {</span>
+<span class="nc" id="L121">            return tempImage;</span>
+        }
+        
+<span class="nc" id="L124">        return seamlessRescaleTexture(tempImage, quarterTileWidth, quarterTileHeight);</span>
+    }
+
+
+    private static boolean closerToCorrectAspectWithoutDoublingHorizontally(BufferedImage inputImage) {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        return Math.abs(1 - 2*inputImage.getHeight()/inputImage.getWidth()) &lt;= Math.abs(1 - inputImage.getHeight()/inputImage.getWidth());</span>
+    }
+
+
+    private static BufferedImage combineQuarterTiles(BufferedImage imageA, BufferedImage imageB) {
+<span class="nc" id="L134">        final int quarterTileWidth = imageA.getWidth();</span>
+<span class="nc" id="L135">        final int quarterTileHeight = imageA.getHeight();</span>
+<span class="nc" id="L136">        final int resultWidth = quarterTileWidth * 2;</span>
+<span class="nc" id="L137">        final int resultHeight = quarterTileHeight * 2;</span>
+        
+<span class="nc" id="L139">        final BufferedImage resultImage = new BufferedImage(resultWidth, resultHeight, BufferedImage.TYPE_INT_ARGB);</span>
+<span class="nc" id="L140">        final Graphics2D gResult = resultImage.createGraphics();</span>
+        
+<span class="nc" id="L142">        final int centerHorizontally = resultWidth / 2 - quarterTileWidth / 2;</span>
+<span class="nc" id="L143">        gResult.drawImage(imageA, centerHorizontally, 0, null);</span>
+<span class="nc" id="L144">        gResult.drawImage(imageA, centerHorizontally, resultHeight - quarterTileHeight, null);</span>
+        
+<span class="nc" id="L146">        final int centerVertically = resultHeight / 2 - quarterTileHeight / 2;</span>
+<span class="nc" id="L147">        gResult.drawImage(imageB, resultWidth / 4 - quarterTileWidth / 2, centerVertically, null);</span>
+<span class="nc" id="L148">        gResult.drawImage(imageB, (3 * resultWidth) / 4 - quarterTileWidth / 2, centerVertically, null);</span>
+<span class="nc" id="L149">        gResult.dispose();</span>
+        
+<span class="nc" id="L151">        return resultImage;</span>
+    }
+    
+    /**
+     * Creates a new image that is the rotated input image.
+     * 
+     * Warning: This method has only been tested using 45 degrees and an image
+     *          with equal width and height.
+     * 
+     * @param image The image to be rotated.
+     * @param degrees The degrees. 
+     * @return An image that is rescaled to cover the entire rotated image.
+     */
+    public static BufferedImage createRotatedImage(BufferedImage image, int degrees) {
+<span class="nc" id="L165">        final int rotatedSize = (int) Math.sqrt(image.getWidth() * image.getWidth() + image.getHeight() * image.getHeight());</span>
+<span class="nc" id="L166">        final BufferedImage result = new BufferedImage(rotatedSize, rotatedSize, BufferedImage.TYPE_INT_ARGB);</span>
+<span class="nc" id="L167">        final Graphics2D g2d = result.createGraphics();</span>
+        
+<span class="nc" id="L169">        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);</span>
+<span class="nc" id="L170">        g2d.rotate(Math.toRadians(degrees), result.getWidth() / 2.0D, result.getHeight() / 2.0D);</span>
+        
+<span class="nc" id="L172">        final int x = (result.getWidth() - image.getWidth()) / 2;</span>
+<span class="nc" id="L173">        final int y = (result.getHeight() - image.getHeight()) / 2;</span>
+<span class="nc" id="L174">        g2d.drawImage(image, x, y, null);</span>
+<span class="nc" id="L175">        g2d.dispose();</span>
+<span class="nc" id="L176">        return result;</span>
+    }
+    
+    private static BufferedImage seamlessRescaleTexture(BufferedImage im, int width, int height) {
+        /*
+         * We ensure seamless tiling after scaling by repeating the image before
+         * rescaling, and then retriving the center part.
+         * 
+         * I am using the image three times in every direction although only a
+         * few pixels around the center are really needed. This makes the code
+         * easier to read :-)
+         */
+<span class="nc" id="L188">        final BufferedImage tempImage = tileThreeByThreeAndRescaledTo(im, width, height);</span>
+<span class="nc" id="L189">        return tempImage.getSubimage(width, height, width, height);</span>
+    }
+    
+    /**
+     * Returns an image drawn in a 3x3 grid.
+     * 
+     * @param im The image to be drawn.
+     * @param width The width of each image in the grid.
+     * @param height The height of each image in the grid.
+     * @return The provided image rescaled and drawn in a 3x3 grid so that
+     *      the center image in the grid avoids having edge artifacts from
+     *      the scaling.
+     */
+    private static BufferedImage tileThreeByThreeAndRescaledTo(BufferedImage im, int width, int height) {
+<span class="nc" id="L203">        final BufferedImage tempImage = createImageWithTextureFill(im, im.getWidth()*3, im.getHeight()*3);</span>
+<span class="nc" id="L204">        final BufferedImage tempImage2 = ImageUtils.createResizedImage(tempImage, width*3, height*3, true);</span>
+<span class="nc" id="L205">        return tempImage2;</span>
+    }
+    
+    private static BufferedImage createImageWithTextureFill(BufferedImage im, int width, int height) {
+<span class="nc" id="L209">        final BufferedImage resultImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);</span>
+<span class="nc" id="L210">        final Graphics2D g = resultImage.createGraphics();</span>
+<span class="nc" id="L211">        ImageUtils.fillTexture(g, im, 0, 0, resultImage.getWidth(), resultImage.getHeight());</span>
+<span class="nc" id="L212">        g.dispose();</span>
+        
+<span class="nc" id="L214">        return resultImage;</span>
+    }
+    
+    private static BufferedImage extractQuarterTileA(BufferedImage inputImage, int quarterTileWidth, int quarterTileHeight) throws Exception {
+<span class="nc" id="L218">        final BufferedImage imN = imageWithMaskApplied(inputImage, &quot;n&quot;);</span>
+<span class="nc" id="L219">        final BufferedImage imS = imageWithMaskApplied(inputImage, &quot;s&quot;);</span>
+<span class="nc" id="L220">        final BufferedImage imageA = new BufferedImage(quarterTileWidth, quarterTileHeight, BufferedImage.TYPE_INT_ARGB);</span>
+<span class="nc" id="L221">        final Graphics2D gA = imageA.createGraphics();</span>
+<span class="nc" id="L222">        gA.drawImage(imS.getSubimage(0, quarterTileHeight / 2, quarterTileWidth, quarterTileHeight / 2), 0, 0, null);</span>
+<span class="nc" id="L223">        gA.drawImage(imN.getSubimage(0, 0, quarterTileWidth, quarterTileHeight / 2), 0, quarterTileHeight / 2, null);</span>
+<span class="nc" id="L224">        gA.dispose();</span>
+<span class="nc" id="L225">        return imageA;</span>
+    }
+    
+    private static BufferedImage extractQuarterTileB(BufferedImage inputImage, int quarterTileWidth, int quarterTileHeight) throws Exception {
+<span class="nc" id="L229">        final BufferedImage imE = imageWithMaskApplied(inputImage, &quot;e&quot;);</span>
+<span class="nc" id="L230">        final BufferedImage imW = imageWithMaskApplied(inputImage, &quot;w&quot;);</span>
+<span class="nc" id="L231">        final BufferedImage imageB = new BufferedImage(quarterTileWidth, quarterTileHeight, BufferedImage.TYPE_INT_ARGB);</span>
+<span class="nc" id="L232">        final Graphics2D gB = imageB.createGraphics();</span>
+<span class="nc" id="L233">        gB.drawImage(imE.getSubimage(quarterTileWidth / 2, 0, quarterTileWidth / 2, quarterTileHeight), 0, 0, null);</span>
+<span class="nc" id="L234">        gB.drawImage(imW.getSubimage(0, 0, quarterTileWidth / 2, quarterTileHeight), quarterTileWidth / 2, 0, null);</span>
+<span class="nc" id="L235">        gB.dispose();</span>
+<span class="nc" id="L236">        return imageB;</span>
+    }
+    
+
+    private static BufferedImage imageWithMaskApplied(BufferedImage image, String variation) throws Exception {
+<span class="nc" id="L241">        final String maskBaseName = &quot;data/base/resources/images/masks/tools/mask-256x128-texture-&quot;;</span>
+<span class="nc" id="L242">        final BufferedImage mask = ImageIO.read(new File(maskBaseName + variation + &quot;.png&quot;));</span>
+<span class="nc" id="L243">        return ImageUtils.imageWithAlphaFromMask(image, mask); </span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

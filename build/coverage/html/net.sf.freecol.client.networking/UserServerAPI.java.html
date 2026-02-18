@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserServerAPI.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.networking</a> &gt; <span class="el_source">UserServerAPI.java</span></div><h1>UserServerAPI.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.networking;
+
+import java.io.IOException;
+
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.networking.Connection;
+import net.sf.freecol.common.networking.MessageHandler;
+import net.sf.freecol.common.networking.ServerAPI;
+
+
+/**
+ * Implementation of the ServerAPI for a player with a real connection
+ * to the server.
+ */
+public class UserServerAPI extends ServerAPI {
+
+    /** The connection used to communicate with the server. */
+<span class="fc" id="L38">    private Connection connection = null;</span>
+
+    /** The last name used to login with. */
+<span class="fc" id="L41">    private String name = null;</span>
+
+    /** The last host connected to. */
+<span class="fc" id="L44">    private String host = null;</span>
+
+    /** The last port connected to. */
+<span class="fc" id="L47">    private int port = -1;</span>
+
+    /** The last message handler specified. */
+<span class="fc" id="L50">    private MessageHandler messageHandler = null;</span>
+
+
+    /**
+     * Create the new user wrapper for the server API.
+     */
+    public UserServerAPI() {
+<span class="fc" id="L57">        super();</span>
+<span class="fc" id="L58">    }</span>
+
+    /**
+     * Name accessor.
+     *
+     * @return The connection name.
+     */
+    private synchronized String getName() {
+<span class="nc" id="L66">        return this.name;</span>
+    }
+
+    /**
+     * Host accessor.
+     *
+     * @return The connection host.
+     */
+    private synchronized String getHost() {
+<span class="nc" id="L75">        return this.host;</span>
+    }
+
+    /**
+     * Port accessor.
+     *
+     * @return The connection port.
+     */
+    private synchronized int getPort() {
+<span class="nc" id="L84">        return this.port;</span>
+    }
+
+    /**
+     * Update the connection parameters so as to allow reconnection.
+     *
+     * @param name The connection name.
+     * @param host The host connected to.
+     * @param port The port connected to.
+     */
+    private synchronized void updateParameters(String name, String host, int port) {
+<span class="fc" id="L95">        this.name = name;</span>
+<span class="fc" id="L96">        this.host = host;</span>
+<span class="fc" id="L97">        this.port = port;</span>
+<span class="fc" id="L98">    }        </span>
+
+    /**
+     * A connection has been made, save it and its parameters.
+     *
+     * @param c The new {@code Connection}.
+     */
+    private synchronized void updateConnection(Connection c) {
+<span class="fc" id="L106">        c.setMessageHandler(this.messageHandler);</span>
+<span class="fc" id="L107">        c.setWriteScope(FreeColXMLWriter.WriteScope.toServer());</span>
+<span class="fc" id="L108">        this.connection = c;</span>
+<span class="fc" id="L109">    }</span>
+
+    /**
+     * Create a new connection.
+     *
+     * @param name The name to associate with the connection.
+     * @param host The name of the host to connect to.
+     * @param port The port to connect to.
+     * @return The new &lt;code&gt;Connection&lt;/code&gt;.
+     * @exception IOException on failure to connect.
+     */
+    private static Connection newConnection(String name, String host, int port)
+        throws IOException {
+        int tries;
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (port &lt; 0) {</span>
+<span class="nc" id="L124">            port = FreeCol.getServerPort();</span>
+<span class="nc" id="L125">            tries = 10;</span>
+        } else {
+<span class="fc" id="L127">            tries = 1;</span>
+        }
+<span class="fc" id="L129">        Connection conn = null;</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        for (int i = tries; i &gt; 0; i--) {</span>
+            try {
+<span class="fc" id="L132">                conn = new Connection(host, port, name);</span>
+<span class="fc" id="L133">                conn.startReceiving();</span>
+<span class="fc" id="L134">                break;</span>
+<span class="nc" id="L135">            } catch (IOException e) {</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                if (i &lt;= 1) throw e;</span>
+            }
+        }
+<span class="fc" id="L139">        return conn;</span>
+    }
+
+
+    // Implement ServerAPI
+
+    /**
+     * {@inheritDoc}
+     */
+    public Connection connect(String name, String host, int port)
+        throws IOException {
+<span class="fc" id="L150">        Connection c = newConnection(name, host, port);</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (c == null) return null;</span>
+<span class="fc" id="L152">        updateConnection(c);</span>
+<span class="fc" id="L153">        updateParameters(name, host, port);</span>
+<span class="fc" id="L154">        return c;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public synchronized boolean disconnect() {
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (this.connection != null) {</span>
+<span class="nc" id="L162">            this.connection.disconnect();</span>
+<span class="nc" id="L163">            this.connection = null;</span>
+        }
+<span class="fc" id="L165">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Connection reconnect() throws IOException {
+<span class="nc" id="L172">        Connection c = newConnection(getName(), getHost(), getPort());</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">        if (c != null) updateConnection(c);</span>
+<span class="nc" id="L174">        return c;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public synchronized Connection getConnection() {
+<span class="fc" id="L181">        return this.connection;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public synchronized void setMessageHandler(MessageHandler mh) {
+<span class="fc" id="L189">        super.setMessageHandler(mh);</span>
+<span class="fc" id="L190">        this.messageHandler = mh;</span>
+<span class="fc" id="L191">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

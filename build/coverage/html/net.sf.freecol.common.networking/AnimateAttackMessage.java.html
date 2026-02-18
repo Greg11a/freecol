@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AnimateAttackMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">AnimateAttackMessage.java</span></div><h1>AnimateAttackMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+
+
+/**
+ * The message sent to tell a client to show an attack animation.
+ */
+public class AnimateAttackMessage extends ObjectMessage {
+
+    public static final String TAG = &quot;animateAttack&quot;;
+    private static final String ATTACKER_TAG = &quot;attacker&quot;;
+    private static final String ATTACKER_TILE_TAG = &quot;attackerTile&quot;;
+    private static final String DEFENDER_TAG = &quot;defender&quot;;
+    private static final String DEFENDER_TILE_TAG = &quot;defenderTile&quot;;
+    private static final String SUCCESS_TAG = &quot;success&quot;;
+
+
+    /**
+     * Create a new {@code AnimateAttackMessage} for the supplied attacker,
+     * defender, result and visibility information.
+     *
+     * @param attacker The attacking {@code Unit}.
+     * @param defender The defending {@code Unit}.
+     * @param result Whether the attack succeeds.
+     * @param addAttacker Whether to attach the attacker unit.
+     * @param addDefender Whether to attach the defender unit.
+     */
+    public AnimateAttackMessage(Unit attacker, Unit defender, boolean result,
+                                boolean addAttacker, boolean addDefender) {
+<span class="fc" id="L62">        super(TAG, ATTACKER_TAG, attacker.getId(),</span>
+<span class="fc" id="L63">              ATTACKER_TILE_TAG, attacker.getTile().getId(),</span>
+<span class="fc" id="L64">              DEFENDER_TAG, defender.getId(),</span>
+<span class="fc" id="L65">              DEFENDER_TILE_TAG, defender.getTile().getId(),</span>
+<span class="fc" id="L66">              SUCCESS_TAG, Boolean.toString(result));</span>
+
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (addAttacker) {</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            appendChild((attacker.isOnCarrier()) ? attacker.getCarrier()</span>
+<span class="fc" id="L70">                : attacker);</span>
+        }
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (addDefender) {</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            appendChild((defender.isOnCarrier()) ? defender.getCarrier()</span>
+<span class="nc" id="L74">                : defender);</span>
+        }
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * Create a new {@code AnimateAttackMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public AnimateAttackMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L87">        super(TAG, xr, ATTACKER_TAG, ATTACKER_TILE_TAG,</span>
+              DEFENDER_TAG, DEFENDER_TILE_TAG, SUCCESS_TAG);
+
+<span class="nc" id="L90">        FreeColXMLReader.ReadScope rs</span>
+<span class="nc" id="L91">            = xr.replaceScope(FreeColXMLReader.ReadScope.NOINTERN);</span>
+<span class="nc" id="L92">        List&lt;Unit&gt; units = new ArrayList&lt;&gt;();</span>
+        try {
+<span class="nc bnc" id="L94" title="All 2 branches missed.">            while (xr.moreTags()) {</span>
+<span class="nc" id="L95">                String tag = xr.getLocalName();</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">                if (Unit.TAG.equals(tag)) {</span>
+<span class="nc" id="L97">                    Unit u =  xr.readFreeColObject(game, Unit.class);</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">                    if (u != null) units.add(u);</span>
+<span class="nc" id="L99">                } else {</span>
+<span class="nc" id="L100">                    expected(Unit.TAG, tag);</span>
+                }
+<span class="nc" id="L102">                xr.expectTag(tag);</span>
+<span class="nc" id="L103">            }</span>
+<span class="nc" id="L104">            xr.expectTag(TAG);</span>
+        } finally {
+<span class="nc" id="L106">            xr.replaceScope(rs);</span>
+        }
+<span class="nc" id="L108">        appendChildren(units);</span>
+<span class="nc" id="L109">    }</span>
+
+
+    /**
+     * Get a unit by key.
+     *
+     * @param game The {@code Game} to look up the unit in.
+     * @param key An attribute key to extract the unit identifier with.
+     * @return The attacker {@code Unit}.
+     */
+    private Unit getUnit(Game game, String key) {
+<span class="nc" id="L120">        final String id = getStringAttribute(key);</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (id == null) return null;</span>
+        
+<span class="nc" id="L123">        Unit unit = game.getFreeColGameObject(id, Unit.class);</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if (unit != null) return unit;</span>
+        
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        for (Unit u : getChildren(Unit.class)) {</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">            if (id.equals(u.getId())) {</span>
+<span class="nc" id="L128">                u.intern();</span>
+<span class="nc" id="L129">                return u;</span>
+            }
+<span class="nc bnc" id="L131" title="All 2 branches missed.">            if ((u = u.getCarriedUnitById(id)) != null) {</span>
+<span class="nc" id="L132">                u.intern();</span>
+<span class="nc" id="L133">                return u;</span>
+            }
+<span class="nc" id="L135">        }  </span>
+<span class="nc" id="L136">        return null;</span>
+    }
+
+    /**
+     * Get the attacker unit.
+     *
+     * @param game The {@code Game} to look up the unit in.
+     * @return The attacker {@code Unit}.
+     */
+    private Unit getAttacker(Game game) {
+<span class="nc" id="L146">        return getUnit(game, ATTACKER_TAG);</span>
+    }
+    
+    /**
+     * Get the defender unit.
+     *
+     * @param game The {@code Game} to look up the unit in.
+     * @return The defender {@code Unit}.
+     */
+    private Unit getDefender(Game game) {
+<span class="nc" id="L156">        return getUnit(game, DEFENDER_TAG);</span>
+    }
+
+    /**
+     * Get the attacker tile.
+     *
+     * @param game The {@code Game} to look up the tile in.
+     * @return The attacker {@code Tile}.
+     */
+    private Tile getAttackerTile(Game game) {
+<span class="nc" id="L166">        return game.getFreeColGameObject(getStringAttribute(ATTACKER_TILE_TAG),</span>
+                                         Tile.class);
+    }
+
+    /**
+     * Get the defender tile.
+     *
+     * @param game The {@code Game} to look up the tile in.
+     * @return The defender {@code Tile}.
+     */
+    private Tile getDefenderTile(Game game) {
+<span class="nc" id="L177">        return game.getFreeColGameObject(getStringAttribute(DEFENDER_TILE_TAG),</span>
+                                         Tile.class);
+    }
+
+    /**
+     * Get the result of the attack.
+     *
+     * @return The result.
+     */
+    private boolean getResult() {
+<span class="nc" id="L187">        return getBooleanAttribute(SUCCESS_TAG, Boolean.FALSE);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="fc" id="L195">        return Message.MessagePriority.ANIMATION;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+        // Ignored
+<span class="fc" id="L204">    }</span>
+        
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L211">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L212">        final Player player = freeColClient.getMyPlayer();</span>
+<span class="nc" id="L213">        final Tile attackerTile = getAttackerTile(game);</span>
+<span class="nc" id="L214">        final Tile defenderTile = getDefenderTile(game);</span>
+<span class="nc" id="L215">        final boolean result = getResult();</span>
+<span class="nc" id="L216">        final Unit attacker = getAttacker(game);</span>
+<span class="nc" id="L217">        final Unit defender = getDefender(game);</span>
+
+<span class="nc bnc" id="L219" title="All 2 branches missed.">        if (attacker == null) {</span>
+<span class="nc" id="L220">            logger.warning(&quot;Attack animation missing attacker unit.&quot;);</span>
+<span class="nc" id="L221">            return;</span>
+        }
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        if (defender == null) {</span>
+<span class="nc" id="L224">            logger.warning(&quot;Attack animation missing defender unit.&quot;);</span>
+<span class="nc" id="L225">            return;</span>
+        }
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        if (attackerTile == null) {</span>
+<span class="nc" id="L228">            logger.warning(&quot;Attack animation for: &quot; + player.getId()</span>
+                + &quot; omitted attacker tile.&quot;);
+        }
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        if (defenderTile == null) {</span>
+<span class="nc" id="L232">            logger.warning(&quot;Attack animation for: &quot; + player.getId()</span>
+                + &quot; omitted defender tile.&quot;);
+        }
+
+        // This only performs animation, if required.  It does not
+        // actually perform an attack.
+<span class="nc" id="L238">        igc(freeColClient)</span>
+<span class="nc" id="L239">            .animateAttackHandler(attacker, defender,</span>
+                                  attackerTile, defenderTile, result);
+<span class="nc" id="L241">        clientGeneric(freeColClient);</span>
+<span class="nc" id="L242">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

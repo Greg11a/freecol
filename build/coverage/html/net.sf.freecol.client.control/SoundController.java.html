@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SoundController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.control</a> &gt; <span class="el_source">SoundController.java</span></div><h1>SoundController.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.control;
+
+import java.io.File;
+import java.util.List;
+import java.util.logging.Logger;
+
+import javax.sound.sampled.Mixer;
+
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.option.AudioMixerOption;
+import net.sf.freecol.common.option.PercentageOption;
+import net.sf.freecol.common.resources.ResourceManager;
+import net.sf.freecol.common.sound.SoundPlayer;
+
+/**
+ * Controls the SoundPlayer.
+ */
+public class SoundController {
+
+<span class="fc" id="L41">    private static final Logger logger = Logger.getLogger(SoundController.class.getName());</span>
+
+    /** The internal sound player for sound effects. */
+    private SoundPlayer soundPlayer;
+    
+    /** The internal sound player for music. */
+    private SoundPlayer musicPlayer;
+
+
+    /**
+     * Prepare the sound system.
+     * 
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param sound Enable sound if true.
+     */
+<span class="fc" id="L56">    public SoundController(FreeColClient freeColClient, boolean sound) {</span>
+<span class="fc" id="L57">        final ClientOptions opts = freeColClient.getClientOptions();</span>
+<span class="fc" id="L58">        this.soundPlayer = null;</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (sound) {</span>
+<span class="nc" id="L60">            AudioMixerOption amo = null;</span>
+            try {
+<span class="nc" id="L62">                amo = opts.getOption(ClientOptions.AUDIO_MIXER,</span>
+                                     AudioMixerOption.class);
+<span class="nc" id="L64">            } catch (Exception ex) {</span>
+<span class="nc" id="L65">                logger.warning(ex.getMessage());</span>
+<span class="nc" id="L66">            }</span>
+            
+<span class="nc bnc" id="L68" title="All 2 branches missed.">            if (amo == null) {</span>
+<span class="nc" id="L69">                return;</span>
+            }
+            // Unless totally disabled, the sound player is always
+            // created, but if it has a bad mixer sound output will be
+            // suspended.  The hope is that the user will change the
+            // mixer option to one that works.
+<span class="nc" id="L75">            logger.info(&quot;Create sound player with &quot; + amo);</span>
+<span class="nc" id="L76">            this.soundPlayer = new SoundPlayer(amo, opts.getOption(ClientOptions.SOUND_EFFECTS_VOLUME, PercentageOption.class));</span>
+<span class="nc" id="L77">            this.musicPlayer = new SoundPlayer(amo, opts.getOption(ClientOptions.MUSIC_VOLUME, PercentageOption.class));</span>
+        }
+<span class="fc" id="L79">    }</span>
+
+    /**
+     * Can this client play sounds?
+     *
+     * @return True if there is a sound player with a valid mixer present.
+     */
+    public boolean canPlaySound() {
+<span class="nc bnc" id="L87" title="All 4 branches missed.">        return this.soundPlayer != null &amp;&amp; this.soundPlayer.getMixer() != null;</span>
+    }
+
+    /**
+     * Play as a sound effect.
+     *
+     * @param sound The sound resource to play, or if null stop playing.
+     */
+    public void playSound(String sound) {
+<span class="nc" id="L96">        play(soundPlayer, sound);</span>
+<span class="nc" id="L97">    }</span>
+    
+    /**
+     * Play as music.
+     *
+     * @param sound The sound resource to play, or if null stop playing.
+     */
+    public void playMusic(String sound) {
+        /*
+         * Please do not remove the separate method for playing music
+         * again. It's needed in order to play sound effects at the
+         * same time as music.
+         * 
+         * A few mixers have only one line for playing audio. If we want
+         * to support playing multiple sounds/music on these systems we
+         * need to perform software mixing.
+         */
+        
+<span class="nc" id="L115">        play(musicPlayer, sound);</span>
+<span class="nc" id="L116">    }</span>
+        
+    private void play(SoundPlayer sp, String sound) {
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (!canPlaySound()) return;</span>
+<span class="nc" id="L120">        sp.stop(); // Always stop, including sound==null</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (sound == null) return;</span>
+<span class="nc" id="L122">        File file = ResourceManager.getAudio(sound);</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        if (file == null) return;</span>
+<span class="nc" id="L124">        boolean playing = sp.playOnce(file);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        logger.finest(((playing) ? &quot;Queued&quot; : &quot;Fail on&quot;)</span>
+            + &quot; sound: &quot; + sound);
+<span class="nc" id="L127">    }</span>
+    
+    /**
+     * Defines the default playlist.
+     *
+     * @param files The {@code File}s to be played when
+     *      nothing else is being played.
+     */
+    public void setDefaultPlaylist(List&lt;File&gt; files) {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (this.musicPlayer != null) {</span>
+<span class="nc" id="L137">            musicPlayer.setDefaultPlaylist(files.toArray(new File[0]));</span>
+        }
+<span class="nc" id="L139">    }</span>
+
+    /**
+     * Get the label text for the sound player mixer.
+     *
+     * Needed by the audio mixer option UI.
+     *
+     * @return The text.
+     */
+    public String getSoundMixerLabelText() {
+        Mixer mixer;
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        String text = (this.soundPlayer == null)</span>
+<span class="nc" id="L151">            ? Messages.message(&quot;nothing&quot;)</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">            : ((mixer = this.soundPlayer.getMixer()) == null)</span>
+<span class="nc" id="L153">                ? Messages.message(&quot;none&quot;)</span>
+<span class="nc" id="L154">                : mixer.getMixerInfo().getName();</span>
+<span class="nc" id="L155">        return Messages.message(&quot;current&quot;) + &quot;:  &quot; + text;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

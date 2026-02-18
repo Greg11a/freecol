@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EndTurnDialog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.dialog</a> &gt; <span class="el_source">EndTurnDialog.java</span></div><h1>EndTurnDialog.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.dialog;
+
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.event.ActionEvent;
+import java.awt.image.BufferedImage;
+import java.util.List;
+import java.util.logging.Logger;
+
+import javax.swing.AbstractAction;
+import javax.swing.DefaultListModel;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.KeyStroke;
+import javax.swing.ListCellRenderer;
+import javax.swing.ListModel;
+import javax.swing.SwingConstants;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
+import javax.swing.plaf.PanelUI;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.panel.FreeColButton.ButtonStyle;
+import net.sf.freecol.client.gui.panel.FreeColPanel;
+import net.sf.freecol.client.gui.panel.MigPanel;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.client.gui.plaf.FreeColSelectedPanelUI;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Unit;
+
+
+/**
+ * Displays units that have no orders and allows the player to
+ * either end turn immediately or stop to give them orders. 
+ */
+public final class EndTurnDialog extends FreeColPanel {
+
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L66">    private static final Logger logger = Logger.getLogger(EndTurnDialog.class.getName());</span>
+
+    /** The list of units to display. */
+    private final JList&lt;UnitWrapper&gt; unitList;
+
+
+    /**
+     * Creates a new dialog.
+     * 
+     * @param freeColClient The {@code FreeColClient}
+     * @param units The list of units that still have moves left.
+     */
+    public EndTurnDialog(FreeColClient freeColClient, List&lt;Unit&gt; units) {
+<span class="nc" id="L79">        super(freeColClient, null, new MigLayout(&quot;wrap 1, fill&quot;, &quot;[align center]&quot;, &quot;[][][growprio 200][]&quot;));</span>
+
+<span class="nc" id="L81">        final JLabel header = Utility.localizedHeader(Messages.nameKey(&quot;endTurnDialog&quot;), Utility.FONTSPEC_TITLE);       </span>
+        
+<span class="nc" id="L83">        JTextArea text = Utility.localizedTextArea(StringTemplate</span>
+<span class="nc" id="L84">            .template(&quot;endTurnDialog.areYouSure&quot;)</span>
+<span class="nc" id="L85">            .addAmount(&quot;%number%&quot;, units.size()));</span>
+
+<span class="nc" id="L87">        DefaultListModel&lt;UnitWrapper&gt; model = new DefaultListModel&lt;&gt;();</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        for (Unit unit : units) {</span>
+<span class="nc" id="L89">            model.addElement(new UnitWrapper(unit));</span>
+<span class="nc" id="L90">        }</span>
+
+<span class="nc" id="L92">        final int numUnitRows = Math.min(4, units.size());</span>
+        
+<span class="nc" id="L94">        this.unitList = new JList&lt;&gt;(model);</span>
+<span class="nc" id="L95">        this.unitList.setVisibleRowCount(numUnitRows);</span>
+<span class="nc" id="L96">        this.unitList.setCellRenderer(new UnitCellRenderer());</span>
+<span class="nc" id="L97">        this.unitList.getInputMap().put(KeyStroke.getKeyStroke(&quot;ENTER&quot;), &quot;select&quot;);</span>
+<span class="nc" id="L98">        this.unitList.getActionMap().put(&quot;select&quot;, new AbstractAction() {</span>
+                @Override
+                public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L101">                    selectUnit();</span>
+<span class="nc" id="L102">                }</span>
+            });
+        
+<span class="nc" id="L105">        this.unitList.addListSelectionListener(new ListSelectionListener() {</span>
+                @Override
+                public void valueChanged(ListSelectionEvent e) {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">                    if (e.getValueIsAdjusting()) return;</span>
+<span class="nc" id="L109">                    selectUnit();</span>
+<span class="nc" id="L110">                }</span>
+            });
+
+<span class="nc" id="L113">        JScrollPane listScroller = new JScrollPane(this.unitList);</span>
+        
+<span class="nc" id="L115">        add(header, &quot;growx, shrinkx&quot;);</span>
+<span class="nc" id="L116">        add(text, &quot;newline 20, growx, shrinkx, wmin 100&quot;);</span>
+<span class="nc" id="L117">        add(listScroller, &quot;newline 10, grow, shrink&quot;);</span>
+        
+<span class="nc" id="L119">        okButton = Utility.localizedButton(&quot;ok&quot;).withButtonStyle(ButtonStyle.IMPORTANT);</span>
+<span class="nc" id="L120">        okButton.addActionListener(ae -&gt; {</span>
+<span class="nc" id="L121">            getGUI().removeComponent(this);</span>
+<span class="nc" id="L122">            getFreeColClient().getInGameController().endTurn(false);</span>
+<span class="nc" id="L123">        });</span>
+<span class="nc" id="L124">        add(okButton, &quot;newline, split 2, tag ok&quot;);</span>
+        
+<span class="nc" id="L126">        final JButton cancelButton = Utility.localizedButton(&quot;cancel&quot;);</span>
+<span class="nc" id="L127">        cancelButton.addActionListener(ae -&gt; {</span>
+<span class="nc" id="L128">            getGUI().removeComponent(this);</span>
+<span class="nc" id="L129">        });</span>
+<span class="nc" id="L130">        add(cancelButton, &quot;tag cancel&quot;);</span>
+        
+<span class="nc" id="L132">        setEscapeAction(new AbstractAction() {</span>
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L135">                cancelButton.doClick();</span>
+<span class="nc" id="L136">            }</span>
+        });
+<span class="nc" id="L138">    }</span>
+
+    /**
+     * Select the current unit in the list.
+     */
+    private void selectUnit() {
+<span class="nc" id="L144">        final UnitWrapper wrapper = this.unitList.getSelectedValue();</span>
+<span class="nc bnc" id="L145" title="All 4 branches missed.">        if (wrapper != null &amp;&amp; wrapper.unit != null) {</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">            if (wrapper.unit.isInEurope()) {</span>
+<span class="nc" id="L147">                getGUI().showEuropePanel();</span>
+            } else {
+<span class="nc" id="L149">                getGUI().changeView(wrapper.unit, false);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">                if (wrapper.unit.getColony() != null) {</span>
+<span class="nc" id="L151">                    getGUI().showColonyPanel(wrapper.unit.getColony(), wrapper.unit);</span>
+                }
+            }
+        }
+<span class="nc" id="L155">    }</span>
+    
+    
+    /**
+     * We need to wrap the Unit class in order to make the JList
+     * support keystroke navigation.  JList.getNextMatch uses the
+     * toString() method, but the toString() method of FreeCol objects
+     * provides debugging information rather than a searchable name.
+     */
+    private static class UnitWrapper {
+
+        public final Unit unit;
+        public final String name;
+        public final String location;
+
+
+<span class="nc" id="L171">        public UnitWrapper(Unit unit) {</span>
+<span class="nc" id="L172">            this.unit = unit;</span>
+<span class="nc" id="L173">            this.name = unit.getDescription(Unit.UnitLabelType.NATIONAL);</span>
+<span class="nc" id="L174">            this.location = Messages.message(unit.getLocation()</span>
+<span class="nc" id="L175">                .getLocationLabelFor(unit.getOwner()));</span>
+<span class="nc" id="L176">        }</span>
+
+        @Override
+        public String toString() {
+<span class="nc" id="L180">            return name;</span>
+        }
+    }
+
+    private class UnitCellRenderer implements ListCellRenderer&lt;UnitWrapper&gt; {
+
+<span class="nc" id="L186">        public UnitCellRenderer() {</span>
+            
+<span class="nc" id="L188">        }</span>
+
+        public Component getListCellRendererComponent(JList&lt;? extends UnitWrapper&gt; list,
+                UnitWrapper value, int index, boolean isSelected, boolean cellHasFocus) {
+<span class="nc" id="L192">            final JLabel imageLabel = new JLabel();</span>
+<span class="nc" id="L193">            imageLabel.setIcon(new ImageIcon(getImageLibrary().getSmallerUnitImage(value.unit)));</span>
+<span class="nc" id="L194">            imageLabel.setHorizontalAlignment(SwingConstants.CENTER);</span>
+            
+<span class="nc" id="L196">            final JLabel nameLabel = new JLabel();</span>
+<span class="nc" id="L197">            nameLabel.setText(value.name);</span>
+            
+<span class="nc" id="L199">            final JLabel locationLabel = new JLabel();</span>
+<span class="nc" id="L200">            locationLabel.setFont(locationLabel.getFont().deriveFont(Font.ITALIC));</span>
+<span class="nc" id="L201">            locationLabel.setText(value.location);</span>
+            
+            final JPanel panel;
+<span class="nc bnc" id="L204" title="All 2 branches missed.">            if (isSelected) {</span>
+<span class="nc" id="L205">                panel = new MigPanel(new MigLayout(&quot;&quot;, &quot;[fill]&quot;));</span>
+<span class="nc" id="L206">                panel.setOpaque(false);</span>
+<span class="nc" id="L207">                panel.setUI((PanelUI)FreeColSelectedPanelUI.createUI(panel));</span>
+            } else {
+<span class="nc" id="L209">                panel = new MigPanel(new MigLayout(&quot;&quot;, &quot;[fill]&quot;));</span>
+<span class="nc" id="L210">                panel.setOpaque(false);</span>
+            }
+            
+<span class="nc" id="L213">            final Dimension largestIconSize = largestIconSize(list);</span>
+<span class="nc" id="L214">            panel.add(imageLabel, &quot;center, width &quot; + largestIconSize.width + &quot;px!, height &quot; + largestIconSize.height + &quot;px!&quot;);</span>
+<span class="nc" id="L215">            panel.add(nameLabel, &quot;split 2, flowy, grow&quot;);</span>
+<span class="nc" id="L216">            panel.add(locationLabel, &quot;grow&quot;);</span>
+            
+<span class="nc" id="L218">            return panel;</span>
+        }
+        
+        private Dimension largestIconSize(JList&lt;? extends UnitWrapper&gt; list) {
+<span class="nc" id="L222">            final ListModel&lt;? extends UnitWrapper&gt; model = list.getModel();</span>
+<span class="nc" id="L223">            int largestWidth = 0;</span>
+<span class="nc" id="L224">            int largestHeight = 0;</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">            for (int i=0; i&lt;model.getSize(); i++) {</span>
+<span class="nc" id="L226">                final UnitWrapper value = model.getElementAt(i);</span>
+<span class="nc" id="L227">                final BufferedImage image = getImageLibrary().getSmallerUnitImage(value.unit);</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">                if (image.getWidth() &gt; largestWidth) {</span>
+<span class="nc" id="L229">                    largestWidth = image.getWidth();</span>
+                }
+<span class="nc bnc" id="L231" title="All 2 branches missed.">                if (image.getHeight() &gt; largestHeight) {</span>
+<span class="nc" id="L232">                    largestHeight = image.getHeight(); </span>
+                }
+            }
+<span class="nc" id="L235">            return new Dimension(largestWidth, largestHeight);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

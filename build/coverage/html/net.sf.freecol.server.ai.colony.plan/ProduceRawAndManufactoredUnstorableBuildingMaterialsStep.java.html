@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProduceRawAndManufactoredUnstorableBuildingMaterialsStep.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.colony.plan</a> &gt; <span class="el_source">ProduceRawAndManufactoredUnstorableBuildingMaterialsStep.java</span></div><h1>ProduceRawAndManufactoredUnstorableBuildingMaterialsStep.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai.colony.plan;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.BuildingType;
+import net.sf.freecol.common.model.FeatureContainer;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.ProductionInfo;
+import net.sf.freecol.common.model.ProductionType;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Turn;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.model.production.BuildingProductionCalculator;
+import net.sf.freecol.common.model.production.WorkerAssignment;
+import net.sf.freecol.server.ai.colony.PlannedWorkLocation;
+import net.sf.freecol.server.ai.colony.TentativeColonyPlan;
+import net.sf.freecol.server.ai.colony.TentativeColonyPlan.TentativeColonyTilePlan;
+import net.sf.freecol.server.ai.colony.WorkerPlan;
+
+/**
+ * Produces unstorable building materials (hammers) along with the required raw materials.
+ * 
+ * Note that this step requires all raw materials (lumber) to be produced in the colony. If not,
+ * then no additional buildings or worker plans are added.
+ */
+final class ProduceRawAndManufactoredUnstorableBuildingMaterialsStep {
+
+    private ProduceRawAndManufactoredUnstorableBuildingMaterialsStep() {}
+    
+    /**
+     * @ses {@link InitialSteps#produceRawAndManufactoredUnstorableBuildingMaterials(TentativeColonyPlan)}
+     */
+    static void execute(TentativeColonyPlan tcp) {
+<span class="nc" id="L60">        final Specification s = tcp.getSpecification();</span>
+        
+<span class="nc" id="L62">        final List&lt;BuildingType&gt; buildingTypes = allMaximumLevelBuildingHouses(s);</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        if (buildingTypes.isEmpty()) {</span>
+<span class="nc" id="L64">            return;</span>
+        }
+        
+<span class="nc" id="L67">        final List&lt;TentativeColonyTilePlan&gt; rawBuildingMaterialsTilePlans = createRawBuildingMaterialsTilePlans(tcp);</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        if (rawBuildingMaterialsTilePlans == null) {</span>
+            /* We are missing required raw materials. */
+<span class="nc" id="L70">            return;</span>
+        }
+
+<span class="nc bnc" id="L73" title="All 2 branches missed.">        if (!isSufficientAmountOfFood(tcp, rawBuildingMaterialsTilePlans)) {</span>
+            /*
+             * For now, just stop producing the raw materials.
+             * 
+             * Some cases would probably be better solved by:
+             * 1. Produce food on just a single of the tiles if there are multiple raw building material bonus resources.
+             * 2. Use a bonus resource for food production if the bonus resources have different goods types.
+             */
+<span class="nc" id="L81">            return;</span>
+        }
+        
+        /*
+         * Both raw materials and building OK. Add them.
+         */
+
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        for (TentativeColonyTilePlan tctp : rawBuildingMaterialsTilePlans) {</span>
+<span class="nc" id="L89">            tcp.addOrReplace(tctp);</span>
+<span class="nc" id="L90">        }</span>
+        
+<span class="nc" id="L92">        final List&lt;AbstractGoods&gt; tentativeProduction2 = tcp.determineTentativeProduction();</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        for (BuildingType buildingType : buildingTypes) {</span>
+<span class="nc" id="L94">            tcp.addBuildable(buildingType);</span>
+            
+<span class="nc" id="L96">            final GoodsType producedGoodsType = buildingType.getProducedGoodsType();</span>
+<span class="nc" id="L97">            final ProductionType productionType = ProductionType.getBestProductionType(producedGoodsType, buildingType.getAvailableProductionTypes(false));</span>
+<span class="nc" id="L98">            final UnitType unitType = s.getExpertForProducing(producedGoodsType);</span>
+            
+<span class="nc" id="L100">            final int maximumWorkPlaces = buildingType.getWorkPlaces();</span>
+
+<span class="nc" id="L102">            final BuildingProductionCalculator bpc = new BuildingProductionCalculator(null, new FeatureContainer(), 2);</span>
+<span class="nc" id="L103">            final ProductionInfo pi = bpc.getAdjustedProductionInfo(buildingType, new Turn(0), List.of(new WorkerAssignment(unitType, productionType)), List.of(), List.of(), 10_000);</span>
+            
+<span class="nc" id="L105">            final GoodsType primaryInputType = buildingType.getAvailableProductionTypes(false)</span>
+<span class="nc" id="L106">                    .stream()</span>
+<span class="nc" id="L107">                    .map(p -&gt; p.getInputList())</span>
+<span class="nc" id="L108">                    .flatMap(Collection::stream)</span>
+<span class="nc" id="L109">                    .max((a, b) -&gt; Integer.compare(a.getAmount(), b.getAmount()))</span>
+<span class="nc" id="L110">                    .map(AbstractGoods::getType)</span>
+<span class="nc" id="L111">                    .orElseThrow()</span>
+                    ;
+            
+<span class="nc" id="L114">            final int inputUsedPerWorker = pi.getMaximumConsumption().stream()</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">                    .filter(ag -&gt; ag.getType() == primaryInputType)</span>
+<span class="nc" id="L116">                    .map(ag -&gt; ag.getAmount())</span>
+<span class="nc" id="L117">                    .findFirst()</span>
+<span class="nc" id="L118">                    .orElse(0);</span>
+
+<span class="nc" id="L120">            final int maximumAvailableInput = tentativeProduction2.stream()</span>
+<span class="nc" id="L121">                    .filter(g -&gt; g.getType().equals(primaryInputType))</span>
+<span class="nc" id="L122">                    .findFirst()</span>
+<span class="nc" id="L123">                    .orElseThrow()</span>
+<span class="nc" id="L124">                    .getAmount();</span>
+            
+<span class="nc" id="L126">            int workPlacesUsed = 0;</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">            while (workPlacesUsed &lt; maximumWorkPlaces) {</span>
+<span class="nc" id="L128">                final WorkerPlan workerPlan = new WorkerPlan(unitType, new PlannedWorkLocation(buildingType), List.of(producedGoodsType));</span>
+<span class="nc" id="L129">                tcp.addBuildingWorkerPlan(workerPlan);</span>
+<span class="nc" id="L130">                workPlacesUsed++;</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">                if (inputUsedPerWorker * (workPlacesUsed + 1) &gt;= maximumAvailableInput) {</span>
+<span class="nc" id="L132">                    break;</span>
+                }
+<span class="nc" id="L134">            }</span>
+<span class="nc" id="L135">        }</span>
+<span class="nc" id="L136">    }</span>
+
+
+    private static boolean isSufficientAmountOfFood(TentativeColonyPlan tcp, List&lt;TentativeColonyTilePlan&gt; rawBuildingMaterialsTilePlans) {
+<span class="nc" id="L140">        final int surplusFood = tcp.determinePossibleVacantTileFoodSurplusAfterAddingOrReplacing(rawBuildingMaterialsTilePlans);</span>
+<span class="nc" id="L141">        final int foodConsumedByOneWorker = tcp.foodConsumedByOneWorker();</span>
+<span class="nc" id="L142">        final int MINIMUM_WORKERS_IN_BUILDERS_HOUSE = 1;</span>
+<span class="nc" id="L143">        final int minimumNeededFood = foodConsumedByOneWorker * MINIMUM_WORKERS_IN_BUILDERS_HOUSE;</span>
+        
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        return (surplusFood &gt;= minimumNeededFood);</span>
+    }
+
+
+    private static List&lt;TentativeColonyTilePlan&gt; createRawBuildingMaterialsTilePlans(TentativeColonyPlan tcp) {
+<span class="nc" id="L150">        final Specification s = tcp.getSpecification();</span>
+        
+<span class="nc" id="L152">        final List&lt;GoodsType&gt; rawMaterialForUnstorableBuildingMaterials = s.getRawMaterialsForUnstorableBuildingMaterials();</span>
+<span class="nc" id="L153">        final List&lt;AbstractGoods&gt; tentativeProduction = tcp.determineTentativeProduction();</span>
+<span class="nc" id="L154">        final List&lt;GoodsType&gt; requiredRawMaterialForUnstorableBuildingMaterials = rawMaterialForUnstorableBuildingMaterials.stream()</span>
+<span class="nc bnc" id="L155" title="All 4 branches missed.">                .filter(goodsType -&gt; tentativeProduction.stream().noneMatch(g -&gt; g.getType().equals(goodsType) &amp;&amp; g.getAmount() &gt; 0))</span>
+<span class="nc" id="L156">                .collect(Collectors.toList());</span>
+        
+<span class="nc" id="L158">        final List&lt;TentativeColonyTilePlan&gt; rawBuildingMaterialsTilePlans = findWorkerPlansForMissingRawMaterials(tcp,</span>
+                rawMaterialForUnstorableBuildingMaterials, requiredRawMaterialForUnstorableBuildingMaterials);
+        
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (rawBuildingMaterialsTilePlans.size() != requiredRawMaterialForUnstorableBuildingMaterials.size()) {</span>
+            /* We are missing required raw materials. */
+<span class="nc" id="L163">            return null;</span>
+        }
+<span class="nc" id="L165">        return rawBuildingMaterialsTilePlans;</span>
+    }
+    
+    private static List&lt;TentativeColonyTilePlan&gt; findWorkerPlansForMissingRawMaterials(TentativeColonyPlan tcp,
+            List&lt;GoodsType&gt; rawMaterialForUnstorableBuildingMaterials,
+            List&lt;GoodsType&gt; requiredRawMaterialForUnstorableBuildingMaterials) {
+        
+<span class="nc" id="L172">        final List&lt;TentativeColonyTilePlan&gt; rawBuildingMaterialsTilePlans = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L173">        final Set&lt;Tile&gt; usedTiles = new HashSet&lt;&gt;();</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        for (GoodsType goodsType : requiredRawMaterialForUnstorableBuildingMaterials) {</span>
+<span class="nc" id="L175">            Tile chosenTile = tcp.findBestTileForProducing(tcp.unassignedExcept(usedTiles), goodsType);</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">            if (chosenTile == null) {</span>
+                /* 
+                 * Prioritize having raw material (lumber) for unstorable building material (hammers)
+                 * above using a bonus resource.
+                 */
+                
+                // Reserved tiles:
+<span class="nc" id="L183">                final Set&lt;Tile&gt; ignoreTilesWithRequiredResources = new HashSet&lt;&gt;(usedTiles);</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">                for (GoodsType requiredGoodsType : rawMaterialForUnstorableBuildingMaterials) {</span>
+<span class="nc" id="L185">                    tcp.findTentativeColonyTilePlanProducing(requiredGoodsType).stream()</span>
+<span class="nc" id="L186">                        .findFirst()</span>
+<span class="nc" id="L187">                        .ifPresent(keep -&gt; ignoreTilesWithRequiredResources.add(keep.getTile()));</span>
+<span class="nc" id="L188">                }</span>
+                
+<span class="nc" id="L190">                chosenTile = tcp.findBestTileForProducing(tcp.workTilesExcept(ignoreTilesWithRequiredResources), goodsType);</span>
+            }
+<span class="nc bnc" id="L192" title="All 2 branches missed.">            if (chosenTile == null) {</span>
+<span class="nc" id="L193">                return List.of();</span>
+            }
+            
+<span class="nc" id="L196">            final TentativeColonyTilePlan tentativeColonyTilePlan = TentativeColonyTilePlan.expertProduction(chosenTile, goodsType);</span>
+<span class="nc" id="L197">            rawBuildingMaterialsTilePlans.add(tentativeColonyTilePlan);</span>
+<span class="nc" id="L198">            usedTiles.add(chosenTile);</span>
+<span class="nc" id="L199">        }</span>
+<span class="nc" id="L200">        return rawBuildingMaterialsTilePlans;</span>
+    }
+    
+    private static List&lt;BuildingType&gt; allMaximumLevelBuildingHouses(final Specification s) {
+<span class="nc" id="L204">        return s.getBuildingTypeList().stream().filter(buildingType -&gt; {</span>
+<span class="nc" id="L205">            final GoodsType producedGoodsType = buildingType.getProducedGoodsType();</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">            return producedGoodsType != null</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">                    &amp;&amp; producedGoodsType.isBuildingMaterial()</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">                    &amp;&amp; !producedGoodsType.isStorable()</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">                    &amp;&amp; buildingType.getUpgradesTo() == null;</span>
+<span class="nc" id="L210">        }).collect(Collectors.toList());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

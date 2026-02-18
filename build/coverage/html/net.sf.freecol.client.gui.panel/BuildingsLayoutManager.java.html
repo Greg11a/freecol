@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BuildingsLayoutManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">BuildingsLayoutManager.java</span></div><h1>BuildingsLayoutManager.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dimension;
+import java.awt.LayoutManager;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+
+import javax.swing.JViewport;
+
+import net.sf.freecol.client.gui.panel.ColonyPanel.BuildingsPanel;
+import net.sf.freecol.client.gui.panel.ColonyPanel.BuildingsPanel.EmptyBuildingSite;
+
+/**
+ * A specific layout manager for {@code BuildingsPanel}.
+ * 
+ * This layout manager tries to lay out all the buildings in a randomized
+ * pattern using the preferred size of the building (that is, the maximum
+ * required size of the building for all levels).
+ * 
+ * A {@link WrapLayout} with the minimum building size is used as a
+ * fallback if this layout manager fails to layout all the buildings
+ * within the container's current size. 
+ * 
+ * @see BuildingsPanel
+ */
+public class BuildingsLayoutManager implements LayoutManager {
+
+    /**
+     * A seed that is used when laying out the component. The
+     * same layout will be reached if no sizes (buildings or the
+     * container) have been changed.
+     */
+<span class="nc" id="L58">    private long layoutSeed = 1;</span>
+    
+    /**
+     * Fallback rendering if there's insufficent room for rendering
+     * all the buildings.
+     */
+<span class="nc" id="L64">    private WrapLayout wrapLayout = new WrapLayout();</span>
+    
+    
+    /**
+     * Creates a new layout manager with a standard seed.
+     */
+    public BuildingsLayoutManager() {
+<span class="nc" id="L71">        this(1);</span>
+<span class="nc" id="L72">    }</span>
+    
+    /**
+     * Creates a new layout manager.
+     * 
+     * @param layoutSeed A seed that is used when laying out the component. The
+     *      same layout will be reached if no sizes (buildings or the container)
+     *      have been changed.
+     */
+<span class="nc" id="L81">    public BuildingsLayoutManager(long layoutSeed) {</span>
+<span class="nc" id="L82">        this.layoutSeed = layoutSeed;</span>
+<span class="nc" id="L83">    }</span>
+
+    
+    /**
+     * Returns the preferred dimensions for this layout given the &lt;i&gt;visible&lt;/i&gt;
+     * components in the specified target container.
+     * 
+     * @param parent the component which needs to be laid out
+     * @return the preferred dimensions to lay out the subcomponents of the
+     *         specified container
+     */
+    @Override
+    public Dimension preferredLayoutSize(Container parent) {
+<span class="nc" id="L96">        final Dimension size = determineInitialSize(parent);</span>
+
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (randomizedPlacement(parent, size, true)) {</span>
+            // Randomized placement succeeded.
+<span class="nc" id="L100">            return size;</span>
+        }
+        
+        // Randomized placement failed. Falling back to WrapLayout.
+<span class="nc" id="L104">        setAllEmptyBuildingSiteVisibility(parent, false);</span>
+<span class="nc" id="L105">        return wrapLayout.layoutSize(parent, size.width, false);</span>
+    }
+    
+    private Dimension determineInitialSize(Container parent) {
+<span class="nc bnc" id="L109" title="All 4 branches missed.">        if (parent.getParent() != null &amp;&amp; parent.getParent() instanceof JViewport) {                </span>
+<span class="nc" id="L110">            return parent.getParent().getSize();</span>
+        }
+<span class="nc" id="L112">        return new Dimension(0, 0);</span>
+    }
+
+    /**
+     * Just returns a minimum size. The initial size is determined by the
+     * parent of the given parent.
+     */
+    @Override
+    public Dimension minimumLayoutSize(Container parent) {
+<span class="nc" id="L121">        return new Dimension(1, 1);</span>
+    }
+
+    /**
+     * Layout of all children of the given {@code parent}
+     * 
+     * @param parent The {@code Container} that should get its children
+     *      positioned.
+     */
+    @Override
+    public void layoutContainer(Container parent) {
+<span class="nc" id="L132">        synchronized (parent.getTreeLock()) {           </span>
+<span class="nc" id="L133">            Dimension size = parent.getSize();</span>
+<span class="nc" id="L134">            boolean skipRandomizedPlacement = false;</span>
+<span class="nc bnc" id="L135" title="All 4 branches missed.">            if (parent.getParent() != null &amp;&amp; parent.getParent() instanceof JViewport) {                </span>
+<span class="nc" id="L136">                final Dimension newSize = parent.getParent().getSize();</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">                if (!size.equals(newSize)) {</span>
+<span class="nc" id="L138">                    skipRandomizedPlacement = true;</span>
+                }
+            }
+            
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            if (!skipRandomizedPlacement) {</span>
+<span class="nc" id="L143">                setAllEmptyBuildingSiteVisibility(parent, true);</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">                if (randomizedPlacement(parent, size, false)) {</span>
+<span class="nc" id="L145">                    return;</span>
+                }
+            }
+            
+            // Randomized placement failed. Falling back to WrapLayout.
+<span class="nc" id="L150">            setAllEmptyBuildingSiteVisibility(parent, false);            </span>
+<span class="nc" id="L151">            wrapLayout.layoutContainer(parent, false);</span>
+<span class="nc" id="L152">        }</span>
+<span class="nc" id="L153">    }</span>
+    
+    private void setAllEmptyBuildingSiteVisibility(Container parent, boolean visible) {
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        for (Component c : parent.getComponents()) {</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">            if (c instanceof EmptyBuildingSite) {</span>
+<span class="nc" id="L158">                c.setVisible(visible);</span>
+            }
+        }
+<span class="nc" id="L161">    }</span>
+    
+    private boolean randomizedPlacement(Container parent, Dimension size, boolean dryRun) {
+<span class="nc" id="L164">        final Random r = new Random(layoutSeed);</span>
+        
+<span class="nc" id="L166">        final List&lt;Entry&gt; entries = getAllEntries(parent, size);</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        if (isDefinitelyNotEnoughRoomForLayout(entries, size)) {</span>
+<span class="nc" id="L168">            return false;</span>
+        }
+<span class="nc" id="L170">        sortWithLargestFirst(entries);</span>
+        
+<span class="nc" id="L172">        final int MAX_TOTAL_TRIES = 24;</span>
+<span class="nc" id="L173">        final int MAX_FREE_PLACEMENT = 6;</span>
+<span class="nc" id="L174">        final int MAX_PLACE_ENTRY = 10000; </span>
+        
+<span class="nc" id="L176">        int padding = 16;</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        for (int j=0; j&lt;MAX_TOTAL_TRIES; j++) {</span>
+<span class="nc" id="L178">            final List&lt;Rectangle&gt; usedRectangles = new ArrayList&lt;&gt;(entries.size());</span>
+            final List&lt;Entry&gt; placeEntries; 
+            
+<span class="nc bnc" id="L181" title="All 2 branches missed.">            if (j &gt; MAX_FREE_PLACEMENT) {</span>
+<span class="nc" id="L182">                placeEntries = placeFirstFourEntriesInTheCorners(size, entries, usedRectangles);</span>
+            } else {
+<span class="nc" id="L184">                placeEntries = entries;</span>
+            }
+            
+<span class="nc" id="L187">            int entriesRemaining = placeEntries.size();</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">            for (Entry entry : placeEntries) {</span>
+<span class="nc" id="L189">                boolean placed = false;</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">                for (int i=0; i&lt;(MAX_PLACE_ENTRY / (entriesRemaining * entriesRemaining)); i++) {</span>
+<span class="nc" id="L191">                    final int x = r.nextInt(size.width - entry.bounds.width);</span>
+<span class="nc" id="L192">                    final int y = r.nextInt(size.height - entry.bounds.height);</span>
+<span class="nc" id="L193">                    final Rectangle bounds = new Rectangle(x, y, entry.bounds.width, entry.bounds.height);</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">                    if (!overlaps(bounds, usedRectangles)) {</span>
+<span class="nc" id="L195">                        usedRectangles.add(new Rectangle(bounds.x - padding/2, bounds.y - padding/2, bounds.width + padding, bounds.height + padding));</span>
+<span class="nc" id="L196">                        entry.bounds = bounds;</span>
+<span class="nc" id="L197">                        placed = true;</span>
+<span class="nc" id="L198">                        break;</span>
+                    }
+                }
+<span class="nc bnc" id="L201" title="All 2 branches missed.">                if (!placed) {</span>
+<span class="nc" id="L202">                    break;</span>
+                }
+<span class="nc" id="L204">                entriesRemaining--;</span>
+<span class="nc" id="L205">            }</span>
+
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            if (entriesRemaining == 0) {</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">                if (!dryRun) {</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">                    for (Entry entry : entries) {</span>
+<span class="nc" id="L210">                        entry.component.setBounds(entry.bounds);</span>
+<span class="nc" id="L211">                    }</span>
+                }
+                
+                // We're done!
+<span class="nc" id="L215">                return true;</span>
+            }
+            
+            // Reduce padding and try again.
+<span class="nc" id="L219">            padding /= 2;</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">            if (padding &lt; 0) {</span>
+<span class="nc" id="L221">                padding = 0;</span>
+            }
+        }
+
+<span class="nc" id="L225">        return false;</span>
+    }
+
+    private List&lt;Entry&gt; placeFirstFourEntriesInTheCorners(Dimension size, List&lt;Entry&gt; entries, List&lt;Rectangle&gt; usedRectangles) {
+<span class="nc" id="L229">        final Entry e0 = entries.get(0);</span>
+<span class="nc" id="L230">        final Entry e1 = entries.get(1);</span>
+<span class="nc" id="L231">        final Entry e2 = entries.get(2);</span>
+<span class="nc" id="L232">        final Entry e3 = entries.get(3);</span>
+<span class="nc" id="L233">        e0.bounds = new Rectangle(0, 0, e0.bounds.width, e0.bounds.height);</span>
+<span class="nc" id="L234">        usedRectangles.add(e0.bounds);</span>
+<span class="nc" id="L235">        e1.bounds = new Rectangle(0, size.height - e1.bounds.height, e1.bounds.width, e1.bounds.height);</span>
+<span class="nc" id="L236">        usedRectangles.add(e1.bounds);</span>
+<span class="nc" id="L237">        e2.bounds = new Rectangle(size.width - e1.bounds.width, 0, e2.bounds.width, e2.bounds.height);</span>
+<span class="nc" id="L238">        usedRectangles.add(e2.bounds);</span>
+<span class="nc" id="L239">        e3.bounds = new Rectangle(size.width - e3.bounds.width, size.height - e3.bounds.height, e3.bounds.width, e3.bounds.height);</span>
+<span class="nc" id="L240">        usedRectangles.add(e3.bounds);</span>
+        
+<span class="nc" id="L242">        return entries.subList(4, entries.size());</span>
+    }
+
+    private boolean isDefinitelyNotEnoughRoomForLayout(List&lt;Entry&gt; entries, Dimension size) {
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (entries.isEmpty()) {</span>
+<span class="nc" id="L247">            return false;</span>
+        }
+<span class="nc" id="L249">        final long minimumArea = entries.stream()</span>
+<span class="nc" id="L250">                .map(BuildingsLayoutManager::areaOf)</span>
+<span class="nc" id="L251">                .reduce((a, b) -&gt; a + b).get();</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">        return minimumArea &gt; ((long) size.width) * size.height;</span>
+    }
+    
+    /**
+     * Finds all components that are children to the given parent.
+     * 
+     * @return The list of children (called entries).
+     */
+    private List&lt;Entry&gt; getAllEntries(Container parent, Dimension size) {
+<span class="nc" id="L261">        final List&lt;Entry&gt; entries = new ArrayList&lt;&gt;(parent.getComponentCount());</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        for (Component c : parent.getComponents()) {</span>
+<span class="nc bnc" id="L263" title="All 2 branches missed.">            if (!c.isVisible()) {</span>
+<span class="nc" id="L264">                continue;</span>
+            }
+<span class="nc" id="L266">            final Dimension componentSize = c.getPreferredSize();</span>
+<span class="nc" id="L267">            entries.add(new Entry(c, new Rectangle(0, 0, componentSize.width, componentSize.height)));</span>
+        }
+<span class="nc" id="L269">        return entries;</span>
+    }
+
+    private void sortWithLargestFirst(final List&lt;Entry&gt; entries) {
+<span class="nc" id="L273">        Collections.sort(entries, (a, b) -&gt; Long.compare(areaOf(b), areaOf(a)));</span>
+<span class="nc" id="L274">    }</span>
+
+    private static long areaOf(Entry a) {
+<span class="nc" id="L277">        return ((long) a.bounds.width) * a.bounds.height;</span>
+    }
+    
+    private boolean overlaps(Rectangle rectangle, List&lt;Rectangle&gt; list) {
+<span class="nc bnc" id="L281" title="All 2 branches missed.">        for (Rectangle r : list) {</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">            if (rectangle.intersects(r)) {</span>
+<span class="nc" id="L283">                return true;</span>
+            }
+<span class="nc" id="L285">        }</span>
+<span class="nc" id="L286">        return false;</span>
+    }
+    
+    final Point determineOffsetForCentering(Dimension displaySize, Dimension contentSize) {
+<span class="nc" id="L290">        return new Point((displaySize.width - contentSize.width) / 2,</span>
+                (displaySize.height - contentSize.height) / 2);
+    }
+    
+    final Rectangle reposition(Rectangle bounds, Point offset) {
+<span class="nc" id="L295">        return new Rectangle(bounds.x + offset.x, bounds.y + offset.y, bounds.width, bounds.height);</span>
+    }
+    
+    @Override
+<span class="nc" id="L299">    public void addLayoutComponent(String name, Component comp) {}</span>
+
+    @Override
+<span class="nc" id="L302">    public void removeLayoutComponent(Component comp) {}</span>
+    
+    private static class Entry {
+        private Component component;
+        private Rectangle bounds;
+        
+<span class="nc" id="L308">        public Entry(Component component, Rectangle bounds) {</span>
+<span class="nc" id="L309">            this.component = component;</span>
+<span class="nc" id="L310">            this.bounds = bounds;</span>
+<span class="nc" id="L311">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

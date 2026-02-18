@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Session.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.model</a> &gt; <span class="el_source">Session.java</span></div><h1>Session.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.model;
+
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Predicate;
+import java.util.logging.Logger;
+
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.networking.ChangeSet;
+
+
+/**
+ * Root class for sessions.
+ */
+public abstract class Session {
+
+<span class="fc" id="L40">    private static final Logger logger = Logger.getLogger(Session.class.getName());</span>
+
+    /** A map of all active sessions. */
+<span class="fc" id="L43">    private static final Map&lt;String, Session&gt; allSessions = new HashMap&lt;&gt;();</span>
+
+    /** The key to this session. */
+    private String key;
+
+    /** Has this session been completed? */
+<span class="fc" id="L49">    private boolean completed = false;</span>
+
+
+    /**
+     * Protected constructor, we only really instantiate specific types
+     * of transactions.
+     *
+     * @param key A unique key to lookup this transaction with.
+     */
+<span class="fc" id="L58">    protected Session(String key) {</span>
+<span class="fc" id="L59">        Session s = getSession(key);</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        if (s != null) {</span>
+<span class="nc" id="L61">            throw new IllegalArgumentException(&quot;Duplicate session: &quot; + key</span>
+                                               + &quot; -&gt; &quot; + s);
+        }
+<span class="fc" id="L64">        this.key = key;</span>
+<span class="fc" id="L65">        this.completed = false;</span>
+<span class="fc" id="L66">        logger.finest(&quot;Created session: &quot; + key);</span>
+<span class="fc" id="L67">    }</span>
+
+
+    /**
+     * Get the session key.
+     *
+     * @return The key for this session.
+     */
+    public String getKey() {
+<span class="fc" id="L76">        return this.key;</span>
+    }
+
+    /**
+     * Register a new session.
+     */
+    public void register() {
+<span class="fc" id="L83">        synchronized (allSessions) {</span>
+<span class="fc" id="L84">            allSessions.put(this.getKey(), this);</span>
+<span class="fc" id="L85">        }</span>
+<span class="fc" id="L86">    }</span>
+
+    /**
+     * Get the session with a given key.
+     *
+     * @param key The session key.
+     * @return The {@code session} found.
+     */
+    private static Session getSession(String key) {
+<span class="fc" id="L95">        synchronized (allSessions) {</span>
+<span class="fc" id="L96">            return allSessions.get(key);</span>
+        }
+    }
+    
+    /**
+     * Checks if there are still unresolved sessions.
+     */
+    public static boolean waitingForSession() {
+<span class="nc" id="L104">        synchronized (allSessions) {</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">            return allSessions.values().stream().anyMatch(s -&gt; !s.isComplete());</span>
+        }
+    }
+    
+    /**
+     * Is this session complete?
+     *
+     * @return True if the session is complete.
+     */
+    private synchronized boolean isComplete() {
+<span class="fc" id="L115">        return this.completed;</span>
+    }
+    
+    /**
+     * All transaction types must implement a completion action.
+     *
+     * This is called by the controller at the end of turn to complete
+     * any sessions that have not yet completed, or if the controller
+     * gets the required response to complete the session.
+     *
+     * @param cs A {@code ChangeSet} to update with changes that
+     *     occur when completing this session.
+     * @return True if the session was already complete.
+     */
+    protected synchronized boolean complete(ChangeSet cs) {
+<span class="fc" id="L130">        boolean ret = this.completed;</span>
+<span class="fc" id="L131">        this.completed = true;</span>
+<span class="fc" id="L132">        return ret;</span>
+    }
+
+    /**
+     * Make a transaction session key.
+     *
+     * Note: sort the keys to make session key independent of argument order.
+     *
+     * @param type An identifier for the type of transaction.
+     * @param o1 A string to uniquely identify the transaction.
+     * @param o2 Another string to uniquely identify the transaction.
+     * @return A transaction session key.
+     */
+    protected static String makeSessionKey(Class&lt;?&gt; type, String o1, String o2) {
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">        return (o1.compareTo(o2) &lt; 0)</span>
+<span class="nc" id="L147">            ? type + &quot;-&quot; + o1 + &quot;-&quot; + o2</span>
+<span class="fc" id="L148">            : type + &quot;-&quot; + o2 + &quot;-&quot; + o1;</span>
+    }
+
+    /**
+     * Make a transaction session key given two game objects.
+     *
+     * @param type An identifier for the type of transaction.
+     * @param o1 A {@code FreeColGameObject} involved in the session.
+     * @param o2 Another {@code FreeColGameObject} involved in the session.
+     * @return A transaction session key.
+     */
+    protected static String makeSessionKey(Class&lt;?&gt; type, FreeColGameObject o1, FreeColGameObject o2) {
+<span class="fc" id="L160">        return makeSessionKey(type, o1.getId(), o2.getId());</span>
+    }
+
+
+    // Public interface
+
+    /**
+     * Complete all transactions.  Useful at the end of turn.
+     *
+     * @param cs A {@code ChangeSet} to update.
+     */
+    public static void completeAll(ChangeSet cs) {
+        List&lt;Session&gt; sessions;
+<span class="nc" id="L173">        synchronized (allSessions) {</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">            sessions = transform(allSessions.values(), s -&gt; !s.isComplete());</span>
+<span class="nc" id="L175">            allSessions.clear();</span>
+<span class="nc" id="L176">        }</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        for (Session ts : sessions) ts.complete(cs);</span>
+<span class="nc" id="L178">    }</span>
+
+    /**
+     * Clear all sessions.
+     */
+    public static void clearAll() {
+<span class="fc" id="L184">        synchronized (allSessions) {</span>
+<span class="fc" id="L185">            allSessions.clear();</span>
+<span class="fc" id="L186">        }</span>
+<span class="fc" id="L187">    }</span>
+
+    /**
+     * Find a session matching a predicate.
+     *
+     * @param pred The {@code Predicate} to match.
+     * @return The {@code Session} found if any.
+     */
+    public static Session findSession(Predicate&lt;Session&gt; pred) {
+<span class="nc" id="L196">        synchronized (allSessions) {</span>
+<span class="nc" id="L197">            return find(allSessions.values(), pred);</span>
+        }
+    }
+
+    /**
+     * Look up a session of specified type given the game objects involved.
+     *
+     * @param &lt;T&gt; The actual session class found.
+     * @param type The class of session.
+     * @param o1 The first {@code FreeColGameObject} in the session.
+     * @param o2 The second {@code FreeColGameObject} in the session.
+     * @return A session of the specified type, or null if not found.
+     */
+    public static &lt;T extends Session&gt; T lookup(Class&lt;T&gt; type,
+        FreeColGameObject o1, FreeColGameObject o2) {
+<span class="nc" id="L212">        return lookup(type, o1.getId(), o2.getId());</span>
+    }
+
+    /**
+     * Look up a session of specified type given the IDs of the game objects
+     * involved.  This version is needed for sessions where one of the objects
+     * may have already been disposed of while the session is still valid.
+     *
+     * @param &lt;T&gt; The actual session class found.
+     * @param type The class of session.
+     * @param s1 The identifier of the first object in the session.
+     * @param s2 The identifier of the second object in the session.
+     * @return A session of the specified type, or null if not found.
+     */
+    public static &lt;T extends Session&gt; T lookup(Class&lt;T&gt; type,
+                                               String s1, String s2) {
+<span class="fc" id="L228">        String key = makeSessionKey(type, s1, s2);</span>
+<span class="fc" id="L229">        return lookup(type, key);</span>
+    }
+
+    /**
+     * Look up a session given its key.
+     *
+     * @param &lt;T&gt; The actual session class found.
+     * @param type The class of session.
+     * @param key The session key.
+     * @return A session of the specified type, or null if not found.
+     */
+    public static &lt;T extends Session&gt; T lookup(Class&lt;T&gt; type, String key) {
+<span class="fc" id="L241">        Session ts = getSession(key);</span>
+<span class="pc bpc" id="L242" title="2 of 4 branches missed.">        if (ts != null &amp;&amp; ts.isComplete()) {</span>
+<span class="nc" id="L243">            synchronized (allSessions) {</span>
+<span class="nc" id="L244">                allSessions.remove(key);</span>
+<span class="nc" id="L245">            }</span>
+<span class="nc" id="L246">            ts = null;</span>
+        }
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        return (ts == null) ? null : type.cast(ts);</span>
+    }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,496 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndianDemandMission.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.mission</a> &gt; <span class="el_source">IndianDemandMission.java</span></div><h1>IndianDemandMission.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai.mission;
+
+import static net.sf.freecol.common.util.CollectionUtils.first;
+import static net.sf.freecol.common.util.CollectionUtils.flatten;
+import static net.sf.freecol.common.util.CollectionUtils.maximize;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.function.Function;
+import java.util.function.Predicate;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.GoodsContainer;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Market;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Tension;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.pathfinding.CostDeciders;
+import net.sf.freecol.common.option.GameOptions;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.server.ai.AIMain;
+import net.sf.freecol.server.ai.AIMessage;
+import net.sf.freecol.server.ai.AIPlayer;
+import net.sf.freecol.server.ai.AIUnit;
+
+
+/**
+ * Mission for demanding goods from a specified player.
+ */
+public final class IndianDemandMission extends Mission {
+
+    public static final String TAG = &quot;indianDemandMission&quot;;
+
+    /** The minimum amount of goods to demand. */
+    private static final int GOODS_DEMAND_MIN = 30;
+    
+    /** The tag for this mission. */
+    private static final String tag = &quot;AI native demander&quot;;
+
+    /** Predicates for demand goods selection. */
+<span class="nc" id="L73">    private static final List&lt;Predicate&lt;GoodsType&gt;&gt; selectPredicates</span>
+        = new ArrayList&lt;&gt;();
+    static {
+<span class="nc" id="L76">        selectPredicates.add(GoodsType::getMilitary);</span>
+<span class="nc" id="L77">        selectPredicates.add(GoodsType::isBuildingMaterial);</span>
+<span class="nc" id="L78">        selectPredicates.add(GoodsType::isTradeGoods);</span>
+<span class="nc" id="L79">        selectPredicates.add(GoodsType::isRefined);</span>
+<span class="nc" id="L80">    };</span>
+    
+    /** The colony to demand from. */
+    private Colony colony;
+
+    /** Whether the demand has been made or not. */
+    private boolean demanded;
+
+    /** Whether the demand succeeded. */
+    private boolean succeeded;
+
+
+    /**
+     * Creates a mission for the given {@code AIUnit}.
+     *
+     * @param aiMain The main AI-object.
+     * @param aiUnit The {@code AIUnit} this mission is created for.
+     * @param target The {@code Colony} receiving the gift.
+     */
+    public IndianDemandMission(AIMain aiMain, AIUnit aiUnit, Colony target) {
+<span class="nc" id="L100">        super(aiMain, aiUnit);</span>
+
+<span class="nc" id="L102">        setTarget(target);</span>
+<span class="nc" id="L103">        this.demanded = this.succeeded = false;</span>
+<span class="nc" id="L104">    }</span>
+
+    /**
+     * Creates a new {@code IndianDemandMission} from a reader.
+     *
+     * @param aiMain The main AI-object.
+     * @param aiUnit The {@code AIUnit} this mission is created for.
+     * @param xr The input stream containing the XML.
+     * @throws XMLStreamException if a problem was encountered during parsing.
+     * @see net.sf.freecol.server.ai.AIObject#readFromXML
+     */
+    public IndianDemandMission(AIMain aiMain, AIUnit aiUnit,
+                               FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L117">        super(aiMain, aiUnit);</span>
+
+<span class="nc" id="L119">        readFromXML(xr);</span>
+<span class="nc" id="L120">    }</span>
+
+
+    /**
+     * Checks if the unit is carrying a tribute (goods).
+     *
+     * @return True if the unit is carrying goods.
+     */
+    private boolean hasTribute() {
+<span class="nc" id="L129">        return hasMissionTribute(getAIUnit());</span>
+    }
+
+    /**
+     * Checks if a unit is carrying a tribute.
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @return True if the unit is carrying goods.
+     */
+    private static boolean hasMissionTribute(AIUnit aiUnit) {
+<span class="nc" id="L139">        return aiUnit.getUnit().hasGoodsCargo();</span>
+    }
+
+    /**
+     * Set the result of the demand.
+     *
+     * @param result The result of making the demand.
+     */
+    public void setSucceeded(boolean result) {
+<span class="nc" id="L148">        this.succeeded = result;</span>
+<span class="nc" id="L149">    }</span>
+
+    /**
+     * Selects the most desirable goods from the colony.
+     *
+     * @param target The target {@code Colony}.
+     * @return The goods to demand.
+     */
+    private Goods selectGoods(Colony target) {
+<span class="nc" id="L158">        final Specification spec = getSpecification();</span>
+<span class="nc" id="L159">        final List&lt;GoodsType&gt; goodsTypes = transform(spec.getGoodsTypeList(),</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            gt -&gt; target.getGoodsCount(gt) &gt; 0);</span>
+<span class="nc" id="L161">        final int dx = spec.getInteger(GameOptions.NATIVE_DEMANDS) + 1;</span>
+<span class="nc" id="L162">        final Game game = target.getGame();</span>
+<span class="nc" id="L163">        final Market market = target.getOwner().getMarket();</span>
+<span class="nc" id="L164">        final Comparator&lt;Goods&gt; marketPrice</span>
+<span class="nc" id="L165">            = Comparator.comparingInt(g -&gt; market.getSalePrice(g));</span>
+<span class="nc" id="L166">        final Function&lt;Goods, Goods&gt; makeGoods = g -&gt;</span>
+<span class="nc" id="L167">            new Goods(game, target, g.getType(), capAmount(g.getAmount(), dx));</span>
+<span class="nc" id="L168">        final Tension.Level tension = getUnit().getOwner()</span>
+<span class="nc" id="L169">            .getTension(target.getOwner()).getLevel();</span>
+<span class="nc" id="L170">        final GoodsType food = spec.getPrimaryFoodType();</span>
+<span class="nc" id="L171">        final int cutoff = capAmount(target.getGoodsCount(food), dx);</span>
+<span class="nc" id="L172">        Goods goods = null;</span>
+
+        // When content ask for food at cutoff
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        if (tension.compareTo(Tension.Level.CONTENT) &lt;= 0</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">            &amp;&amp; target.getGoodsCount(food) &gt;= cutoff) {</span>
+<span class="nc" id="L177">            goods = new Goods(getGame(), target, food, cutoff);</span>
+        }
+
+        // When displeased, ask for expensive non-food or military
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        if (goods == null</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">            &amp;&amp; tension.compareTo(Tension.Level.DISPLEASED) &lt;= 0) {</span>
+<span class="nc" id="L183">            final Predicate&lt;Goods&gt; angryPred = g -&gt;</span>
+<span class="nc bnc" id="L184" title="All 4 branches missed.">                !g.isFoodType() &amp;&amp; !g.getType().getMilitary();</span>
+<span class="nc" id="L185">            goods = maximize(target.getCompactGoodsList(), angryPred, marketPrice);</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">            if (goods != null) goods = makeGoods.apply(goods);</span>
+        }
+
+        // Otherwise try military, building, trade, refined goods in order,
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (goods == null) {</span>
+<span class="nc" id="L191">            GoodsType goodsType = first(flatten(selectPredicates,</span>
+<span class="nc" id="L192">                    pred -&gt; transform(goodsTypes, gt -&gt; pred.test(gt)).stream()));</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">            if (goodsType != null) {</span>
+<span class="nc" id="L194">                goods = new Goods(getGame(), target, goodsType,</span>
+<span class="nc" id="L195">                    capAmount(target.getGoodsCount(goodsType), dx));</span>
+            }
+        }
+
+        // Finally just go for expense
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (goods == null) {</span>
+<span class="nc" id="L201">            goods = maximize(target.getCompactGoodsList(), marketPrice);</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">            if (goods != null) goods = makeGoods.apply(goods);</span>
+        }
+
+<span class="nc" id="L205">        return goods;</span>
+    }
+
+    private int capAmount(int amount, int difficulty) {
+<span class="nc" id="L209">        return Math.min(Math.max(amount * difficulty / 6, GOODS_DEMAND_MIN),</span>
+                        GoodsContainer.CARGO_SIZE); // One load of goods max
+    }
+
+    private static IndianSettlement getHome(AIUnit aiUnit) {
+<span class="nc" id="L214">        return aiUnit.getUnit().getHomeIndianSettlement();</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given unit?
+     *
+     * @param aiUnit The {@code AIUnit} to test.
+     * @return A reason why the mission would be invalid with the unit,
+     *     or null if none found.
+     */
+    private static String invalidUnitReason(AIUnit aiUnit) {
+<span class="nc" id="L225">        String reason = invalidAIUnitReason(aiUnit);</span>
+        IndianSettlement home;
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        return (reason != null)</span>
+<span class="nc" id="L228">            ? reason</span>
+<span class="nc bnc" id="L229" title="All 4 branches missed.">            : ((home = getHome(aiUnit)) == null || home.isDisposed())</span>
+<span class="nc" id="L230">            ? &quot;home-destroyed&quot;</span>
+<span class="nc" id="L231">            : null;</span>
+    }
+
+    /**
+     * Why would an IndianDemandMission be invalid with the given
+     * unit and colony.
+     *
+     * @param aiUnit The {@code AIUnit} to test.
+     * @param colony The {@code Colony} to test.
+     * @return A reason why the mission would be invalid with the unit
+     *     and colony or null if none found.
+     */
+    private static String invalidColonyReason(AIUnit aiUnit, Colony colony) {
+<span class="nc" id="L244">        String reason = invalidTargetReason(colony);</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        if (reason != null) return reason;</span>
+<span class="nc" id="L246">        final Unit unit = aiUnit.getUnit();</span>
+<span class="nc" id="L247">        final Player owner = unit.getOwner();</span>
+<span class="nc" id="L248">        Player targetPlayer = colony.getOwner();</span>
+<span class="nc bnc" id="L249" title="All 3 branches missed.">        switch (owner.getStance(targetPlayer)) {</span>
+        case UNCONTACTED: case PEACE: case ALLIANCE:
+<span class="nc" id="L251">            return &quot;bad-stance&quot;;</span>
+        case WAR: case CEASE_FIRE:
+<span class="nc" id="L253">            Tension tension = unit.getHomeIndianSettlement()</span>
+<span class="nc" id="L254">                .getAlarm(targetPlayer);</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">            if (tension != null &amp;&amp; tension.getLevel()</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">                .compareTo(Tension.Level.CONTENT) &lt;= 0) return &quot;happy&quot;;</span>
+            break;
+        }
+<span class="nc" id="L259">        return null;</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given AI unit?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @return A reason for invalidity, or null if none found.
+     */
+    public static String invalidMissionReason(AIUnit aiUnit) {
+<span class="nc" id="L269">        return invalidUnitReason(aiUnit);</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given AI unit and location?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @param loc The {@code Location} to check.
+     * @return A reason for invalidity, or null if none found.
+     */
+    public static String invalidMissionReason(AIUnit aiUnit, Location loc) {
+<span class="nc" id="L280">        String reason = invalidMissionReason(aiUnit);</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">        return (reason != null)</span>
+<span class="nc" id="L282">            ? reason</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">            : (loc instanceof Colony)</span>
+<span class="nc" id="L284">            ? invalidColonyReason(aiUnit, (Colony)loc)</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">            : (loc instanceof IndianSettlement)</span>
+<span class="nc" id="L286">            ? invalidTargetReason(loc, aiUnit.getUnit().getOwner())</span>
+<span class="nc" id="L287">            : Mission.TARGETINVALID;</span>
+    }
+
+
+    // Implement Mission
+    //   Inherit dispose, getBaseTransportPriority, isOneTime
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTransportDestination() {
+<span class="nc" id="L299">        return null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTarget() {
+<span class="nc bnc" id="L307" title="All 4 branches missed.">        return (this.demanded &amp;&amp; this.succeeded)</span>
+<span class="nc" id="L308">            ? getUnit().getHomeIndianSettlement()</span>
+<span class="nc" id="L309">            : this.colony;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setTarget(Location target) {
+<span class="nc bnc" id="L317" title="All 2 branches missed.">        if (target instanceof Colony) {</span>
+<span class="nc" id="L318">            this.colony = (Colony)target;</span>
+        }
+<span class="nc" id="L320">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location findTarget() {
+<span class="nc" id="L327">        return getTarget();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String invalidReason() {
+<span class="nc" id="L335">        return invalidMissionReason(getAIUnit(), getTarget());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Mission doMission(LogBuilder lb) {
+<span class="nc" id="L343">        lb.add(tag);</span>
+<span class="nc" id="L344">        String reason = invalidReason();</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">        if (reason != null) return lbFail(lb, false, reason);</span>
+
+<span class="nc" id="L347">        final AIUnit aiUnit = getAIUnit();</span>
+<span class="nc" id="L348">        final Unit unit = getUnit();</span>
+<span class="nc" id="L349">        final IndianSettlement is = unit.getHomeIndianSettlement();</span>
+        Direction d;
+
+<span class="nc bnc" id="L352" title="All 2 branches missed.">        if (!this.demanded) {</span>
+<span class="nc" id="L353">            Unit.MoveType mt = travelToTarget(getTarget(), null, lb);</span>
+<span class="nc bnc" id="L354" title="All 6 branches missed.">            switch (mt) {</span>
+            case MOVE_HIGH_SEAS: case MOVE_NO_MOVES: case MOVE_ILLEGAL:
+<span class="nc" id="L356">                return lbWait(lb);</span>
+
+            case MOVE_NO_REPAIR:
+<span class="nc" id="L359">                return lbFail(lb, false, AIUNITDIED);</span>
+
+            case MOVE_NO_TILE:
+<span class="nc" id="L362">                return this;</span>
+
+            case ATTACK_SETTLEMENT: // Arrived?
+<span class="nc" id="L365">                d = unit.getTile().getDirection(getTarget().getTile());</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">                if (d != null) break; // Yes, arrived at target</span>
+                // Fall through
+            case ATTACK_UNIT: // Something is blocking our path
+<span class="nc" id="L369">                Location blocker = resolveBlockage(aiUnit, getTarget());</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">                if (blocker == null) {</span>
+<span class="nc" id="L371">                    moveRandomly(tag, null);</span>
+<span class="nc" id="L372">                    return lbWait(lb);</span>
+                }
+<span class="nc" id="L374">                d = unit.getTile().getDirection(blocker.getTile());</span>
+<span class="nc bnc" id="L375" title="All 2 branches missed.">                return (AIMessage.askAttack(aiUnit, d)) ? lbAttack(lb, blocker)</span>
+<span class="nc" id="L376">                    : lbWait(lb);</span>
+
+            default:
+<span class="nc" id="L379">                return lbMove(lb, mt);</span>
+            }
+
+            // Load the goods.
+<span class="nc" id="L383">            lbAt(lb);</span>
+<span class="nc" id="L384">            AIPlayer aiPlayer = getAIPlayer();</span>
+<span class="nc" id="L385">            Colony colony = (Colony)getTarget();</span>
+<span class="nc" id="L386">            Player enemy = colony.getOwner();</span>
+<span class="nc" id="L387">            Goods goods = selectGoods(colony);</span>
+<span class="nc bnc" id="L388" title="All 2 branches missed.">            GoodsType type = (goods == null) ? null : goods.getType();</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">            int amount = (goods == null) ? 0 : goods.getAmount();</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">            if (goods == null) {</span>
+<span class="nc bnc" id="L391" title="All 2 branches missed.">                if (!enemy.checkGold(1)) {</span>
+<span class="nc" id="L392">                    return lbDone(lb, false, &quot;empty handed&quot;);</span>
+                }
+<span class="nc" id="L394">                amount = enemy.getGold() / 20;</span>
+<span class="nc bnc" id="L395" title="All 2 branches missed.">                if (amount == 0) amount = enemy.getGold();</span>
+            }
+<span class="nc" id="L397">            this.demanded = AIMessage.askIndianDemand(aiPlayer, unit, colony,</span>
+                                                      type, amount, null);
+<span class="nc bnc" id="L399" title="All 2 branches missed.">            lb.add(&quot;, demand made &quot;, (this.demanded) ? &quot;&quot; : &quot;un&quot;,</span>
+                   &quot;successfully&quot;);
+<span class="nc" id="L401">            return lbWait(lb);</span>
+
+<span class="nc bnc" id="L403" title="All 2 branches missed.">        } else if (!this.succeeded) { // Consider attacking if not content.</span>
+<span class="nc" id="L404">            Colony colony = (Colony)getTarget();</span>
+<span class="nc" id="L405">            Player enemy = colony.getOwner();</span>
+<span class="nc bnc" id="L406" title="All 2 branches missed.">            int unitTension = (is == null) ? 0 : is.getAlarm(enemy).getValue();</span>
+<span class="nc" id="L407">            int tension = Math.max(unitTension,</span>
+<span class="nc" id="L408">                unit.getOwner().getTension(enemy).getValue());</span>
+<span class="nc" id="L409">            d = unit.getTile().getDirection(colony.getTile());</span>
+<span class="nc bnc" id="L410" title="All 4 branches missed.">            if (d != null &amp;&amp; tension &gt;= Tension.Level.CONTENT.getLimit()) {</span>
+<span class="nc bnc" id="L411" title="All 2 branches missed.">                if (AIMessage.askAttack(aiUnit, d)) lbAttack(lb, colony);</span>
+            }
+<span class="nc" id="L413">            return lbDone(lb, false, &quot;refused at &quot;, colony);</span>
+
+<span class="nc bnc" id="L415" title="All 2 branches missed.">        } else if (!hasTribute()) {</span>
+<span class="nc" id="L416">            return lbDone(lb, true, &quot;accepted gold at &quot;, colony);</span>
+
+        } else { // Take the goods home
+            for (;;) {
+<span class="nc" id="L420">                Unit.MoveType mt = travelToTarget(getTarget(),</span>
+<span class="nc" id="L421">                    CostDeciders.avoidSettlementsAndBlockingUnits(), lb);</span>
+<span class="nc bnc" id="L422" title="All 5 branches missed.">                switch (mt) {</span>
+                case MOVE: // Arrived
+<span class="nc" id="L424">                    break;</span>
+                    
+                case MOVE_HIGH_SEAS: case MOVE_NO_MOVES: case MOVE_ILLEGAL:
+<span class="nc" id="L427">                    return lbWait(lb);</span>
+                    
+                case MOVE_NO_REPAIR:
+<span class="nc" id="L430">                    return lbFail(lb, false, AIUNITDIED);</span>
+                    
+                case MOVE_NO_TILE:
+<span class="nc" id="L433">                    return this;</span>
+                    
+                default:
+<span class="nc" id="L436">                    return lbMove(lb, mt);</span>
+                }
+                
+                // Unload the goods
+<span class="nc" id="L440">                lbAt(lb);</span>
+<span class="nc" id="L441">                GoodsContainer container = unit.getGoodsContainer();</span>
+<span class="nc bnc" id="L442" title="All 2 branches missed.">                for (Goods goods : container.getCompactGoodsList()) {</span>
+<span class="nc" id="L443">                    Goods tribute = container.removeGoods(goods.getType());</span>
+<span class="nc" id="L444">                    is.addGoods(tribute);</span>
+<span class="nc" id="L445">                }</span>
+<span class="nc" id="L446">                return lbDone(lb, false, &quot;unloaded tribute&quot;);</span>
+            }
+        }
+    }
+
+
+    // Serialization
+
+    private static final String COLONY_TAG = &quot;colony&quot;;
+    private static final String DEMANDED_TAG = &quot;demanded&quot;;
+    private static final String SUCCEEDED_TAG = &quot;succeeded&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L464">        super.writeAttributes(xw);</span>
+
+<span class="nc bnc" id="L466" title="All 2 branches missed.">        if (this.colony != null) {</span>
+<span class="nc" id="L467">            xw.writeAttribute(COLONY_TAG, this.colony.getId());</span>
+        }
+
+<span class="nc" id="L470">        xw.writeAttribute(DEMANDED_TAG, this.demanded);</span>
+
+<span class="nc" id="L472">        xw.writeAttribute(SUCCEEDED_TAG, this.succeeded);</span>
+<span class="nc" id="L473">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L480">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L482">        this.colony = xr.getAttribute(getGame(), COLONY_TAG,</span>
+                                      Colony.class, (Colony)null);
+
+<span class="nc" id="L485">        this.demanded = xr.getAttribute(DEMANDED_TAG, false);</span>
+
+<span class="nc" id="L487">        this.succeeded = xr.getAttribute(SUCCEEDED_TAG, false);</span>
+<span class="nc" id="L488">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L494">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

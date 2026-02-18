@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefensiveZone.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.military</a> &gt; <span class="el_source">DefensiveZone.java</span></div><h1>DefensiveZone.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai.military;
+
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Ownable;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.ai.AIColony;
+
+/**
+ * Represents the area around a colony that should be defended.
+ */
+public final class DefensiveZone {
+
+    private final AIColony aiColony;
+<span class="fc" id="L41">    private final Set&lt;Unit&gt; potentialEnemies = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L42">    private final Set&lt;Settlement&gt; potentialEnemySettlements = new HashSet&lt;&gt;();</span>
+    
+<span class="fc" id="L44">    private boolean exposedLand = false;</span>
+<span class="fc" id="L45">    private boolean exposedWater = false;</span>
+<span class="fc" id="L46">    private final Set&lt;DefensiveZone&gt; neighbours = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L47">    private boolean enemiesInNeighbour = false;  </span>
+    
+    
+<span class="fc" id="L50">    public DefensiveZone(AIColony aiColony) {</span>
+<span class="fc" id="L51">        this.aiColony = aiColony;</span>
+<span class="fc" id="L52">    }</span>
+    
+    public AIColony getAiColony() {
+<span class="fc" id="L55">        return aiColony;</span>
+    }
+    
+    public void setExposedWater(boolean exposedWater) {
+<span class="fc" id="L59">        this.exposedWater = exposedWater;</span>
+<span class="fc" id="L60">    }</span>
+    
+    public void setExposedLand(boolean exposedLand) {
+<span class="fc" id="L63">        this.exposedLand = exposedLand;</span>
+<span class="fc" id="L64">    }</span>
+    
+    public void setEnemiesInNeighbour(boolean enemiesInNeighbour) {
+<span class="nc" id="L67">        this.enemiesInNeighbour = enemiesInNeighbour;</span>
+<span class="nc" id="L68">    }</span>
+
+    public void addAllPotentialEnemies(Set&lt;Unit&gt; units) {
+<span class="fc" id="L71">        potentialEnemies.addAll(units);</span>
+<span class="fc" id="L72">    }</span>
+    
+    public void addPotentialEnemySettlement(Settlement settlement) {
+<span class="fc" id="L75">        potentialEnemySettlements.add(settlement);</span>
+<span class="fc" id="L76">    }</span>
+    
+    public void addNeighbour(DefensiveZone defensiveZone) {
+<span class="nc" id="L79">        neighbours.add(defensiveZone);</span>
+<span class="nc" id="L80">    }</span>
+    
+    public boolean isExposed() {
+<span class="nc bnc" id="L83" title="All 4 branches missed.">        return exposedLand || exposedWater;</span>
+    }
+    
+    public boolean isExposedWater() {
+<span class="fc" id="L87">        return exposedWater;</span>
+    }
+    
+    public boolean isExposedLand() {
+<span class="fc" id="L91">        return exposedLand;</span>
+    }
+    
+    public boolean isEnemiesInNeighbour() {
+<span class="fc" id="L95">        return enemiesInNeighbour;</span>
+    }
+    
+    public Set&lt;Unit&gt; getEnemies() {
+<span class="fc" id="L99">        return potentialEnemies.stream()</span>
+<span class="fc" id="L100">                .filter(enemiesOnly())</span>
+<span class="fc" id="L101">                .collect(Collectors.toSet());</span>
+    }
+    
+    public int getNumberOfMilitaryEnemies() {
+<span class="fc" id="L105">        final int unitEnemies = (int) potentialEnemies.stream()</span>
+<span class="fc" id="L106">                .filter(enemiesOnly())</span>
+<span class="pc" id="L107">                .filter(u -&gt; u.isOffensiveUnit())</span>
+<span class="pc bnc" id="L108" title="All 2 branches missed.">                .filter(u -&gt; !u.getOwner().isIndian())</span>
+<span class="fc" id="L109">                .count();</span>
+        
+        // Count the presence of an enemy settlement as a potential attack.
+<span class="fc" id="L112">        final int settlementEnemies = (int) potentialEnemySettlements.stream()</span>
+<span class="fc" id="L113">                .filter(enemiesOnly())</span>
+<span class="pc bnc" id="L114" title="All 2 branches missed.">                .filter(s -&gt; !(s instanceof IndianSettlement))</span>
+<span class="fc" id="L115">                .count();</span>
+        
+<span class="fc" id="L117">        return unitEnemies + settlementEnemies;</span>
+    }
+    
+    public int getNumberOfPotentialMilitaryEnemies() {
+<span class="fc" id="L121">        final int unitEnemies = (int) potentialEnemies.stream()</span>
+                /*
+                 * TODO: This filter should be added after we have a system of trust
+                 *       built in, where all AI players ally themselves (and attack)
+                 *       if the human player breaks the peace too often.
+                 *
+                .filter(u -&gt; getPlayer().getStance(u.getOwner()) == Stance.WAR
+                        || getPlayer().getStance(u.getOwner()) == Stance.CEASE_FIRE)
+                */
+<span class="pc" id="L130">                .filter(u -&gt; u.isOffensiveUnit())</span>
+<span class="pc bnc" id="L131" title="All 2 branches missed.">                .filter(u -&gt; !u.getOwner().isIndian())</span>
+<span class="fc" id="L132">                .count();</span>
+        
+<span class="fc" id="L134">        final int settlementEnemies = (int) potentialEnemySettlements.stream()</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">                .filter(s -&gt; !(s instanceof IndianSettlement))</span>
+<span class="fc" id="L136">                .count();</span>
+        
+<span class="fc" id="L138">        return unitEnemies + settlementEnemies;</span>
+    }
+
+    private Player getPlayer() {
+<span class="fc" id="L142">        return aiColony.getColony().getOwner();</span>
+    }
+    
+    /**
+     * Gets adjacent defensive zones. The defensive zones are only considered
+     * to be adjacent if they are connected by land.
+     */
+    public Set&lt;DefensiveZone&gt; getNeighbours() {
+<span class="fc" id="L150">        return neighbours;</span>
+    }
+    
+    private Predicate&lt;? super Ownable&gt; enemiesOnly() {
+<span class="fc" id="L154">        return u -&gt; getPlayer().atWarWith(u.getOwner());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="nc" id="L162">        return Objects.hash(aiColony);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        if (this == obj)</span>
+<span class="nc" id="L171">            return true;</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (obj == null)</span>
+<span class="nc" id="L173">            return false;</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (getClass() != obj.getClass())</span>
+<span class="nc" id="L175">            return false;</span>
+<span class="nc" id="L176">        DefensiveZone other = (DefensiveZone) obj;</span>
+<span class="nc" id="L177">        return Objects.equals(aiColony, other.aiColony);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,549 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FeatureContainer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">FeatureContainer.java</span></div><h1>FeatureContainer.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+package net.sf.freecol.common.model;
+
+import static net.sf.freecol.common.util.CollectionUtils.first;
+import static net.sf.freecol.common.util.CollectionUtils.forEachMapEntry;
+import static net.sf.freecol.common.util.CollectionUtils.iterable;
+import static net.sf.freecol.common.util.CollectionUtils.removeInPlace;
+import static net.sf.freecol.common.util.CollectionUtils.sort;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
+
+
+/**
+ * A container to hold abilities and modifiers for some FreeColObject-subclass.
+ *
+ * - FreeColSpecObjectType, Europe, Player, Settlement are current
+ *   implementors.
+ *
+ * - Building delegates some functionality to its type.
+ *
+ * - Unit fakes it by constructing a FeatureContainer on the fly.
+ *
+ * - FreeColObject itself implements a null version.
+ */
+<span class="fc" id="L48">public final class FeatureContainer {</span>
+
+    /** Lock variables. */
+<span class="fc" id="L51">    private final Object abilitiesLock = new Object();</span>
+<span class="fc" id="L52">    private final Object modifiersLock = new Object();</span>
+
+    /** The abilities in the container. */
+<span class="fc" id="L55">    private Map&lt;String, Set&lt;Ability&gt;&gt; abilities = null;</span>
+
+    /** The modifiers in the container. */
+<span class="fc" id="L58">    private Map&lt;String, Set&lt;Modifier&gt;&gt; modifiers = null;</span>
+
+
+    /**
+     * Have the abilities map been created?
+     *
+     * @return True if the abilities are present.
+     */
+    private boolean abilitiesPresent() {
+<span class="fc" id="L67">        synchronized (abilitiesLock) {</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            return abilities != null;</span>
+        }
+    }
+
+    /**
+     * On demand creation of the abilities map.
+     */
+    private void requireAbilities() {
+<span class="fc" id="L76">        synchronized (abilitiesLock) {</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (abilities == null) abilities = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">    }</span>
+
+    /**
+     * Have the modifiers map been created?
+     *
+     * @return True if the modifiers are present.
+     */
+    private boolean modifiersPresent() {
+<span class="fc" id="L87">        synchronized (modifiersLock) {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            return modifiers != null;</span>
+        }
+    }
+
+    /**
+     * On demand creation of the modifiers map.
+     */
+    private synchronized void requireModifiers() {
+<span class="fc" id="L96">        synchronized (modifiersLock) {</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            if (modifiers == null) modifiers = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L98">        }</span>
+<span class="fc" id="L99">    }</span>
+
+    protected Collection&lt;Ability&gt; getAbilityValues() {
+<span class="nc" id="L102">        Set&lt;Ability&gt; ret = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L103">        synchronized (abilitiesLock) {</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">            if (abilities != null) {</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">                for (Set&lt;Ability&gt; as : this.abilities.values()) ret.addAll(as);</span>
+            }
+<span class="nc" id="L107">        }</span>
+<span class="nc" id="L108">        return ret;</span>
+    }
+    
+    /**
+     * Gets all modifiers with any filtering applied.
+     * @return All the modifiers stored in this {@code FeatureContainer}.
+     */
+    public Collection&lt;Modifier&gt; getModifierValues() {
+<span class="fc" id="L116">        Set&lt;Modifier&gt; ret = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L117">        synchronized (modifiersLock) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (modifiers != null) {</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">                for (Set&lt;Modifier&gt; ms : this.modifiers.values()) ret.addAll(ms);</span>
+            }
+<span class="fc" id="L121">        }</span>
+<span class="fc" id="L122">        return ret;</span>
+    }
+    
+
+    /**
+     * Is the given set of abilities non-empty and contains no
+     * false-valued members?
+     *
+     * @param abilities A stream of {@code Ability}s to check.
+     * @return True if the abilities are `satisfied'.
+     */
+    public static boolean allAbilities(Stream&lt;Ability&gt; abilities) {
+<span class="fc" id="L134">        boolean ret = false;</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        for (Ability ability : iterable(abilities)) {</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            if (!ability.getValue()) return false;</span>
+<span class="fc" id="L137">            ret = true;</span>
+<span class="fc" id="L138">        }</span>
+<span class="fc" id="L139">        return ret;</span>
+    }
+
+    /**
+     * Is the given set of abilities non-empty and contains no
+     * false-valued members?
+     *
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     ability applies to.
+     * @param turn An optional applicable {@code Turn}.
+     * @return True if the ability is present.
+     */
+    public boolean hasAbility(String id, FreeColSpecObjectType fcgot,
+                              Turn turn) {
+<span class="nc" id="L154">        return FeatureContainer.allAbilities(getAbilities(id, fcgot, turn));</span>
+    }
+
+    /**
+     * Checks if this container contains a given ability key.
+     *
+     * @param key The key to check.
+     * @return True if the key is present.
+     */
+    public boolean containsAbilityKey(String key) {
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        return first(getAbilities(key, null, null)) != null;</span>
+    }
+
+    /**
+     * Gets the set of abilities with the given identifier from a
+     * container.
+     *
+     * @param id The object identifier (null matches all).
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     ability applies to.
+     * @param turn An optional applicable {@code Turn}.
+     * @return A stream of abilities.
+     */
+    public Stream&lt;Ability&gt; getAbilities(String id, FreeColSpecObjectType fcgot,
+                                        Turn turn) {
+<span class="fc" id="L179">        Set&lt;Ability&gt; result = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (abilitiesPresent()) {</span>
+<span class="fc" id="L181">            synchronized (abilitiesLock) {</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                if (id == null) {</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">                    for (Set&lt;Ability&gt; aset : abilities.values()) {</span>
+<span class="fc" id="L184">                        result.addAll(aset);</span>
+<span class="fc" id="L185">                    }</span>
+                } else {
+<span class="fc" id="L187">                    Set&lt;Ability&gt; aset = abilities.get(id);</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                    if (aset != null) result.addAll(aset);</span>
+                }
+<span class="fc" id="L190">            }</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            removeInPlace(result, a -&gt; !a.appliesTo(fcgot, turn));</span>
+        }
+<span class="fc" id="L193">        return result.stream();</span>
+    }
+
+    /**
+     * Add the given ability to a container.
+     *
+     * @param ability An {@code Ability} to add.
+     * @return True if the {@code Ability} was added.
+     */
+    public boolean addAbility(Ability ability) {
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">        if (ability == null) return false;</span>
+
+<span class="fc" id="L205">        requireAbilities();</span>
+<span class="fc" id="L206">        synchronized (abilitiesLock) {</span>
+<span class="fc" id="L207">            Set&lt;Ability&gt; abilitySet = abilities.get(ability.getId());</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">            if (abilitySet == null) {</span>
+<span class="fc" id="L209">                abilitySet = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L210">                abilities.put(ability.getId(), abilitySet);</span>
+            }
+<span class="fc" id="L212">            return abilitySet.add(ability);</span>
+        }
+    }
+
+    /**
+     * Remove the given ability from a container.
+     *
+     * @param ability An {@code Ability} to remove.
+     * @return The ability removed or null on failure.
+     */
+    public Ability removeAbility(Ability ability) {
+<span class="pc bpc" id="L223" title="2 of 4 branches missed.">        if (ability == null || !abilitiesPresent()) return null;</span>
+
+<span class="fc" id="L225">        synchronized (abilitiesLock) {</span>
+<span class="fc" id="L226">            Set&lt;Ability&gt; abilitySet = abilities.get(ability.getId());</span>
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">            return (abilitySet == null</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">                || !abilitySet.remove(ability)) ? null</span>
+<span class="fc" id="L229">                : ability;</span>
+        }
+    }
+
+    /**
+     * Remove all abilities with a given identifier.
+     *
+     * @param id The object identifier.
+     */
+    public void removeAbilities(String id) {
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        if (!abilitiesPresent()) return;</span>
+
+<span class="nc" id="L241">        synchronized (abilitiesLock) {</span>
+<span class="nc" id="L242">            abilities.remove(id);</span>
+<span class="nc" id="L243">        }</span>
+<span class="nc" id="L244">    }</span>
+
+
+    /**
+     * Gets the set of modifiers with the given identifier from this
+     * container.
+     *
+     * @param id The object identifier.
+     * @param fcgot An optional {@code FreeColSpecObjectType} the
+     *     modifier applies to.
+     * @param turn An optional applicable {@code Turn}.
+     * @return A stream of {@code Modifier}s.
+     */
+    public Stream&lt;Modifier&gt; getModifiers(String id,
+                                         FreeColSpecObjectType fcgot,
+                                         Turn turn) {
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        if (!modifiersPresent()) return Stream.&lt;Modifier&gt;empty();</span>
+<span class="fc" id="L261">        Set&lt;Modifier&gt; mset = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L262">        synchronized (modifiersLock) {</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">            if (id == null) {</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">                for (Set&lt;Modifier&gt; ms : modifiers.values()) mset.addAll(ms);</span>
+            } else {
+<span class="fc" id="L266">                Set&lt;Modifier&gt; ms = modifiers.get(id);</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">                if (ms != null) mset.addAll(ms);</span>
+            }
+<span class="fc" id="L269">        }</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        removeInPlace(mset, m -&gt; !m.appliesTo(fcgot, turn));</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">        return (mset.isEmpty()) ? Stream.&lt;Modifier&gt;empty() : mset.stream();</span>
+    }
+
+    /**
+     * Applies a collection of modifiers to the given float value.
+     *
+     * @param number The number to modify.
+     * @param turn An optional applicable {@code Turn}.
+     * @param mods The {@code Modifier}s to apply.
+     * @return The modified number.
+     */
+    public static float applyModifiers(float number, Turn turn,
+                                       Collection&lt;Modifier&gt; mods) {
+<span class="pc bpc" id="L284" title="1 of 4 branches missed.">        return (mods == null || mods.isEmpty()) ? number</span>
+<span class="fc" id="L285">            : applyModifiersInternal(number, turn,</span>
+<span class="fc" id="L286">                sort(mods, Modifier.ascendingModifierIndexComparator));</span>
+    }
+
+    /**
+     * Applies a stream of modifiers to the given float value.
+     *
+     * @param number The number to modify.
+     * @param turn An optional applicable {@code Turn}.
+     * @param mods The {@code Modifier}s to apply.
+     * @return The modified number.
+     */
+    public static float applyModifiers(float number, Turn turn,
+                                       Stream&lt;Modifier&gt; mods) {
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">        return (mods == null) ? number</span>
+<span class="fc" id="L300">            : applyModifiersInternal(number, turn,</span>
+<span class="fc" id="L301">                sort(mods, Modifier.ascendingModifierIndexComparator));</span>
+    }
+
+    /**
+     * Implement applyModifiers.
+     *
+     * @param number The number to modify.
+     * @param turn An optional applicable {@code Turn}.
+     * @param mods The {@code Modifier}s to apply.
+     * @return The modified number.
+     */
+    private static float applyModifiersInternal(float number, Turn turn,
+                                                Collection&lt;Modifier&gt; mods) {
+<span class="fc" id="L314">        float result = number;</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        for (Modifier m : mods) {</span>
+<span class="fc" id="L316">            float value = m.getValue(turn);</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">            if (Float.compare(value, Modifier.UNKNOWN) == 0) {</span>
+<span class="fc" id="L318">                return value;</span>
+            }
+<span class="fc" id="L320">            result = m.apply(result, value);</span>
+<span class="fc" id="L321">        }</span>
+<span class="fc" id="L322">        return result;</span>
+    }
+
+    /**
+     * Adds a modifier to a container.
+     *
+     * @param modifier The {@code Modifier} to add.
+     * @return True if the modifier was added.
+     */
+    public boolean addModifier(Modifier modifier) {
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">        if (modifier == null) return false;</span>
+
+<span class="fc" id="L334">        requireModifiers();</span>
+<span class="fc" id="L335">        synchronized (modifiersLock) {</span>
+<span class="fc" id="L336">            Set&lt;Modifier&gt; modifierSet = modifiers.get(modifier.getId());</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">            if (modifierSet == null) {</span>
+<span class="fc" id="L338">                modifierSet = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L339">                modifiers.put(modifier.getId(), modifierSet);</span>
+            }
+<span class="fc" id="L341">            return modifierSet.add(modifier);</span>
+        }
+    }
+
+    /**
+     * Removes a modifier from a container.
+     *
+     * @param modifier The {@code Modifier} to remove.
+     * @return The modifier removed.
+     */
+    public Modifier removeModifier(Modifier modifier) {
+<span class="pc bpc" id="L352" title="2 of 4 branches missed.">        if (modifier == null || !modifiersPresent()) return null;</span>
+
+<span class="fc" id="L354">        synchronized (modifiersLock) {</span>
+<span class="fc" id="L355">            Set&lt;Modifier&gt; modifierSet = modifiers.get(modifier.getId());</span>
+<span class="pc bpc" id="L356" title="1 of 2 branches missed.">            return (modifierSet == null</span>
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">                || !modifierSet.remove(modifier)) ? null</span>
+<span class="fc" id="L358">                : modifier;</span>
+        }
+    }
+
+    /**
+     * Removes all modifiers with a given identifier.
+     *
+     * @param id The object identifier.
+     */
+    public void removeModifiers(String id) {
+<span class="pc bpc" id="L368" title="1 of 2 branches missed.">        if (!modifiersPresent()) return;</span>
+
+<span class="fc" id="L370">        synchronized (modifiersLock) {</span>
+<span class="fc" id="L371">            modifiers.remove(id);</span>
+<span class="fc" id="L372">        }</span>
+<span class="fc" id="L373">    }</span>
+
+    /**
+     * Adds all the features in an object to this object.
+     *
+     * @param fco The {@code FreeColObject} to add features from.
+     */
+    public void addFeatures(FreeColObject fco) {
+<span class="fc" id="L381">        FeatureContainer c = fco.getFeatureContainer();</span>
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">        if (c == null) return;</span>
+
+<span class="fc bfc" id="L384" title="All 2 branches covered.">        if (c.abilitiesPresent()) {</span>
+<span class="fc" id="L385">            requireAbilities();</span>
+            HashMap&lt;String, Set&lt;Ability&gt;&gt; ca;
+<span class="fc" id="L387">            synchronized (c.abilitiesLock) {</span>
+<span class="fc" id="L388">                ca = new HashMap&lt;&gt;(c.abilities);</span>
+<span class="fc" id="L389">            }</span>
+<span class="fc" id="L390">            synchronized (abilitiesLock) {</span>
+<span class="fc" id="L391">                forEachMapEntry(ca, e -&gt; {</span>
+<span class="fc" id="L392">                        Set&lt;Ability&gt; abilitySet = abilities.get(e.getKey());</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">                        if (abilitySet == null) {</span>
+<span class="fc" id="L394">                            abilitySet = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L395">                            abilities.put(e.getKey(), abilitySet);</span>
+                        }
+<span class="fc" id="L397">                        abilitySet.addAll(e.getValue());</span>
+<span class="fc" id="L398">                    });</span>
+<span class="fc" id="L399">            }</span>
+        }
+
+<span class="fc bfc" id="L402" title="All 2 branches covered.">        if (c.modifiersPresent()) {</span>
+<span class="fc" id="L403">            requireModifiers();</span>
+            HashMap&lt;String, Set&lt;Modifier&gt;&gt; cm;
+<span class="fc" id="L405">            synchronized (c.modifiersLock) {</span>
+<span class="fc" id="L406">                cm = new HashMap&lt;&gt;(c.modifiers);</span>
+<span class="fc" id="L407">            }</span>
+<span class="fc" id="L408">            synchronized (modifiersLock) {</span>
+<span class="fc" id="L409">                forEachMapEntry(cm, e -&gt; {</span>
+<span class="fc" id="L410">                        Set&lt;Modifier&gt; modifierSet = modifiers.get(e.getKey());</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">                        if (modifierSet == null) {</span>
+<span class="fc" id="L412">                            modifierSet = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L413">                            modifiers.put(e.getKey(), modifierSet);</span>
+                        }
+<span class="fc" id="L415">                        modifierSet.addAll(e.getValue());</span>
+<span class="fc" id="L416">                    });</span>
+<span class="fc" id="L417">            }</span>
+        }
+<span class="fc" id="L419">    }</span>
+
+    /**
+     * Removes all the features in an object from a container.
+     *
+     * @param fco The {@code FreeColObject} to find features to remove
+     *     in.
+     */
+    public void removeFeatures(FreeColObject fco) {
+<span class="fc" id="L428">        FeatureContainer c = fco.getFeatureContainer();</span>
+<span class="pc bpc" id="L429" title="1 of 2 branches missed.">        if (c == null) return;</span>
+
+<span class="fc bfc" id="L431" title="All 4 branches covered.">        if (abilitiesPresent() &amp;&amp; c.abilitiesPresent()) {</span>
+<span class="fc" id="L432">            Set&lt;String&gt; ca = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L433">            synchronized (c.abilitiesLock) {</span>
+<span class="fc" id="L434">                ca.addAll(c.abilities.keySet());</span>
+<span class="fc" id="L435">            }</span>
+<span class="fc" id="L436">            synchronized (abilitiesLock) {</span>
+<span class="fc bfc" id="L437" title="All 2 branches covered.">                for (String key : ca) {</span>
+<span class="fc" id="L438">                    Set&lt;Ability&gt; abilitySet = abilities.get(key);</span>
+<span class="pc bpc" id="L439" title="1 of 2 branches missed.">                    if (abilitySet == null) continue;</span>
+<span class="fc bfc" id="L440" title="All 2 branches covered.">                    for (Ability a : new HashSet&lt;&gt;(abilitySet)) {</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">                        if (a.getSource() == fco) abilitySet.remove(a);</span>
+<span class="fc" id="L442">                    }</span>
+<span class="fc" id="L443">                }</span>
+<span class="fc" id="L444">            }</span>
+        }
+
+<span class="pc bpc" id="L447" title="1 of 4 branches missed.">        if (modifiersPresent() &amp;&amp; c.modifiersPresent()) {</span>
+<span class="fc" id="L448">            Set&lt;String&gt; cm = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L449">            synchronized (c.modifiersLock) {</span>
+<span class="fc" id="L450">                cm.addAll(c.modifiers.keySet());</span>
+<span class="fc" id="L451">            }</span>
+<span class="fc" id="L452">            synchronized (modifiersLock) {</span>
+<span class="fc bfc" id="L453" title="All 2 branches covered.">                for (String key : cm) {</span>
+<span class="fc" id="L454">                    Set&lt;Modifier&gt; modifierSet = modifiers.get(key);</span>
+<span class="pc bpc" id="L455" title="1 of 2 branches missed.">                    if (modifierSet == null) continue;</span>
+<span class="fc bfc" id="L456" title="All 2 branches covered.">                    for (Modifier m : new HashSet&lt;&gt;(modifierSet)) {</span>
+<span class="fc bfc" id="L457" title="All 2 branches covered.">                        if (m.getSource() == fco) modifierSet.remove(m);</span>
+<span class="fc" id="L458">                    }</span>
+<span class="fc" id="L459">                }</span>
+<span class="fc" id="L460">            }</span>
+        }
+<span class="fc" id="L462">    }</span>
+
+    /**
+     * Copy anther feature container.
+     *
+     * @param other The other {@code FeatureContainer}.
+     */
+    public void copy(FeatureContainer other) {
+<span class="nc" id="L470">        clear();</span>
+<span class="nc bnc" id="L471" title="All 2 branches missed.">        if (other != null) {</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">            for (Ability a : other.getAbilityValues()) addAbility(a);</span>
+<span class="nc bnc" id="L473" title="All 2 branches missed.">            for (Modifier m : other.getModifierValues()) addModifier(m);</span>
+        }
+<span class="nc" id="L475">    }</span>
+                
+    /**
+     * Clear this feature container.
+     */
+    public void clear() {
+<span class="pc bpc" id="L481" title="1 of 2 branches missed.">        if (abilitiesPresent()) {</span>
+<span class="nc" id="L482">            synchronized (abilitiesLock) {</span>
+<span class="nc" id="L483">                abilities.clear();</span>
+<span class="nc" id="L484">            }</span>
+        }
+<span class="fc bfc" id="L486" title="All 2 branches covered.">        if (modifiersPresent()) {</span>
+<span class="fc" id="L487">            synchronized (modifiersLock) {</span>
+<span class="fc" id="L488">                modifiers.clear();</span>
+<span class="fc" id="L489">            }</span>
+        }
+<span class="fc" id="L491">    }</span>
+
+    /**
+     * Replaces the source field. This is necessary because objects
+     * may inherit Features from other abstract objects.
+     *
+     * @param oldSource The old source {@code FreeColSpecObjectType}.
+     * @param newSource The new source {@code FreeColSpecObjectType}.
+     */
+    public void replaceSource(FreeColSpecObjectType oldSource,
+                              FreeColSpecObjectType newSource) {
+<span class="fc bfc" id="L502" title="All 2 branches covered.">        for (Ability ability : transform(getAbilities(null, null, null),</span>
+<span class="pc bpc" id="L503" title="2 of 4 branches missed.">                a -&gt; oldSource == null || a.getSource() == oldSource)) {</span>
+<span class="fc" id="L504">            removeAbility(ability);</span>
+<span class="fc" id="L505">            Ability newAbility = new Ability(ability);</span>
+<span class="fc" id="L506">            newAbility.setSource(newSource);</span>
+<span class="fc" id="L507">            addAbility(newAbility);</span>
+<span class="fc" id="L508">        }</span>
+
+<span class="fc bfc" id="L510" title="All 2 branches covered.">        for (Modifier modifier : transform(getModifiers(null, null, null),</span>
+<span class="pc bpc" id="L511" title="1 of 4 branches missed.">                m -&gt; oldSource == null || m.getSource() == oldSource)) {</span>
+<span class="fc" id="L512">            removeModifier(modifier);</span>
+<span class="fc" id="L513">            Modifier mod = Modifier.makeModifier(modifier);</span>
+<span class="fc" id="L514">            mod.setSource(newSource);</span>
+<span class="fc" id="L515">            addModifier(mod);</span>
+<span class="fc" id="L516">        }</span>
+<span class="fc" id="L517">    }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L527">        StringBuilder sb = new StringBuilder(256);</span>
+<span class="nc" id="L528">        sb.append(&quot;[FeatureContainer&quot;);</span>
+<span class="nc" id="L529">        int siz = sb.length();</span>
+<span class="nc bnc" id="L530" title="All 2 branches missed.">        for (Ability ability : iterable(getAbilities(null, null, null))) {</span>
+<span class="nc" id="L531">            sb.append(' ').append(ability);</span>
+<span class="nc" id="L532">        }</span>
+<span class="nc bnc" id="L533" title="All 2 branches missed.">        if (sb.length() &gt; siz) {</span>
+<span class="nc" id="L534">            sb.insert(siz, &quot; [abilities&quot;);</span>
+<span class="nc" id="L535">            sb.append(']');</span>
+        }
+<span class="nc" id="L537">        siz = sb.length();</span>
+<span class="nc bnc" id="L538" title="All 2 branches missed.">        for (Modifier modifier : iterable(getModifiers(null, null, null))) {</span>
+<span class="nc" id="L539">            sb.append(' ').append(modifier);</span>
+<span class="nc" id="L540">        }</span>
+<span class="nc bnc" id="L541" title="All 2 branches missed.">        if (sb.length() &gt; siz) {</span>
+<span class="nc" id="L542">            sb.insert(siz, &quot;[modifiers&quot;);</span>
+<span class="nc" id="L543">            sb.append(']');</span>
+        }
+<span class="nc" id="L545">        sb.append(']');</span>
+<span class="nc" id="L546">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

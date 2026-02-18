@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MapViewerScaledUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.mapviewer</a> &gt; <span class="el_source">MapViewerScaledUtils.java</span></div><h1>MapViewerScaledUtils.java</h1><pre class="source lang-java linenums">package net.sf.freecol.client.gui.mapviewer;
+
+import java.awt.BasicStroke;
+import java.awt.Font;
+import java.awt.Stroke;
+import java.awt.geom.GeneralPath;
+import java.awt.geom.Point2D;
+import java.util.EnumMap;
+
+import net.sf.freecol.client.gui.FontLibrary;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.model.Direction;
+
+final class MapViewerScaledUtils {
+    
+    /*
+     * These variables are directly dependent on the map scale, which
+     * changes in changeScale().
+     * Their consistency is maintained by calling updateScaledVariables().
+     */
+
+    /** Fog of war area. */
+<span class="nc" id="L23">    private final GeneralPath fog = new GeneralPath();</span>
+
+    /** Fonts (scaled). */
+    private Font fontNormal, fontItalic, fontProduction, fontTiny;
+        
+    /** Points to use to draw the borders. */
+<span class="nc" id="L29">    private final EnumMap&lt;Direction, Point2D.Float&gt; borderPoints</span>
+        = new EnumMap&lt;&gt;(Direction.class);
+    /** Support points for quadTo calls when drawing borders. */
+<span class="nc" id="L32">    private final EnumMap&lt;Direction, Point2D.Float&gt; controlPoints</span>
+        = new EnumMap&lt;&gt;(Direction.class);
+
+    /** Stroke to draw the borders with. */
+<span class="nc" id="L36">    private Stroke borderStroke = new BasicStroke(4);</span>
+
+    /** Stroke to draw the grid with. */
+<span class="nc" id="L39">    private Stroke gridStroke = new BasicStroke(1);</span>
+    
+    
+<span class="nc" id="L42">    MapViewerScaledUtils() {</span>
+<span class="nc" id="L43">    }</span>
+    
+    
+    void updateScaledVariables(ImageLibrary lib) {
+<span class="nc" id="L47">        final TileBounds tileBounds = new TileBounds(lib.getTileSize(), lib.getScaleFactor());</span>
+        // ATTENTION: we assume that all base tiles have the same size
+<span class="nc" id="L49">        this.fog.reset();</span>
+<span class="nc" id="L50">        this.fog.moveTo(tileBounds.getHalfWidth(), 0);</span>
+<span class="nc" id="L51">        this.fog.lineTo(tileBounds.getWidth(), tileBounds.getHalfHeight());</span>
+<span class="nc" id="L52">        this.fog.lineTo(tileBounds.getHalfWidth(), tileBounds.getHeight());</span>
+<span class="nc" id="L53">        this.fog.lineTo(0, tileBounds.getHalfHeight());</span>
+<span class="nc" id="L54">        this.fog.closePath();</span>
+
+        // Update fonts, make sure font{Normal,Italic} are non-null but
+        // allow the others to disappear if they get too small
+<span class="nc" id="L58">        this.fontNormal = lib.getScaledFont(&quot;normal-bold-smaller&quot;, null);</span>
+<span class="nc" id="L59">        this.fontItalic = lib.getScaledFont(&quot;normal-bold+italic-smaller&quot;, null);</span>
+<span class="nc" id="L60">        this.fontProduction = lib.getScaledFont(&quot;normal-bold-tiny&quot;, null);</span>
+<span class="nc" id="L61">        this.fontTiny = lib.getScaledFont(&quot;normal-plain-tiny&quot;, null);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        if (this.fontNormal == null) {</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">            this.fontNormal = (lib.getScaleFactor() &lt; 1f)</span>
+<span class="nc" id="L64">                ? FontLibrary.getUnscaledFont(&quot;normal-bold-tiny&quot;, null)</span>
+<span class="nc" id="L65">                : FontLibrary.getUnscaledFont(&quot;normal-bold-max&quot;, null);</span>
+        }
+<span class="nc bnc" id="L67" title="All 2 branches missed.">        if (this.fontItalic == null) this.fontItalic = this.fontNormal;</span>
+        
+<span class="nc" id="L69">        final int dx = tileBounds.getWidth() / 16;</span>
+<span class="nc" id="L70">        final int dy = tileBounds.getHeight() / 16;</span>
+<span class="nc" id="L71">        final int ddx = dx + dx / 2;</span>
+<span class="nc" id="L72">        final int ddy = dy + dy / 2;</span>
+
+        // small corners
+<span class="nc" id="L75">        this.controlPoints.put(Direction.N,</span>
+<span class="nc" id="L76">            new Point2D.Float(tileBounds.getHalfWidth(), dy));</span>
+<span class="nc" id="L77">        this.controlPoints.put(Direction.E,</span>
+<span class="nc" id="L78">            new Point2D.Float(tileBounds.getWidth() - dx, tileBounds.getHalfHeight()));</span>
+<span class="nc" id="L79">        this.controlPoints.put(Direction.S,</span>
+<span class="nc" id="L80">            new Point2D.Float(tileBounds.getHalfWidth(), tileBounds.getHeight() - dy));</span>
+<span class="nc" id="L81">        this.controlPoints.put(Direction.W,</span>
+<span class="nc" id="L82">            new Point2D.Float(dx, tileBounds.getHalfHeight()));</span>
+        // big corners
+<span class="nc" id="L84">        this.controlPoints.put(Direction.SE,</span>
+<span class="nc" id="L85">            new Point2D.Float(tileBounds.getHalfWidth(), tileBounds.getHeight()));</span>
+<span class="nc" id="L86">        this.controlPoints.put(Direction.NE,</span>
+<span class="nc" id="L87">            new Point2D.Float(tileBounds.getWidth(), tileBounds.getHalfHeight()));</span>
+<span class="nc" id="L88">        this.controlPoints.put(Direction.SW,</span>
+<span class="nc" id="L89">            new Point2D.Float(0, tileBounds.getHalfHeight()));</span>
+<span class="nc" id="L90">        this.controlPoints.put(Direction.NW,</span>
+<span class="nc" id="L91">            new Point2D.Float(tileBounds.getHalfWidth(), 0));</span>
+        // small corners
+<span class="nc" id="L93">        this.borderPoints.put(Direction.NW,</span>
+<span class="nc" id="L94">            new Point2D.Float(dx + ddx, tileBounds.getHalfHeight() - ddy));</span>
+<span class="nc" id="L95">        this.borderPoints.put(Direction.N,</span>
+<span class="nc" id="L96">            new Point2D.Float(tileBounds.getHalfWidth() - ddx, dy + ddy));</span>
+<span class="nc" id="L97">        this.borderPoints.put(Direction.NE,</span>
+<span class="nc" id="L98">            new Point2D.Float(tileBounds.getHalfWidth() + ddx, dy + ddy));</span>
+<span class="nc" id="L99">        this.borderPoints.put(Direction.E,</span>
+<span class="nc" id="L100">            new Point2D.Float(tileBounds.getWidth() - dx - ddx, tileBounds.getHalfHeight() - ddy));</span>
+<span class="nc" id="L101">        this.borderPoints.put(Direction.SE,</span>
+<span class="nc" id="L102">            new Point2D.Float(tileBounds.getWidth() - dx - ddx, tileBounds.getHalfHeight() + ddy));</span>
+<span class="nc" id="L103">        this.borderPoints.put(Direction.S,</span>
+<span class="nc" id="L104">            new Point2D.Float(tileBounds.getHalfWidth() + ddx, tileBounds.getHeight() - dy - ddy));</span>
+<span class="nc" id="L105">        this.borderPoints.put(Direction.SW,</span>
+<span class="nc" id="L106">            new Point2D.Float(tileBounds.getHalfWidth() - ddx, tileBounds.getHeight() - dy - ddy));</span>
+<span class="nc" id="L107">        this.borderPoints.put(Direction.W,</span>
+<span class="nc" id="L108">            new Point2D.Float(dx + ddx, tileBounds.getHalfHeight() + ddy));</span>
+
+<span class="nc" id="L110">        this.borderStroke = new BasicStroke(dy);</span>
+<span class="nc" id="L111">        this.gridStroke = new BasicStroke(lib.getScaleFactor());</span>
+<span class="nc" id="L112">    }</span>
+    
+    GeneralPath getFog() {
+<span class="nc" id="L115">        return fog;</span>
+    }
+    
+    GeneralPath getBaseTileOutline() {
+<span class="nc" id="L119">        return fog;</span>
+    }
+    
+    Stroke getGridStroke() {
+<span class="nc" id="L123">        return gridStroke;</span>
+    }
+    
+    Stroke getBorderStroke() {
+<span class="nc" id="L127">        return borderStroke;</span>
+    }
+    
+    EnumMap&lt;Direction, Point2D.Float&gt; getBorderPoints() {
+<span class="nc" id="L131">        return borderPoints;</span>
+    }
+    
+    EnumMap&lt;Direction, Point2D.Float&gt; getControlPoints() {
+<span class="nc" id="L135">        return controlPoints;</span>
+    }
+    
+    Font getFontNormal() {
+<span class="nc" id="L139">        return fontNormal;</span>
+    }
+    
+    Font getFontProduction() {
+<span class="nc" id="L143">        return fontProduction;</span>
+    }
+    
+    Font getFontItalic() {
+<span class="nc" id="L147">        return fontItalic;</span>
+    }
+    
+    Font getFontTiny() {
+<span class="nc" id="L151">        return fontTiny;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

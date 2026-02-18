@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MultipleMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">MultipleMessage.java</span></div><h1>MultipleMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Level;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message that contains other messages.
+ */
+<span class="fc" id="L41">public class MultipleMessage extends AttributeMessage {</span>
+
+    public static final String TAG = &quot;multiple&quot;;
+
+    /** The list of messages. */
+<span class="fc" id="L46">    private final List&lt;Message&gt; messages = new ArrayList&lt;&gt;();</span>
+
+
+    /**
+     * Create a new {@code MultipleMessage}.
+     */
+    public MultipleMessage() {
+<span class="fc" id="L53">        super(TAG);</span>
+
+<span class="fc" id="L55">        this.messages.clear();</span>
+<span class="fc" id="L56">    }</span>
+
+    /**
+     * Create a new {@code MultipleMessage} with the given messages.
+     *
+     * @param messages The {@code Message}s to add.
+     */
+    public MultipleMessage(List&lt;Message&gt; messages) {
+<span class="fc" id="L64">        this();</span>
+        
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (messages != null) this.messages.addAll(messages);</span>
+<span class="fc" id="L67">    }</span>
+
+    /**
+     * Create a new {@code MultipleMessage} from a stream.
+     *
+     * @param game The {@code Game} to read within.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     * @exception FreeColException if the internal message can not be read.
+     */
+    public MultipleMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException, FreeColException {
+<span class="nc" id="L79">        this();</span>
+        
+<span class="nc" id="L81">        setStringAttributeMap(xr.getAllAttributes());</span>
+        
+<span class="nc" id="L83">        this.messages.clear();</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        while (xr.moreTags()) {</span>
+<span class="nc" id="L85">            final String mt = xr.getLocalName();</span>
+<span class="nc" id="L86">            Message m = Message.read(game, xr);</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">            if (m != null) this.messages.add(m);</span>
+<span class="nc" id="L88">            xr.expectTag(mt);</span>
+<span class="nc" id="L89">        }</span>
+<span class="nc" id="L90">        xr.expectTag(TAG);</span>
+<span class="nc" id="L91">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean isEmpty() {
+<span class="pc bpc" id="L98" title="2 of 4 branches missed.">        return super.isEmpty() &amp;&amp; this.messages.isEmpty();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer)
+        throws FreeColException {
+<span class="fc" id="L107">        final Connection conn = aiPlayer.getConnection();</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        if (conn == null) return;</span>
+
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (!this.messages.isEmpty()) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            for (Message m : this.messages) {</span>
+<span class="fc" id="L112">                Message ret = conn.handle(m);</span>
+<span class="pc bnc" id="L113" title="All 2 branches missed.">                assert ret == null;</span>
+<span class="fc" id="L114">            }</span>
+        }
+<span class="fc" id="L116">    }</span>
+ 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient)
+        throws FreeColException {
+<span class="nc" id="L124">        final Connection conn = freeColClient.askServer().getConnection();</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        if (conn == null) return;</span>
+
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (!this.messages.isEmpty()) {</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">            for (Message m : this.messages) {</span>
+<span class="nc" id="L129">                Message ret = conn.handle(m);</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                assert ret == null;</span>
+<span class="nc" id="L131">            }</span>
+        }                 
+<span class="nc" id="L133">        clientGeneric(freeColClient);</span>
+<span class="nc" id="L134">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc" id="L142">        final Connection conn = serverPlayer.getConnection();</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        if (conn == null) return null;</span>
+
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (!this.messages.isEmpty()) {</span>
+<span class="nc" id="L146">            ChangeSet cs = new ChangeSet();</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">            for (Message m : this.messages) {</span>
+                try {
+<span class="nc" id="L149">                    Message r = conn.handle(m);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">                    if (r != null) cs.add(ChangeSet.See.only(serverPlayer), r);</span>
+<span class="nc" id="L151">                } catch (FreeColException fce) {</span>
+<span class="nc" id="L152">                    logger.log(Level.WARNING, &quot;MultipleMessage server fail&quot;, fce);</span>
+<span class="nc" id="L153">                }</span>
+<span class="nc" id="L154">            }</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            return (cs.isEmpty()) ? null : cs;</span>
+        }
+
+<span class="nc" id="L158">        return null;</span>
+    }
+            
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        for (Message m : this.messages) m.toXML(xw);</span>
+<span class="nc" id="L167">    }</span>
+
+    // Public interface
+
+    /**
+     * Simplify this message.
+     *
+     * Called from ChangeSet.build with the intent of minimizing traffic.
+     *
+     * @return A simplified {@code Message}.
+     */
+    public Message simplify() {
+        Message ret;
+<span class="fc bfc" id="L180" title="All 3 branches covered.">        switch (this.messages.size()) {</span>
+        case 0:
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">            ret = (isEmpty()) ? null : this;</span>
+<span class="fc" id="L183">            break;</span>
+        case 1:
+<span class="fc" id="L185">            ret = this.messages.get(0);</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">            if (this.getStringAttributeMap().isEmpty()) {</span>
+                ; // child is good
+<span class="nc bnc" id="L188" title="All 2 branches missed.">            } else if (ret instanceof AttributeMessage) {</span>
+<span class="nc" id="L189">                ret.setStringAttributeMap(this.getStringAttributeMap());</span>
+            } else {
+<span class="nc" id="L191">                ret = this;</span>
+            }
+<span class="nc" id="L193">            break;</span>
+        default:
+<span class="fc" id="L195">            ret = this;</span>
+            break;
+        }
+<span class="fc" id="L198">        return ret;</span>
+    }        
+
+
+    // Override Object
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L209">        StringBuilder sb = new StringBuilder(64);</span>
+<span class="nc" id="L210">        sb.append('[');</span>
+<span class="nc" id="L211">        pretty(sb, getType(), getStringAttributeMap(), null);</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        for (Message m : this.messages) sb.append(' ').append(m);</span>
+<span class="nc" id="L213">        sb.append(']');</span>
+<span class="nc" id="L214">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

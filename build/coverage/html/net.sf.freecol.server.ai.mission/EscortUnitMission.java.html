@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EscortUnitMission.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.mission</a> &gt; <span class="el_source">EscortUnitMission.java</span></div><h1>EscortUnitMission.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai.mission;
+
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.pathfinding.CostDeciders;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.server.ai.AIMain;
+import net.sf.freecol.server.ai.AIMessage;
+import net.sf.freecol.server.ai.AIUnit;
+
+
+/**
+ * Mission for attacking a specific target, be it a Unit or a Settlement.
+ */
+public final class EscortUnitMission extends Mission {
+
+<span class="nc" id="L44">    private static final Logger logger = Logger.getLogger(EscortUnitMission.class.getName());</span>
+
+    public static final String TAG = &quot;escortUnitMission&quot;;
+
+    /** The tag for this mission. */
+    private static final String tag = &quot;AI escorter&quot;;
+
+    /**
+     * The object we are trying to escort. This can only be a {@code Unit}.
+     */
+    private Location target, transportTarget;
+
+
+    /**
+     * Creates a mission for the given {@code AIUnit}.
+     *
+     * @param aiMain The main AI-object.
+     * @param aiUnit The {@code AIUnit} this mission is created for.
+     * @param target The object we are trying to escort.
+     */
+    public EscortUnitMission(AIMain aiMain, AIUnit aiUnit, Unit target) {
+<span class="nc" id="L65">        super(aiMain, aiUnit);</span>
+
+<span class="nc" id="L67">        setTarget(target);</span>
+<span class="nc" id="L68">    }</span>
+
+    /**
+     * Creates a new {@code EscortUnitMission} from a reader.
+     *
+     * @param aiMain The main AI-object.
+     * @param aiUnit The {@code AIUnit} this mission is created for.
+     * @param xr The input stream containing the XML.
+     * @throws XMLStreamException if a problem was encountered
+     *      during parsing.
+     * @see net.sf.freecol.server.ai.AIObject#readFromXML
+     */
+    public EscortUnitMission(AIMain aiMain, AIUnit aiUnit, FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L81">        super(aiMain, aiUnit);</span>
+
+<span class="nc" id="L83">        readFromXML(xr);</span>
+<span class="nc" id="L84">    }</span>
+
+
+    /**
+     * Why would a EscortUnitMission be invalid with the given unit.
+     *
+     * @param aiUnit The {@code AIUnit} to test.
+     * @return A reason why the mission would be invalid, or null if
+     *     none found.
+     */
+    private static String invalidUnitReason(AIUnit aiUnit) {
+<span class="nc" id="L95">        String reason = invalidAIUnitReason(aiUnit);</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        return (reason != null)</span>
+<span class="nc" id="L97">            ? reason</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">            : (!aiUnit.getUnit().isOffensiveUnit())</span>
+<span class="nc" id="L99">            ? Mission.UNITNOTOFFENSIVE</span>
+<span class="nc" id="L100">            : null;</span>
+    }
+
+    /**
+     * Why would a EscortUnitMission be invalid with the given unit
+     * and target unit.
+     *
+     * @param aiUnit The {@code AIUnit} to seek-and-destroy with.
+     * @param unit The target {@code Unit} to test.
+     * @return A reason why the mission would be invalid, or null if
+     *     none found.
+     */
+    private static String invalidTargetReason(AIUnit aiUnit, Unit unit) {
+<span class="nc" id="L113">        String reason = invalidTargetReason(unit);</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (reason != null) return reason;</span>
+<span class="nc" id="L115">        final Tile tile = unit.getTile();</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        return (tile == null)</span>
+<span class="nc" id="L117">            ? &quot;target-not-on-map&quot;</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">            : (aiUnit.getUnit().getOwner() != unit.getOwner())</span>
+<span class="nc" id="L119">            ? Mission.TARGETOWNERSHIP</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            : (aiUnit.getUnit().isNaval() != unit.isNaval())</span>
+<span class="nc" id="L121">            ? &quot;target-incompatible&quot;</span>
+<span class="nc" id="L122">            : null;</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given AI unit?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @return A reason for mission invalidity, or null if none found.
+     */
+    public static String invalidMissionReason(AIUnit aiUnit) {
+<span class="nc" id="L132">        return invalidUnitReason(aiUnit);</span>
+    }
+
+    /**
+     * Why would this mission be invalid with the given AI unit and location?
+     *
+     * @param aiUnit The {@code AIUnit} to check.
+     * @param loc The {@code Location} to check.
+     * @return A reason for invalidity, or null if none found.
+     */
+    public static String invalidMissionReason(AIUnit aiUnit, Location loc) {
+<span class="nc" id="L143">        final String reason = invalidMissionReason(aiUnit);</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (reason != null) {</span>
+<span class="nc" id="L145">            return reason;</span>
+        }
+<span class="nc" id="L147">        return invalidTargetReason(aiUnit, (Unit) loc);</span>
+    }
+
+    
+    // Implement Mission
+    //   Inherit dispose, isOneTime
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getBaseTransportPriority() {
+<span class="nc" id="L159">        return NORMAL_TRANSPORT_PRIORITY;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTransportDestination() {
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        if (!isValid()) return null;</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        Location loc = (transportTarget != null) ? transportTarget : target;</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        return (getUnit().shouldTakeTransportTo(loc)) ? loc : null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location getTarget() {
+<span class="nc" id="L177">        return target;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setTarget(Location target) {
+<span class="nc bnc" id="L185" title="All 4 branches missed.">        if (target != null &amp;&amp; !(target instanceof Unit)) {</span>
+<span class="nc" id="L186">            throw new IllegalArgumentException(&quot;Target not supported: &quot; + target);</span>
+        }
+        
+<span class="nc" id="L189">        this.target = target;</span>
+<span class="nc" id="L190">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Location findTarget() {
+<span class="nc" id="L197">        return null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String invalidReason() {
+<span class="nc" id="L205">        return invalidMissionReason(getAIUnit(), getTarget());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Mission doMission(LogBuilder lb) {
+<span class="nc" id="L213">        lb.add(tag);</span>
+<span class="nc" id="L214">        final AIUnit aiUnit = getAIUnit();</span>
+<span class="nc" id="L215">        String reason = invalidReason();</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (isTargetReason(reason)) {</span>
+<span class="nc" id="L217">            return lbDrop(lb, reason);</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        } else if (reason != null) {</span>
+<span class="nc" id="L219">            return lbFail(lb, false, reason);</span>
+        }
+
+        // Go to the target.
+<span class="nc" id="L223">        final Location currentTarget = getTarget();</span>
+        
+        // Note avoiding other targets by choice of cost decider.
+<span class="nc" id="L226">        final Unit.MoveType mt = travelToTarget(currentTarget, CostDeciders.avoidSettlementsAndBlockingUnits(), lb);</span>
+<span class="nc bnc" id="L227" title="All 5 branches missed.">        switch (mt) {</span>
+        case MOVE_HIGH_SEAS: case MOVE_NO_MOVES: case MOVE_ILLEGAL:
+<span class="nc" id="L229">            lbWait(lb);</span>
+<span class="nc" id="L230">            break;</span>
+        case MOVE_NO_REPAIR:
+<span class="nc" id="L232">            return lbFail(lb, false, AIUNITDIED);</span>
+        case MOVE_NO_ACCESS_EMBARK: case MOVE_NO_TILE:
+<span class="nc" id="L234">            break;</span>
+        case ATTACK_UNIT: case ATTACK_SETTLEMENT:
+<span class="nc" id="L236">            final Tile unitTile = getUnit().getTile();</span>
+<span class="nc" id="L237">            Direction d = unitTile.getDirection(currentTarget.getTile());</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            if (d == null) {</span>
+<span class="nc" id="L239">                logger.warning(&quot;SDDM bogus &quot; + mt + &quot; with &quot; + getUnit()</span>
+                    + &quot; from &quot; + unitTile + &quot; to &quot; + currentTarget
+<span class="nc" id="L241">                    + &quot; at &quot; + currentTarget.getTile());</span>
+<span class="nc" id="L242">                return lbWait(lb);</span>
+            }
+<span class="nc" id="L244">            AIMessage.askAttack(aiUnit, d);</span>
+<span class="nc" id="L245">            return lbAttack(lb, currentTarget);</span>
+        default:
+<span class="nc" id="L247">            lbMove(lb, mt);</span>
+            break;
+        }
+        
+        // TODO: Consider attacking adjacent enemy units here.
+        
+<span class="nc" id="L253">        return this;</span>
+    }
+
+
+    // Serialization
+
+    private static final String TARGET_TAG = &quot;target&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L267">        super.writeAttributes(xw);</span>
+
+<span class="nc bnc" id="L269" title="All 2 branches missed.">        if (target != null) {</span>
+<span class="nc" id="L270">            xw.writeAttribute(TARGET_TAG, target.getId());</span>
+        }
+<span class="nc" id="L272">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L279">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L281">        target = xr.getLocationAttribute(getGame(), TARGET_TAG, false);</span>
+<span class="nc" id="L282">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+<span class="nc" id="L288">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

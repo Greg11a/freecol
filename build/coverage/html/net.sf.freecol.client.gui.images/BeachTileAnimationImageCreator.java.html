@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BeachTileAnimationImageCreator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.images</a> &gt; <span class="el_source">BeachTileAnimationImageCreator.java</span></div><h1>BeachTileAnimationImageCreator.java</h1><pre class="source lang-java linenums">package net.sf.freecol.client.gui.images;
+
+import java.awt.AlphaComposite;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.util.List;
+import java.util.Optional;
+
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.TileType;
+import net.sf.freecol.common.resources.ImageCache;
+import net.sf.freecol.common.resources.ImageResource;
+import net.sf.freecol.common.util.ImageUtils;
+
+/**
+ * Class for generating the combined animated image for ocean and beach
+ * based on ocean image masks.
+ */
+public final class BeachTileAnimationImageCreator {
+
+    private final ImageLibrary lib;
+    private final ImageCache imageCache;
+    
+<span class="nc" id="L25">    public BeachTileAnimationImageCreator(ImageLibrary lib, ImageCache imageCache) {</span>
+<span class="nc" id="L26">        this.lib = lib;</span>
+<span class="nc" id="L27">        this.imageCache = imageCache;</span>
+<span class="nc" id="L28">    }</span>
+    
+    
+    /**
+     * Gets the combined animated image for ocean and beach.
+     * 
+     * @param type The tile type.
+     * @param directionsWithLand All directions where there are neighbouring land tiles. 
+     * @param ticks The number of ticks to get the correct animation frame.
+     * @return A cached, genereated image.
+     */
+    public BufferedImage getAnimatedScaledWaterAndBeachTerrainImage(TileType type, List&lt;Direction&gt; directionsWithLand, long ticks) {
+<span class="nc" id="L40">        final ImageResource beachCenterImageResource = ImageLibrary.getBeachCenterImageResource();</span>
+<span class="nc bnc" id="L41" title="All 2 branches missed.">        if (beachCenterImageResource == null) {</span>
+<span class="nc" id="L42">            return null;</span>
+        }
+        
+<span class="nc" id="L45">        final String beachVariationKey = determineDirectionCombinationKey(directionsWithLand);</span>
+        
+<span class="nc" id="L47">        final ImageResource oceanImageResource = ImageCache.getImageResource(ImageLibrary.getTerrainImageKey(type));</span>
+<span class="nc" id="L48">        final int oceanVariationNumber = oceanImageResource.getVariationNumberForTick(ticks);</span>
+        
+<span class="nc" id="L50">        final String generatedKey = oceanImageResource.getCachingKey() + &quot;.beach.&quot; + beachVariationKey + &quot;$gen&quot;;</span>
+<span class="nc" id="L51">        final BufferedImage result = imageCache.getCachedImageOrGenerate(generatedKey, lib.getTileSize(), false, oceanVariationNumber, () -&gt; {</span>
+<span class="nc" id="L52">            final BufferedImage oceanImage = lib.getAnimatedScaledTerrainImage(type, ticks);</span>
+<span class="nc" id="L53">            final String beachMaskKey = &quot;image.mask.beach.&quot; + beachVariationKey;</span>
+<span class="nc" id="L54">            final BufferedImage beachMaskImage = this.imageCache.getSizedImage(beachMaskKey, lib.getTileSize(), false);</span>
+<span class="nc" id="L55">            final BufferedImage beachImage = beachCenterImageResource.getImage(lib.getTileSize(), false);</span>
+<span class="nc" id="L56">            final BufferedImage tileMask = lib.getTerrainMask(null);</span>
+            
+<span class="nc" id="L58">            return generateImage(beachImage, oceanImage, oceanVariationNumber, beachMaskImage, tileMask);</span>
+        });
+        
+<span class="nc" id="L61">        return result;</span>
+    }
+    
+    /**
+     * Generates the image.
+     * 
+     * @param beachImage The beach center tile image.
+     * @param oceanImage The ocean image to use.
+     * @param oceanImageVariationNumber The variation number of the
+     *      ocean image given above.
+     * @param beachMaskImage A mask to be applied to the ocean image in
+     *      order to make the beach visible below the ocean.
+     * @param tileMask A center tile mask. This is used to ensure that
+     *      no pixels are out of bounds of the base tile.
+     * @return A base tile image fitting inside the standard &quot;diamond&quot;.
+     */
+    private static BufferedImage generateImage(BufferedImage beachImage,
+            BufferedImage oceanImage,
+            int oceanImageVariationNumber,
+            BufferedImage beachMaskImage,
+            BufferedImage tileMask) {
+<span class="nc" id="L82">        final int width = oceanImage.getWidth();</span>
+<span class="nc" id="L83">        final int height = oceanImage.getHeight();</span>
+        
+<span class="nc bnc" id="L85" title="All 4 branches missed.">        if (beachImage.getWidth() != width || beachImage.getHeight() != height) {</span>
+<span class="nc" id="L86">            throw new IllegalArgumentException(&quot;All images should be of the same size.&quot;);</span>
+        }
+<span class="nc bnc" id="L88" title="All 4 branches missed.">        if (beachMaskImage.getWidth() != width || beachMaskImage.getHeight() != height) {</span>
+<span class="nc" id="L89">            throw new IllegalArgumentException(&quot;All images should be of the same size.&quot;);</span>
+        }
+<span class="nc bnc" id="L91" title="All 4 branches missed.">        if (tileMask.getWidth() != width || tileMask.getHeight() != height) {</span>
+<span class="nc" id="L92">            throw new IllegalArgumentException(&quot;All images should be of the same size.&quot;);</span>
+        }
+
+<span class="nc" id="L95">        final BufferedImage maskedInputImage = ImageUtils.imageWithAlphaFromMask(oceanImage, beachMaskImage);</span>
+        
+<span class="nc" id="L97">        final float extraOcean = 0.05f;</span>
+        
+        final float alpha;
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (oceanImageVariationNumber &lt;= 10) {</span>
+<span class="nc" id="L101">            alpha = extraOcean * oceanImageVariationNumber;</span>
+        } else {
+<span class="nc" id="L103">            alpha = extraOcean * 10 - extraOcean * (oceanImageVariationNumber - 10);</span>
+        }
+        
+<span class="nc" id="L106">        final BufferedImage resultImage = ImageUtils.createBufferedImage(width, height);</span>
+<span class="nc" id="L107">        final Graphics2D g2d = resultImage.createGraphics();</span>
+<span class="nc" id="L108">        g2d.drawImage(beachImage, 0, 0, null);</span>
+<span class="nc" id="L109">        g2d.drawImage(maskedInputImage, 0, 0, null);</span>
+<span class="nc" id="L110">        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));</span>
+<span class="nc" id="L111">        g2d.drawImage(maskedInputImage, 0, 0, null);</span>
+<span class="nc" id="L112">        g2d.dispose();</span>
+    
+        /*
+         * The tileMask should not be necessary, but there are out-of-bounds pixels
+         * from the beach displayed (on some of the zoom levels) if it's not applied.
+         */
+<span class="nc" id="L118">        return ImageUtils.imageWithAlphaFromMask(resultImage, tileMask);</span>
+    }
+    
+    /**
+     * Returns a string representing the {@code directions} given.
+     * @param directions The directions that should be included
+     * @return The directions in lowercase, ordered alphabetically and
+     *      combined with &quot;_&quot;. Corners that are a part of a longSide is
+     *      not included in the returned {@code String}.
+     */
+    private String determineDirectionCombinationKey(List&lt;Direction&gt; directions) {
+<span class="nc" id="L129">        final Optional&lt;String&gt; neighboursPre = directions.stream()</span>
+<span class="nc" id="L130">                .filter(d -&gt; Direction.longSides.contains(d))</span>
+<span class="nc" id="L131">                .map(d -&gt; d.toString().toLowerCase())</span>
+<span class="nc" id="L132">                .sorted()</span>
+<span class="nc" id="L133">                .reduce((a, b) -&gt; a + &quot;_&quot; + b);</span>
+        
+        /*
+         * We need to remove some of the combinations where the corners are
+         * included in the edges. This is done in order to reduce the number
+         * of possible images -- although it would look nicer to have special
+         * graphics for these cases as well.
+         */
+<span class="nc" id="L141">        final String beachVariationKey = directions.stream()</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">                .filter(d -&gt; Direction.longSides.contains(d)</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">                        || neighboursPre.isEmpty()</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">                        || !neighboursPre.get().contains(d.toString().toLowerCase()))</span>
+<span class="nc" id="L145">                .map(d -&gt; d.toString().toLowerCase())</span>
+<span class="nc" id="L146">                .sorted()</span>
+<span class="nc" id="L147">                .reduce((a, b) -&gt; a + &quot;_&quot; + b).get();</span>
+        
+<span class="nc" id="L149">        return beachVariationKey;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnitChangeType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">UnitChangeType.java</span></div><h1>UnitChangeType.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+
+/**
+ * The possible changes of a unit type.
+ */
+public class UnitChangeType extends FreeColSpecObjectType {
+
+    public static final String TAG = &quot;unit-change-type&quot;;
+
+    /** Changes due to the unit being captured. */
+    public static final String CAPTURE
+        = &quot;model.unitChange.capture&quot;;
+
+    /** Changes due to a clear-skill command. */
+    public static final String CLEAR_SKILL
+        = &quot;model.unitChange.clearSkill&quot;;
+
+    /** Changes due to a unit being converted by missionaries. */
+    public static final String CONVERSION
+        = &quot;model.unitChange.conversion&quot;;
+
+    /** Changes to be made immediately at creation of a unit. */
+    public static final String CREATION
+        = &quot;model.unitChange.creation&quot;;
+
+    /** Changes due to a unit being demoted after losing a battle. */
+    public static final String DEMOTION
+        = &quot;model.unitChange.demotion&quot;;
+
+    /** Changes due to education. */
+    public static final String EDUCATION
+        = &quot;model.unitChange.education&quot;;
+
+    /**
+     * Changes when a unit begins to work in a colony.  This is not in
+     * the standard spec but in the convertUpgrade mod.  However it needs
+     * coding support to work.
+     */
+    public static final String ENTER_COLONY
+        = &quot;model.unitChange.enterColony&quot;;
+
+    /** Changes due to experience. */
+    public static final String EXPERIENCE
+        = &quot;model.unitChange.experience&quot;;
+
+    /** Change when a founding father is elected. */
+    public static final String FOUNDING_FATHER
+        = &quot;model.unitChange.foundingFather&quot;;
+
+    /** Changes at declaration of independence. */
+    public static final String INDEPENDENCE
+        = &quot;model.unitChange.independence&quot;;
+
+    /** Changes from exploring a lost city. */
+    public static final String LOST_CITY
+        = &quot;model.unitChange.lostCity&quot;;
+
+    /** Changes from living with the natives. */
+    public static final String NATIVES
+        = &quot;model.unitChange.natives&quot;;
+
+    /** Changes due to the unit being promoted after winning a battle. */
+    public static final String PROMOTION
+        = &quot;model.unitChange.promotion&quot;;
+
+    /** Changes due to the undead claiming the unit. */
+    public static final String UNDEAD
+        = &quot;model.unitChange.undead&quot;;
+
+
+    /** The individual unit changes valid for this change type. */
+<span class="fc" id="L103">    public final Map&lt;UnitType, List&lt;UnitTypeChange&gt;&gt; changes = new HashMap&lt;&gt;();</span>
+
+    /** True if this type of change always implies a change of owner. */
+<span class="fc" id="L106">    private boolean ownerChange = false;</span>
+
+
+    /**
+     * Trivial constructor.
+     *
+     * @param id The object identifier.
+     * @param specification The {@code Specification} to use.
+     */
+    public UnitChangeType(String id, Specification specification) {
+<span class="fc" id="L116">        super(id, specification);</span>
+<span class="fc" id="L117">    }</span>
+
+
+    /**
+     * Get the owner change state.
+     *
+     * @return True if this type change is expected to be accompanied by
+     *     an owner change.
+     */
+    public boolean getOwnerChange() {
+<span class="fc" id="L127">        return this.ownerChange;</span>
+    }
+
+    /**
+     * Get the change map.
+     *
+     * @return The map of unit type to eligible changes.
+     */
+    protected Map&lt;UnitType, List&lt;UnitTypeChange&gt;&gt; getChanges() {
+<span class="nc" id="L136">        return this.changes;</span>
+    }
+
+    /**
+     * Set the change map.
+     *
+     * @param changes The new map of unit type to eligible changes.
+     */
+    protected void setChanges(Map&lt;UnitType, List&lt;UnitTypeChange&gt;&gt; changes) {
+<span class="nc" id="L145">        this.changes.clear();</span>
+<span class="nc" id="L146">        this.changes.putAll(changes);</span>
+<span class="nc" id="L147">    }</span>
+
+    /**
+     * Add a new change.
+     *
+     * Public for the test suite.
+     *
+     * @param uc The {@code UnitTypeChange} to add.
+     */
+    public void addUnitTypeChange(UnitTypeChange uc) {
+<span class="fc" id="L157">        appendToMapList(this.changes, uc.from, uc);</span>
+<span class="fc" id="L158">    }</span>
+
+    /**
+     * Get the unit changes possible from a given unit type.
+     *
+     * @param from The source {@code UnitType}.
+     * @return A list of {@code UnitChange}s.
+     */
+    public List&lt;UnitTypeChange&gt; getUnitChanges(UnitType from) {
+<span class="fc" id="L167">        List&lt;UnitTypeChange&gt; ret = this.changes.get(from);</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        return (ret == null) ? Collections.&lt;UnitTypeChange&gt;emptyList() : ret;</span>
+    }
+
+    /**
+     * Get a specific unit change for this unit change type, a
+     * source unit type to change, and an optional destination unit type.
+     *
+     * @param fromType The {@code UnitType} to change from.
+     * @param toType An optional {@code UnitType} to change to.
+     * @return The {@code UnitChange} found, or null if the
+     *     change is impossible.
+     */
+    public UnitTypeChange getUnitChange(UnitType fromType,
+                                        final UnitType toType) {
+<span class="fc" id="L182">        return find(getUnitChanges(fromType),</span>
+<span class="fc bfc" id="L183" title="All 4 branches covered.">            ((toType == null) ? alwaysTrue() : uc -&gt; uc.to == toType));</span>
+    }
+
+    // @compat 0.11.6
+    public void deleteUnitChanges(UnitType from) {
+<span class="fc" id="L188">        this.changes.remove(from);</span>
+<span class="fc" id="L189">    }</span>
+    // end @compat 0.11.6
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L200">        UnitChangeType o = copyInCast(other, UnitChangeType.class);</span>
+<span class="nc bnc" id="L201" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L202">        this.setChanges(o.getChanges());</span>
+<span class="nc" id="L203">        this.ownerChange = o.getOwnerChange();</span>
+<span class="nc" id="L204">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String OWNER_CHANGE_TAG = &quot;owner-change&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L218">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L220">        xw.writeAttribute(OWNER_CHANGE_TAG, this.ownerChange);</span>
+<span class="fc" id="L221">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L228">        super.writeChildren(xw);</span>
+
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        for (List&lt;UnitTypeChange&gt; utcs : this.changes.values()) {</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            for (UnitTypeChange uc : utcs) uc.toXML(xw);</span>
+<span class="fc" id="L232">        }</span>
+<span class="fc" id="L233">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L240">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L242">        this.ownerChange = xr.getAttribute(OWNER_CHANGE_TAG, false);</span>
+<span class="fc" id="L243">    }</span>
+
+    /**
+    * {@inheritDoc}
+    */
+    @Override
+    protected void clearContainers(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L250">        super.clearContainers(xr);</span>
+<span class="fc" id="L251">        this.changes.clear();</span>
+<span class="fc" id="L252">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L259">        super.readChildren(xr);</span>
+<span class="fc" id="L260">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L267">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L268">        final String tag = xr.getLocalName();</span>
+
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">        if (UnitTypeChange.TAG.equals(tag)) {</span>
+<span class="fc" id="L271">            addUnitTypeChange(new UnitTypeChange(xr, spec));</span>
+
+        } else {
+<span class="nc" id="L274">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L276">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L281">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L291">        StringBuilder sb = new StringBuilder(64);</span>
+<span class="nc" id="L292">        sb.append('[').append(getId()).append(' ').append(getSuffix())</span>
+<span class="nc" id="L293">            .append(&quot; ownerChange=&quot;).append(this.ownerChange);</span>
+        for (Map.Entry&lt;UnitType, List&lt;UnitTypeChange&gt;&gt; entry
+<span class="nc bnc" id="L295" title="All 2 branches missed.">                 : this.changes.entrySet()) {</span>
+<span class="nc" id="L296">            sb.append(' ').append(entry.getKey().getSuffix()).append('[');</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            for (UnitTypeChange uc : entry.getValue()) {</span>
+<span class="nc" id="L298">                sb.append(' ').append(uc);</span>
+<span class="nc" id="L299">            }</span>
+<span class="nc" id="L300">            sb.append(&quot; ]&quot;);</span>
+<span class="nc" id="L301">        }</span>
+<span class="nc" id="L302">        sb.append(']');</span>
+<span class="nc" id="L303">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

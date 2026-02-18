@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FreeColSpecObjectType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">FreeColSpecObjectType.java</span></div><h1>FreeColSpecObjectType.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import static net.sf.freecol.common.util.CollectionUtils.sort;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.stream.Stream;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+
+
+/**
+ * The base class for all types defined by the specification. It can
+ * be instantiated in order to provide a source for modifiers and
+ * abilities that are provided by the code rather than defined in the
+ * specification, such as the &quot;artillery in the open&quot; penalty.
+ *
+ * A FreeColSpecObjectType does not always need a reference to the
+ * specification. However, if it has attributes or children that are
+ * themselves FreeColSpecObjectTypes, then the specification must be
+ * set before the type is de-serialized, otherwise the identifiers
+ * therein can not be resolved.
+ *
+ * FreeColSpecObjectTypes can be abstract. Abstract types can be used
+ * to derive other types, but can not be instantiated.  They will be
+ * removed from the Specification after it has loaded completely.
+ *
+ * Many FreeColSpecObjectTypes have ids, but some leaf types do not
+ * need them and there they may be omitted.
+ */
+public abstract class FreeColSpecObjectType extends FreeColSpecObject
+    implements Named {
+
+    /** Whether the type is abstract, or can be instantiated. */
+    private boolean abstractType;
+
+    /**
+     * The features of this game object type.  Feature containers are
+     * created on demand.
+     */
+<span class="fc" id="L64">    private FeatureContainer featureContainer = null;</span>
+
+    /**
+     * Scopes that might limit the action of this object to certain
+     * types of objects.
+     */
+    private ScopeContainer scopeContainer;
+
+    // Do not serialize below.
+
+    /**
+     * The index imposes a total ordering consistent with equals on
+     * each class extending FreeColSpecObjectType, but this ordering
+     * is nothing but the order in which the objects of the respective
+     * class were defined.  It is guaranteed to remain stable only for
+     * a particular revision of a particular specification.
+     */
+<span class="fc" id="L81">    private int index = -1;</span>
+    
+
+    /**
+     * Deliberately empty constructor.
+     */
+    protected FreeColSpecObjectType() {
+<span class="fc" id="L88">        super(null);</span>
+<span class="fc" id="L89">    }</span>
+
+    /**
+     * Create a simple FreeColSpecObjectType without a specification.
+     *
+     * @param id The object identifier.
+     */
+    public FreeColSpecObjectType(String id) {
+<span class="fc" id="L97">        this(id, null);</span>
+<span class="fc" id="L98">    }</span>
+
+    /**
+     * Create a FreeColSpecObjectType with a given specification but
+     * no object identifier.
+     *
+     * @param specification The {@code Specification} to refer to.
+     */
+    public FreeColSpecObjectType(Specification specification) {
+<span class="fc" id="L107">        this(null, specification);</span>
+<span class="fc" id="L108">    }</span>
+
+    /**
+     * Create a FreeColSpecObjectType with a given identifier and
+     * specification.
+     *
+     * @param id The object identifier.
+     * @param specification The {@code Specification} to refer to.
+     */
+    public FreeColSpecObjectType(String id, Specification specification) {
+<span class="fc" id="L118">        super(specification);</span>
+
+<span class="fc" id="L120">        setId(id);</span>
+<span class="fc" id="L121">    }</span>
+
+
+    /**
+     * Gets the index of this FreeColSpecObjectType.
+     *
+     * The index imposes a total ordering consistent with equals on
+     * each class extending FreeColSpecObjectType, but this ordering
+     * is nothing but the order in which the objects of the respective
+     * class were defined.  It is guaranteed to remain stable only for
+     * a particular revision of a particular specification.
+     *
+     * @return The game object index.
+     */
+    public int getIndex() {
+<span class="nc" id="L136">        return this.index;</span>
+    }
+
+    /**
+     * Sets the index of this FreeColSpecObjectType.
+     *
+     * @param index The new index value.
+     */
+    protected final void setIndex(final int index) {
+<span class="fc" id="L145">        this.index = index;</span>
+<span class="fc" id="L146">    }</span>
+
+    /**
+     * Gets a string suitable for looking up the description of
+     * this object in {@link net.sf.freecol.common.i18n.Messages}.
+     *
+     * @return A description key.
+     */
+    public final String getDescriptionKey() {
+<span class="fc" id="L155">        return Messages.descriptionKey(getId());</span>
+    }
+
+    /**
+     * Is this an abstract type?
+     *
+     * @return True if this is an abstract game object type.
+     */
+    public final boolean isAbstractType() {
+<span class="fc" id="L164">        return this.abstractType;</span>
+    }
+
+    // Scope delegation
+
+    public final List&lt;Scope&gt; getScopeList() {
+<span class="fc" id="L170">        return ScopeContainer.getScopeList(this.scopeContainer);</span>
+    }
+
+    public final Stream&lt;Scope&gt; getScopes() {
+<span class="fc" id="L174">        return ScopeContainer.getScopes(this.scopeContainer);</span>
+    }
+
+    public final void copyScopes(Collection&lt;Scope&gt; scopes) {
+<span class="fc" id="L178">        this.scopeContainer = ScopeContainer.setScopes(this.scopeContainer, scopes);</span>
+<span class="fc" id="L179">    }</span>
+
+    public final void addScope(Scope scope) {
+<span class="fc" id="L182">        this.scopeContainer = ScopeContainer.addScope(this.scopeContainer, scope);</span>
+<span class="fc" id="L183">    }</span>
+
+    public final void removeScope(Scope scope) {
+<span class="fc" id="L186">        ScopeContainer.removeScope(this.scopeContainer, scope);</span>
+<span class="fc" id="L187">    }</span>
+
+    public boolean appliesTo(FreeColObject fco) {
+<span class="fc" id="L190">        return ScopeContainer.scopeContainerAppliesTo(this.scopeContainer, fco);</span>
+    }
+
+    // Interface Named
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final String getNameKey() {
+<span class="fc" id="L200">        return Messages.nameKey(getId());</span>
+    }
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final FeatureContainer getFeatureContainer() {
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (this.featureContainer == null) {</span>
+<span class="fc" id="L211">            this.featureContainer = new FeatureContainer();</span>
+        }
+<span class="fc" id="L213">        return this.featureContainer;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L221">        FreeColSpecObjectType o = copyInCast(other, FreeColSpecObjectType.class);</span>
+<span class="nc bnc" id="L222" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L223">        this.abstractType = o.isAbstractType();</span>
+<span class="nc" id="L224">        this.featureContainer.copy(o.getFeatureContainer());</span>
+<span class="nc" id="L225">        this.scopeContainer = ScopeContainer.setScopes(this.scopeContainer,</span>
+<span class="nc" id="L226">                                                       o.getScopeList());</span>
+<span class="nc" id="L227">        this.index = o.getIndex();</span>
+<span class="nc" id="L228">        return true;</span>
+    }
+
+
+    // Serialization
+
+    // We do not serialize index, so no INDEX_TAG.
+    // We do not need to write the abstractType attribute, as once
+    // the spec is read, all cases of abstractType==true are removed.
+    private static final String ABSTRACT_TAG = &quot;abstract&quot;;
+    // Denotes deletion of a child.
+    protected static final String DELETE_TAG = &quot;delete&quot;;
+    // Denotes that this type extends another.
+    public static final String EXTENDS_TAG = &quot;extends&quot;;
+    // Denotes preservation of attributes and children.
+    public static final String PRESERVE_TAG = &quot;preserve&quot;;
+    // Denotes preservation of attributes.
+    public static final String PRESERVE_ATTRIBUTES_TAG = &quot;preserve-attributes&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L253">        super.writeChildren(xw);</span>
+
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        for (Ability ability : sort(getAbilities())) ability.toXML(xw);</span>
+
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        for (Modifier modifier : getSortedModifiers()) modifier.toXML(xw);</span>
+
+<span class="fc" id="L259">        ScopeContainer.scopeContainerToXML(this.scopeContainer, xw);</span>
+<span class="fc" id="L260">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L267">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L269">        this.abstractType = xr.getAttribute(ABSTRACT_TAG, false);</span>
+<span class="fc" id="L270">    }</span>
+    
+    /**
+    * {@inheritDoc}
+    */
+    @Override
+    protected void clearContainers(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L277">        super.clearContainers(xr);</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (this.featureContainer != null) {</span>
+<span class="fc" id="L279">            this.featureContainer.clear();</span>
+        }
+<span class="fc" id="L281">        ScopeContainer.clearScopes(this.scopeContainer);</span>
+<span class="fc" id="L282">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L289">        super.readChildren(xr);</span>
+<span class="fc" id="L290">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L297">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L298">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (Ability.TAG.equals(tag)) {</span>
+<span class="pc bpc" id="L301" title="1 of 2 branches missed.">            if (xr.getAttribute(DELETE_TAG, false)) {</span>
+<span class="nc" id="L302">                removeAbilities(xr.readId());</span>
+<span class="nc" id="L303">                xr.closeTag(Ability.TAG);</span>
+
+            } else {
+<span class="fc" id="L306">                Ability ability = new Ability(xr, spec); // Closes</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">                if (ability.getSource() == null) ability.setSource(this);</span>
+<span class="fc" id="L308">                addAbility(ability);</span>
+<span class="fc" id="L309">                spec.addAbility(ability);</span>
+<span class="fc" id="L310">            }</span>
+
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        } else if (Modifier.TAG.equals(tag)) {</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">            if (xr.getAttribute(DELETE_TAG, false)) {</span>
+<span class="fc" id="L314">                removeModifiers(xr.readId());</span>
+<span class="fc" id="L315">                xr.closeTag(Modifier.TAG);</span>
+
+            } else {
+<span class="fc" id="L318">                Modifier modifier = new Modifier(xr, spec); // Closes</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">                if (modifier.getSource() == null) modifier.setSource(this);</span>
+<span class="fc" id="L320">                addModifier(modifier);</span>
+<span class="fc" id="L321">                spec.addModifier(modifier);</span>
+<span class="fc" id="L322">            }</span>
+
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">        } else if (Scope.TAG.equals(tag)) {</span>
+<span class="fc" id="L325">            this.scopeContainer = ScopeContainer</span>
+<span class="fc" id="L326">                .addScope(this.scopeContainer, new Scope(xr));</span>
+
+        } else {
+<span class="nc" id="L329">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L331">    }</span>
+
+    // getXMLTagName left to subclasses
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L343">        return getId();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefensiveMap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.ai.military</a> &gt; <span class="el_source">DefensiveMap.java</span></div><h1>DefensiveMap.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.ai.military;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.PriorityQueue;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Stance;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.pathfinding.CostDecider;
+import net.sf.freecol.common.model.pathfinding.CostDeciders;
+import net.sf.freecol.server.ai.AIColony;
+import net.sf.freecol.server.ai.EuropeanAIPlayer;
+
+/**
+ * A tactical map of the areas the AI should defend.
+ * 
+ * @see #createDefensiveMap(EuropeanAIPlayer)
+ */
+public class DefensiveMap {
+    
+    private static final int ZONE_SIZE_TURNS = 3;
+    
+    private final Map&lt;AIColony, DefensiveZone&gt; defensiveZones;
+    private Map&lt;String, DefensiveZone&gt; tileDefensiveZone;
+    
+    
+<span class="fc" id="L55">    private DefensiveMap(Map&lt;AIColony, DefensiveZone&gt; defensiveZones, Map&lt;String, DefensiveZone&gt; tileDefensiveZone) {</span>
+<span class="fc" id="L56">        this.defensiveZones = defensiveZones;</span>
+<span class="fc" id="L57">        this.tileDefensiveZone = tileDefensiveZone;</span>
+<span class="fc" id="L58">    }</span>
+    
+    
+    /**
+     * Returns the defensive zone a tile is considered a part of.
+     * 
+     * @param tile The {@code Tile} to obtain the {@code DefensiveZone} for.
+     * @return The {@code DefensiveZone}, or {@code null} if the {@code Tile}
+     *      is not part of a defensive zone.
+     */
+    public DefensiveZone getDefensiveZone(Tile tile) {
+<span class="nc" id="L69">        return tileDefensiveZone.get(tile.getId());</span>
+    }
+    
+    
+    /**
+     * Returns all the defensive zones.
+     */
+    public List&lt;DefensiveZone&gt; getDefensiveZones() {
+<span class="fc" id="L77">        return new ArrayList&lt;&gt;(defensiveZones.values());</span>
+    }
+    
+    /**
+     * Gets the defensive zones that are considered to be under attack.
+     */
+    public List&lt;DefensiveZone&gt; getAttackedDefensiveZones() {
+<span class="fc" id="L84">        return defensiveZones.values().stream()</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                .filter(dz -&gt; dz.getNumberOfMilitaryEnemies() &gt; 0)</span>
+<span class="fc" id="L86">                .collect(Collectors.toList());</span>
+    }
+    
+    /**
+     * Gets the colonies of defensive zones that are considered to
+     * be under attack.
+     */
+    public List&lt;AIColony&gt; getAttackedColonies() {
+<span class="fc" id="L94">        return getAttackedDefensiveZones().stream()</span>
+<span class="fc" id="L95">                .map(DefensiveZone::getAiColony)</span>
+<span class="fc" id="L96">                .collect(Collectors.toList());</span>
+    }
+    
+    /**
+     * Returns colonies for defensive zones that are close to potential
+     * enemy military units. 
+     */
+    public List&lt;AIColony&gt; getThreatenedColonies() {
+<span class="fc" id="L104">        return defensiveZones.values().stream()</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                .filter(dz -&gt; dz.isEnemiesInNeighbour()</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                        || dz.getNumberOfPotentialMilitaryEnemies() &gt; 0)</span>
+<span class="fc" id="L107">                .map(DefensiveZone::getAiColony)</span>
+<span class="fc" id="L108">                .collect(Collectors.toList());</span>
+    }
+    
+    /**
+     * Returns a list of colonies that have land areas not protected by
+     * other defensive zones.
+     */
+    public List&lt;AIColony&gt; getColoniesExposedLand() {
+<span class="fc" id="L116">        return defensiveZones.values().stream()</span>
+<span class="fc" id="L117">                .filter(dz -&gt; dz.isExposedLand())</span>
+<span class="fc" id="L118">                .map(DefensiveZone::getAiColony)</span>
+<span class="fc" id="L119">                .collect(Collectors.toList());</span>
+    }
+    
+    /**
+     * Returns a list of colonies that have defensive zones adjacent to water.
+     */
+    public List&lt;AIColony&gt; getColoniesExposedWater() {
+<span class="fc" id="L126">        return defensiveZones.values().stream()</span>
+<span class="fc" id="L127">                .filter(dz -&gt; dz.isExposedWater())</span>
+<span class="fc" id="L128">                .map(DefensiveZone::getAiColony)</span>
+<span class="fc" id="L129">                .collect(Collectors.toList());</span>
+    }
+
+    /**
+     * Creates a defensive map for the given AI player.
+     * 
+     * The defensive map is not updated automatically, and need to be
+     * recreated if an update is required.
+     *
+     * @param aiPlayer The player to create the defensive map for.
+     * @return A defensive map that contains information about how easy
+     *      an area can be defended, and possible threats.
+     */
+    public static DefensiveMap createDefensiveMap(EuropeanAIPlayer aiPlayer) {
+<span class="fc" id="L143">        final List&lt;AIColony&gt; colonies = aiPlayer.getAIColonies();</span>
+        
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (colonies.isEmpty()) {</span>
+<span class="fc" id="L146">            return new DefensiveMap(new HashMap&lt;&gt;(), new HashMap&lt;&gt;());</span>
+        }
+        
+<span class="fc" id="L149">        final Map&lt;AIColony, DefensiveZone&gt; defensiveZones = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L150">        final Map&lt;String, DefensiveZone&gt; tileDefensiveZone = new HashMap&lt;&gt;();</span>
+        
+<span class="fc" id="L152">        final PriorityQueue&lt;SearchNode&gt; openMapQueue = new PriorityQueue&lt;&gt;(1024,</span>
+<span class="fc" id="L153">                Comparator.comparingInt(SearchNode::getCost));</span>
+<span class="fc" id="L154">        final Map&lt;String, SearchNode&gt; openMap = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L155">        final Map&lt;String, SearchNode&gt; closedMap = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L156">        final int movesLeft = 1;</span>
+        
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        for (AIColony ac : colonies) {</span>
+<span class="fc" id="L159">            final DefensiveZone defensiveZone = new DefensiveZone(ac);</span>
+<span class="fc" id="L160">            defensiveZones.put(ac, defensiveZone);</span>
+<span class="fc" id="L161">            openMapQueue.add(new SearchNode(ac.getColony().getTile(), null, movesLeft, 0, defensiveZone, 0));</span>
+<span class="fc" id="L162">        }</span>
+        
+<span class="fc" id="L164">        final CostDecider costDecider = CostDeciders.numberOfTiles();</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        while (!openMapQueue.isEmpty()) {</span>
+<span class="fc" id="L166">            final SearchNode searchNode = openMapQueue.poll();</span>
+<span class="fc" id="L167">            closedMap.put(searchNode.getTile().getId(), searchNode);</span>
+<span class="fc" id="L168">            tileDefensiveZone.put(searchNode.getTile().getId(), searchNode.defensiveZone);</span>
+            
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (searchNode.getTile().hasSettlement()) {</span>
+<span class="fc" id="L171">                final Settlement settlement = searchNode.getTile().getSettlement();</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">                if (aiPlayer.getPlayer().getStance(settlement.getOwner()) != Stance.ALLIANCE) {</span>
+<span class="fc" id="L173">                    searchNode.defensiveZone.addPotentialEnemySettlement(settlement);</span>
+                }
+<span class="fc" id="L175">            } else {</span>
+<span class="fc" id="L176">                final Set&lt;Unit&gt; enemyUnits = searchNode.getTile()</span>
+<span class="fc" id="L177">                        .getUnits()</span>
+<span class="pc bnc" id="L178" title="All 2 branches missed.">                        .filter(u -&gt; !aiPlayer.getPlayer().equals(u.getOwner())</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">                                &amp;&amp; aiPlayer.getPlayer().getStance(u.getOwner()) != Stance.ALLIANCE)</span>
+<span class="fc" id="L180">                        .collect(Collectors.toSet());</span>
+<span class="fc" id="L181">                searchNode.defensiveZone.addAllPotentialEnemies(enemyUnits);</span>
+            }
+            
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            for (Tile tile : searchNode.getTile().getSurroundingTiles(1)) {</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                if (!tile.isLand()) {</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">                    if (searchNode.previous != null) {</span>
+<span class="fc" id="L187">                        searchNode.previous.defensiveZone.setExposedWater(true);</span>
+                    }
+                    continue;
+                }
+                
+<span class="fc" id="L192">                final SearchNode closedMatch = closedMap.get(tile.getId());</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                if (closedMatch != null) {</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">                    if (searchNode.defensiveZone != closedMatch.defensiveZone) {</span>
+<span class="nc" id="L195">                        closedMatch.defensiveZone.addNeighbour(searchNode.defensiveZone);</span>
+                    }
+                    continue;
+                }
+                
+<span class="fc" id="L200">                final int cost = costDecider.getCost(null, searchNode.getTile(), tile, searchNode.movesLeft);</span>
+                
+<span class="fc" id="L202">                final SearchNode newSearchNode = new SearchNode(tile,</span>
+                        searchNode,
+<span class="fc" id="L204">                        costDecider.getMovesLeft(),</span>
+<span class="fc" id="L205">                        searchNode.turns + costDecider.getNewTurns(),</span>
+                        searchNode.defensiveZone,
+<span class="fc" id="L207">                        searchNode.getCost() + cost);</span>
+                
+<span class="fc bfc" id="L209" title="All 2 branches covered.">                if (openMap.containsKey(tile.getId())) {</span>
+<span class="fc" id="L210">                    continue;</span>
+                }
+                
+<span class="fc bfc" id="L213" title="All 2 branches covered.">                if (newSearchNode.cost &gt; ZONE_SIZE_TURNS) {</span>
+<span class="fc" id="L214">                    searchNode.defensiveZone.setExposedLand(true);</span>
+<span class="fc" id="L215">                    continue;</span>
+                }
+                
+<span class="fc" id="L218">                openMapQueue.add(newSearchNode);</span>
+<span class="fc" id="L219">                openMap.put(tile.getId(), newSearchNode);</span>
+<span class="fc" id="L220">            }</span>
+<span class="fc" id="L221">        }</span>
+
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        for (DefensiveZone defensiveZone : defensiveZones.values()) {</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">            for (DefensiveZone neighbour : defensiveZone.getNeighbours()) {</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">                if (neighbour.getNumberOfMilitaryEnemies() &gt; 0) {</span>
+<span class="nc" id="L226">                    defensiveZone.setEnemiesInNeighbour(true);</span>
+<span class="nc" id="L227">                    break;</span>
+                }
+<span class="nc" id="L229">            }</span>
+<span class="fc" id="L230">        }</span>
+        
+<span class="fc" id="L232">        return new DefensiveMap(defensiveZones, tileDefensiveZone);</span>
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L240">        final StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        for (Entry&lt;AIColony, DefensiveZone&gt; entry : defensiveZones.entrySet()) {</span>
+<span class="nc" id="L242">            sb.append(entry.getKey().getColony().getName());</span>
+<span class="nc" id="L243">            sb.append(&quot;: exposedLand=&quot; + entry.getValue().isExposedLand());</span>
+<span class="nc" id="L244">            sb.append(&quot;: exposedWater=&quot; + entry.getValue().isExposedWater());</span>
+<span class="nc" id="L245">            sb.append(&quot; enemies=&quot; + entry.getValue().getNumberOfMilitaryEnemies() + &quot;\n&quot;);</span>
+<span class="nc" id="L246">        }</span>
+<span class="nc" id="L247">        return sb.toString();</span>
+    }
+    
+    
+    private static final class SearchNode {
+        private final Tile tile;
+        private final SearchNode previous;
+        private final int turns;
+        private final int movesLeft;
+        private final DefensiveZone defensiveZone;
+        private final int cost;
+        
+<span class="fc" id="L259">        public SearchNode(Tile tile, SearchNode previous, int movesLeft, int turns, DefensiveZone defensiveZone, int cost) {</span>
+<span class="fc" id="L260">            this.tile = Objects.requireNonNull(tile);</span>
+<span class="fc" id="L261">            this.previous = previous;</span>
+<span class="fc" id="L262">            this.turns = turns;</span>
+<span class="fc" id="L263">            this.movesLeft = movesLeft;</span>
+<span class="fc" id="L264">            this.defensiveZone = Objects.requireNonNull(defensiveZone);</span>
+<span class="fc" id="L265">            this.cost = cost;</span>
+<span class="fc" id="L266">        }</span>
+        
+        int getCost() {
+<span class="fc" id="L269">            return cost;</span>
+        }
+        
+        Tile getTile() {
+<span class="fc" id="L273">            return tile;</span>
+        }
+    }
+
+   
+}
+
+    
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

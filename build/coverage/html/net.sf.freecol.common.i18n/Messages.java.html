@@ -1,0 +1,991 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Messages.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.i18n</a> &gt; <span class="el_source">Messages.java</span></div><h1>Messages.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.i18n;
+
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.map;
+import static net.sf.freecol.common.util.CollectionUtils.matchKeyEquals;
+import static net.sf.freecol.common.util.StringUtils.downCase;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.AbstractMap.SimpleEntry;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.StringTokenizer;
+import java.util.function.Predicate;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.swing.UIManager;
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.ObjectWithId;
+import net.sf.freecol.common.io.FreeColDirectories;
+import net.sf.freecol.common.io.FreeColModFile;
+import net.sf.freecol.common.io.FreeColRules;
+import net.sf.freecol.common.model.Named;
+import net.sf.freecol.common.model.Role;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.StringTemplate.TemplateType;
+import net.sf.freecol.common.util.LogBuilder;
+
+
+/**
+ * Represents a collection of messages in a particular locale.
+ *
+ * The individual messages are read from property files in the
+ * {@code data/strings} directory. The property files are called
+ * &quot;FreeColMessages[_LANGUAGE[_COUNTRY[_VARIANT]]].properties&quot;, where
+ * LANGUAGE should be an ISO 639-2 or ISO 639-3 language code, COUNTRY
+ * should be an ISO 3166-2 country code, and VARIANT is an arbitrary
+ * string. The encoding of the property files is UTF-8. Since the Java
+ * Properties class is unable to handle UTF-8 directly, this class
+ * uses its own implementation.
+ *
+ * The individual messages may include variables, which must be
+ * delimited by percent characters (e.g. &quot;%nation%&quot;), and will be
+ * replaced when the message is formatted. Furthermore, the messages
+ * may include choice formats consisting of a tag followed by a colon
+ * (&quot;:&quot;), a selector and one or several choices separated from the
+ * selector and each other by pipe characters (&quot;|&quot;). The entire choice
+ * format must be enclosed in double brackets (&quot;{{&quot; and &quot;}}&quot;,
+ * respectively).
+ *
+ * Each choice must consist of a key and a value separated by an
+ * equals character (&quot;=&quot;), unless it is a variable, in which case the
+ * variable must resolve to another choice format. The selector may
+ * also be a variable. If the selector is omitted, then one of the
+ * choices should use the key &quot;default&quot;. Choice formats may be
+ * nested.
+ *
+ * &lt;pre&gt;
+ *   key1=%colony% tuottaa tuotetta {{tag:acc|%goods%}}.
+ *   key2={{plural:%amount%|one=ruoka|other=ruokaa|default={{tag:|acc=viljaa|default=Vilja}}}}
+ *   key3={{tag:|acc=viljaa|default={{plural:%amount%|one=ruoka|other=ruokaa|default=Ruoka}}}}
+ * &lt;/pre&gt;
+ *
+ * This class is NOT thread-safe. (CO: I cannot find any place that
+ * really has a problem)
+ */
+<span class="nc" id="L95">public class Messages {</span>
+
+<span class="fc" id="L97">    private static final Logger logger = Logger.getLogger(Messages.class.getName());</span>
+
+    public static final String DESCRIPTION_SUFFIX = &quot;.description&quot;;
+    public static final String SHORT_DESCRIPTION_SUFFIX = &quot;.shortDescription&quot;;
+    public static final String NAME_SUFFIX = &quot;.name&quot;;
+    public static final String RULER_SUFFIX = &quot;.ruler&quot;;
+
+<span class="fc" id="L104">    private static final String[] DESCRIPTION_KEYS = {</span>
+        DESCRIPTION_SUFFIX, SHORT_DESCRIPTION_SUFFIX, NAME_SUFFIX
+    };
+
+    /** Automatic language choice from default locale. */
+    public static final String AUTOMATIC = &quot;automatic&quot;;
+
+    /**
+     * The mapping from language-independent key to localized message
+     * for the established locale.
+     */
+<span class="fc" id="L115">    private static final Map&lt;String, String&gt; messageBundle = new HashMap&lt;&gt;();</span>
+
+    /**
+     * A map with Selector values and the tag keys used in choice
+     * formats.
+     */
+<span class="fc" id="L121">    private static final Map&lt;String, Selector&gt; tagMap = new HashMap&lt;&gt;();</span>
+
+
+    // Message bundle initialization
+
+    /**
+     * Gets the Selector with the given tag.
+     *
+     * @param tag The tag to check.
+     * @return A suitable {@code Selector}.
+     */
+    private static Selector getSelector(String tag) {
+<span class="fc" id="L133">        return tagMap.get(downCase(tag));</span>
+    }
+
+    /**
+     * Set the grammatical number rule.
+     *
+     * @param number a {@code Number} value
+     */
+    public static void setGrammaticalNumber(Number number) {
+<span class="fc" id="L142">        tagMap.put(&quot;plural&quot;, number);</span>
+<span class="fc" id="L143">    }</span>
+
+    /**
+     * Load the message bundle for the given locale
+     *
+     * Error messages have to go to System.err as this routine is called
+     * before logging is enabled.
+     *
+     * @param locale The {@code Locale} to set resources for.
+     */
+    public static void loadMessageBundle(Locale locale) {
+<span class="fc" id="L154">        messageBundle.clear(); // Reset the message bundle.</span>
+
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (!NumberRules.isInitialized()) {</span>
+            // attempt to read grammatical rules
+<span class="fc" id="L158">            File cldr = FreeColDirectories.getI18nPluralsFile();</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">            if (cldr.exists()) {</span>
+<span class="fc" id="L160">                try (InputStream in = Files.newInputStream(cldr.toPath())) {</span>
+<span class="fc" id="L161">                    NumberRules.load(in);</span>
+<span class="nc" id="L162">                } catch (IOException|XMLStreamException e) {</span>
+<span class="nc" id="L163">                    System.err.println(&quot;Failed to read CLDR rules: &quot;</span>
+<span class="nc" id="L164">                        + e.getMessage());</span>
+<span class="pc" id="L165">                }</span>
+            } else {
+<span class="nc" id="L167">                System.err.println(&quot;Could not find CLDR rules: &quot;</span>
+<span class="nc" id="L168">                    + cldr.getPath());</span>
+            }
+        }
+
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        Locale loc = (AUTOMATIC.equalsIgnoreCase(locale.getLanguage()))</span>
+<span class="pc" id="L173">            ? Locale.getDefault() : locale;</span>
+<span class="fc" id="L174">        setGrammaticalNumber(NumberRules.getNumberForLanguage(loc.getLanguage()));</span>
+
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        for (File f : FreeColDirectories.getI18nMessageFileList(locale)) {</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">            if (!f.canRead()) continue;</span>
+            try {
+<span class="fc" id="L179">                loadMessages(Files.newInputStream(f.toPath()));</span>
+<span class="nc" id="L180">            } catch (IOException ioe) {</span>
+<span class="nc" id="L181">                System.err.println(&quot;Failed to load messages from &quot;</span>
+<span class="nc" id="L182">                    + f.getPath() + &quot;: &quot; + ioe.getMessage());</span>
+<span class="fc" id="L183">            }</span>
+<span class="fc" id="L184">        }</span>
+
+<span class="fc" id="L186">        List&lt;String&gt; filenames</span>
+<span class="fc" id="L187">            = FreeColDirectories.getMessageFileNameList(locale);</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        for (FreeColModFile fctf : FreeColRules.getRulesList()) {</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            for (String fn : filenames) {</span>
+<span class="fc" id="L190">                InputStream is = null;</span>
+                try {
+<span class="fc" id="L192">                    is = fctf.getInputStream(fn);</span>
+<span class="fc" id="L193">                } catch (IOException ioe) {</span>
+<span class="fc" id="L194">                    continue; // Expecting failure</span>
+<span class="fc" id="L195">                }</span>
+                try {
+<span class="fc" id="L197">                    loadMessages(is);</span>
+<span class="nc" id="L198">                } catch (IOException ioe) {</span>
+<span class="nc" id="L199">                    System.err.println(&quot;Failed to load rules messages from &quot;</span>
+<span class="nc" id="L200">                        + fn + &quot;: &quot; + ioe.getMessage());</span>
+                } finally {
+<span class="pc" id="L202">                    try { is.close(); } catch (IOException x) {}</span>
+                }
+<span class="fc" id="L204">            }</span>
+<span class="fc" id="L205">        }</span>
+<span class="fc" id="L206">    }</span>
+
+    /**
+     * Loads messages from a resource file into the current message bundle.
+     *
+     * Public for the test suite.
+     * 
+     * The {@code InputStream} gets closed in this method.
+     *
+     * @param is The {@code InputStream} to read from.
+     * @throws IOException on failure to read from the stream.
+     */
+    public static void loadMessages(InputStream is) throws IOException {
+<span class="fc" id="L219">        try (BufferedReader in = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {</span>
+<span class="fc" id="L220">            String line = null;</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            while((line = in.readLine()) != null) {</span>
+<span class="fc" id="L222">                line = line.trim();</span>
+<span class="fc" id="L223">                int index = line.indexOf('#');</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                if (index == 0) continue;</span>
+<span class="fc" id="L225">                index = line.indexOf('=');</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                if (index &gt; 0) {</span>
+<span class="fc" id="L227">                    String key = line.substring(0, index).trim();</span>
+<span class="fc" id="L228">                    String value = line.substring(index + 1).trim()</span>
+<span class="fc" id="L229">                        .replace(&quot;\\n&quot;, &quot;\n&quot;).replace(&quot;\\t&quot;, &quot;\t&quot;);</span>
+<span class="fc" id="L230">                    messageBundle.put(key, value);</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                    if (key.startsWith(&quot;FileChooser.&quot;)) {</span>
+<span class="nc" id="L232">                        UIManager.put(key, value);</span>
+                    }
+                }
+<span class="fc" id="L235">            }</span>
+        }
+<span class="fc" id="L237">    }</span>
+
+    /**
+     * Load localized messages for all mods.
+     *
+     * We can not initially load resources from mods because not all
+     * mods can be loaded until the user mod directory is initialized,
+     * which depends on the command line processing, which in turn
+     * requires at least the basic localized message resources to be
+     * loaded.  So this routine is called separately when the mods are
+     * finally loaded.
+     *
+     * @param locale The {@code Locale} to load resources for.
+     */
+    public static void loadModMessageBundle(Locale locale) {
+<span class="nc" id="L252">        List&lt;String&gt; filenames</span>
+<span class="nc" id="L253">            = FreeColDirectories.getMessageFileNameList(locale);</span>
+<span class="nc" id="L254">        LogBuilder lb = new LogBuilder(32);</span>
+<span class="nc" id="L255">        lb.add(&quot;Failed to load mod messages:&quot;);</span>
+<span class="nc" id="L256">        lb.mark();</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        for (FreeColModFile fcmf : FreeColModFile.getModsList()) {</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">            for (String name : filenames) {</span>
+                try {
+<span class="nc" id="L260">                    loadMessages(fcmf.getInputStream(name));</span>
+<span class="nc" id="L261">                } catch (IOException e) { // Failures expected</span>
+<span class="nc" id="L262">                    lb.add(' ', fcmf.getId(), '/', name);</span>
+<span class="nc" id="L263">                }</span>
+<span class="nc" id="L264">            }</span>
+<span class="nc" id="L265">        }</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">        if (lb.grew()) lb.log(logger, Level.FINE);</span>
+<span class="nc" id="L267">    }</span>
+
+    /**
+     * Load messages specific to active mods.
+     *
+     * Called when the spec is updated with the selected mods.
+     *
+     * @param mods The list of {@code FreeColModFile} for the active mods.
+     * @param locale The {@code Locale} to load resources for.
+     */
+    public static void loadActiveModMessageBundle(List&lt;FreeColModFile&gt; mods,
+                                                  Locale locale) {
+<span class="nc" id="L279">        List&lt;String&gt; filenames</span>
+<span class="nc" id="L280">            = FreeColDirectories.getModMessageFileNames(locale);</span>
+<span class="nc" id="L281">        LogBuilder lb = new LogBuilder(32);</span>
+<span class="nc" id="L282">        lb.add(&quot;Failed to load active mod messages:&quot;);</span>
+<span class="nc" id="L283">        lb.mark();</span>
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        for (FreeColModFile fcmf : mods) {</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">            for (String name : filenames) {</span>
+                try {
+<span class="nc" id="L287">                    loadMessages(fcmf.getInputStream(name));</span>
+<span class="nc" id="L288">                } catch (IOException e) { // Failures expected</span>
+<span class="nc" id="L289">                    lb.add(' ', fcmf.getId(), '/', name);</span>
+<span class="nc" id="L290">                }</span>
+<span class="nc" id="L291">            }</span>
+<span class="nc" id="L292">        }</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">        if (lb.grew()) lb.log(logger, Level.FINE);</span>
+<span class="nc" id="L294">    }</span>
+    
+    /**
+     * Get the {@code Locale} corresponding to a given language name.
+     *
+     * Public as this is needed for language option processing and the
+     * initial locale setting.
+     *
+     * @param languageID An underscore separated language/country/variant tuple.
+     * @return The {@code Locale} for the specified language.
+     */
+    public static Locale getLocale(String languageID) {
+<span class="fc" id="L306">        String language, country = &quot;&quot;, variant = &quot;&quot;;</span>
+<span class="fc" id="L307">        StringTokenizer st = new StringTokenizer(languageID, &quot;_&quot;, true);</span>
+<span class="fc" id="L308">        language = st.nextToken();</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        if (st.hasMoreTokens()) {</span>
+            // Skip _
+<span class="fc" id="L311">            st.nextToken();</span>
+        }
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        if (st.hasMoreTokens()) {</span>
+<span class="fc" id="L314">            String token = st.nextToken();</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">            if (!&quot;_&quot;.equals(token)) {</span>
+<span class="fc" id="L316">                country = token;</span>
+            }
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">            if (st.hasMoreTokens()) {</span>
+<span class="nc" id="L319">                token = st.nextToken();</span>
+<span class="nc bnc" id="L320" title="All 4 branches missed.">                if (&quot;_&quot;.equals(token) &amp;&amp; st.hasMoreTokens()) {</span>
+<span class="nc" id="L321">                    token = st.nextToken();</span>
+                }
+<span class="nc bnc" id="L323" title="All 2 branches missed.">                if (!&quot;_&quot;.equals(token)) {</span>
+<span class="nc" id="L324">                    variant = token;</span>
+                }
+            }
+        }
+<span class="fc" id="L328">        return new Locale(language, country, variant);</span>
+    }
+
+
+    // Shortcut message accessors
+
+    public static String nameKey(String id) {
+<span class="fc" id="L335">        return id + NAME_SUFFIX;</span>
+    }
+
+    public static String nameKey(ObjectWithId object) {
+<span class="nc" id="L339">        return nameKey(object.getId());</span>
+    }
+
+    public static String getName(String id) {
+<span class="fc" id="L343">        return message(nameKey(id));</span>
+    }
+
+    public static String getName(Named named) {
+<span class="fc" id="L347">        return message(named.getNameKey());</span>
+    }
+
+    public static String descriptionKey(String id) {
+<span class="fc" id="L351">        return id + DESCRIPTION_SUFFIX;</span>
+    }
+
+    public static String descriptionKey(ObjectWithId object) {
+<span class="nc" id="L355">        return descriptionKey(object.getId());</span>
+    }
+
+    public static String getDescription(String id) {
+<span class="fc" id="L359">        return message(descriptionKey(id));</span>
+    }
+
+    public static String getDescription(ObjectWithId object) {
+<span class="nc" id="L363">        return message(descriptionKey(object));</span>
+    }
+
+
+    public static String shortDescriptionKey(String id) {
+<span class="nc" id="L368">        return id + SHORT_DESCRIPTION_SUFFIX;</span>
+    }
+
+    public static String getShortDescription(String id) {
+<span class="nc" id="L372">        return message(shortDescriptionKey(id));</span>
+    }
+
+    public static String getShortDescription(ObjectWithId object) {
+<span class="nc" id="L376">        return getShortDescription(object.getId());</span>
+    }
+
+
+    public static String rulerKey(String id) {
+<span class="fc" id="L381">        return id + RULER_SUFFIX;</span>
+    }
+
+    public static String getRulerName(String id) {
+<span class="nc" id="L385">        return message(rulerKey(id));</span>
+    }
+
+    /**
+     * Does the message bundle contain the given key?
+     *
+     * @param key The key {@code String} to check.
+     * @return True if there is a message present with the given key.
+     */
+    public static boolean containsKey(String key) {
+<span class="fc bfc" id="L395" title="All 2 branches covered.">        return messageBundle.get(key) != null;</span>
+    }
+
+    /**
+     * Returns the preferred key if it is contained in the message
+     * bundle and the default key otherwise. This should be used to
+     * select the most specific message key available.
+     *
+     * @param preferredKey a {@code String} value
+     * @param defaultKey a {@code String} value
+     * @return a {@code String} value
+     */
+    public static String getKey(String preferredKey, String defaultKey) {
+<span class="nc bnc" id="L408" title="All 2 branches missed.">        if (containsKey(preferredKey)) {</span>
+<span class="nc" id="L409">            return preferredKey;</span>
+        } else {
+<span class="nc" id="L411">            return defaultKey;</span>
+        }
+    }
+
+    public static String getBestDescription(ObjectWithId object) {
+<span class="nc" id="L416">        return getBestDescription(object.getId());</span>
+    }
+
+    private static String getBestDescription(String id) {
+<span class="nc" id="L420">        String key = find(map(DESCRIPTION_KEYS, s -&gt; id + s),</span>
+<span class="nc" id="L421">                          k -&gt; containsKey(k));</span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">        return (key == null) ? id : message(key);</span>
+    }
+
+    /**
+     * Get the name and best description for a given named object.
+     *
+     * Favour the .name form, but degrade gracefully if it is not present.
+     * If .name is present, also look for a description.
+     *
+     * @param named The {@code Named} to look up.
+     * @return A 2-member array of name and description found.
+     */
+    public static String[] getBestNameAndDescription(Named named) {
+<span class="nc" id="L435">        return getBestNameAndDescription(named.getNameKey());</span>
+    }
+
+    /**
+     * Get the name and best description for a given identifier.
+     *
+     * Favour the .name form, but degrade gracefully if it is not present.
+     * If .name is present, also look for a description.
+     *
+     * @param id The identifier to look up.
+     * @return A 2-member array of name and description found.
+     */
+    public static String[] getBestNameAndDescription(String id) {
+<span class="nc bnc" id="L448" title="All 4 branches missed.">        if (id != null &amp;&amp; id.endsWith(NAME_SUFFIX)) { // Temporary hack</span>
+<span class="nc" id="L449">            id = id.substring(0, id.length() - NAME_SUFFIX.length());</span>
+        }
+<span class="nc bnc" id="L451" title="All 2 branches missed.">        String name = (containsKey(nameKey(id))) ? getName(id) : null;</span>
+<span class="nc" id="L452">        String desc = null;</span>
+<span class="nc bnc" id="L453" title="All 2 branches missed.">        if (name == null) {</span>
+<span class="nc bnc" id="L454" title="All 2 branches missed.">            name = (containsKey(id)) ? message(id) : null;</span>
+<span class="nc bnc" id="L455" title="All 2 branches missed.">            if (name == null) name = id;</span>
+        } else {
+<span class="nc" id="L457">            desc = getBestDescription(id);</span>
+<span class="nc bnc" id="L458" title="All 2 branches missed.">            if (id.equals(desc)) desc = null;</span>
+        }
+<span class="nc" id="L460">        return new String[] { name, desc };</span>
+    }
+
+    /**
+     * A predicate maker to match by message name.
+     *
+     * @param key The name of the message.
+     * @return A suitable {@code Predicate}.
+     */
+    public static final Predicate&lt;String&gt; matchesName(String key) {
+<span class="nc" id="L470">        return matchKeyEquals(key, (String k) -&gt; Messages.getName(k));</span>
+    }
+
+    /**
+     * A predicate maker to match named types.
+     *
+     * @param key The name of the type.
+     * @return A suitable {@code Predicate}.
+     */
+    public static final Predicate&lt;Named&gt; matchesNamed(String key) {
+<span class="nc" id="L480">        return matchKeyEquals(key, (Named k) -&gt; Messages.getName(k));</span>
+    }
+    
+
+    // Special purpose unit labelling
+
+    /**
+     * Get a label for a collection of units given a name, type,
+     * number, nation, role and extra annotation.
+     *
+     * @param name An optional unit name.
+     * @param typeId The unit type identifier.
+     * @param number The number of units.
+     * @param nationId An optional nation identifier.
+     * @param roleId The unit role identifier.
+     * @param extra An optional extra annotation.
+     * @return A {@code StringTemplate} to describe the given unit.
+     */
+    public static StringTemplate getUnitLabel(String name, String typeId,
+                                              int number, String nationId,
+                                              String roleId,
+                                              StringTemplate extra) {
+        // Check for special role-specific key, which will not have a
+        // role argument.  These exist so we can avoid mentioning
+        // the role twice, e.g. &quot;Seasoned Scout Scout&quot;.
+        StringTemplate type;
+        String roleKey;
+<span class="fc" id="L507">        String baseKey = typeId + &quot;.&quot; + Role.getRoleIdSuffix(roleId);</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">        if (containsKey(baseKey)) {</span>
+<span class="fc" id="L509">            type = StringTemplate.template(baseKey)</span>
+<span class="fc" id="L510">                .addAmount(&quot;%number%&quot;, number);</span>
+<span class="fc" id="L511">            roleKey = null;</span>
+        } else {
+<span class="fc" id="L513">            type = StringTemplate.template(nameKey(typeId))</span>
+<span class="fc" id="L514">                .addAmount(&quot;%number%&quot;, number);</span>
+<span class="fc bfc" id="L515" title="All 2 branches covered.">            roleKey = (Role.isDefaultRoleId(roleId)) ? null : roleId;</span>
+        }
+
+        StringTemplate ret;
+<span class="fc bfc" id="L519" title="All 2 branches covered.">        if (name == null) {</span>
+<span class="fc bfc" id="L520" title="All 2 branches covered.">            if (nationId == null) {</span>
+<span class="fc bfc" id="L521" title="All 2 branches covered.">                if (roleKey == null) {</span>
+<span class="pc bpc" id="L522" title="1 of 2 branches missed.">                    if (extra == null) {</span>
+                        // %type% | &quot;Free Colonist&quot;
+<span class="fc" id="L524">                        ret = type;</span>
+                    } else {
+                        // %type% (%extra%) | &quot;Treasure Train (5000 gold)&quot;
+<span class="nc" id="L527">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="nc" id="L528">                            .addStringTemplate(type)</span>
+<span class="nc" id="L529">                            .addName(&quot; (&quot;)</span>
+<span class="nc" id="L530">                            .addStringTemplate(extra)</span>
+<span class="nc" id="L531">                            .addName(&quot;)&quot;);</span>
+                    }
+                } else {
+<span class="pc bpc" id="L534" title="1 of 2 branches missed.">                    if (extra == null) {</span>
+                        // %role% (%type%) | &quot;Soldier (Free Colonist)&quot;
+<span class="fc" id="L536">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L537">                            .add(nameKey(roleKey))</span>
+<span class="fc" id="L538">                            .addName(&quot; (&quot;)</span>
+<span class="fc" id="L539">                            .addStringTemplate(type)</span>
+<span class="fc" id="L540">                            .addName(&quot;)&quot;);</span>
+                    } else {
+                        // %role% (%type%/%extra%) | &quot;Soldier (Free Colonist/50 muskets)&quot;
+<span class="nc" id="L543">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="nc" id="L544">                            .add(nameKey(roleKey))</span>
+<span class="nc" id="L545">                            .addName(&quot; (&quot;)</span>
+<span class="nc" id="L546">                            .addStringTemplate(type)</span>
+<span class="nc" id="L547">                            .addName(&quot;/&quot;)</span>
+<span class="nc" id="L548">                            .addStringTemplate(extra)</span>
+<span class="nc" id="L549">                            .addName(&quot;)&quot;);</span>
+                    }
+                }
+            } else {
+<span class="fc bfc" id="L553" title="All 2 branches covered.">                if (roleKey == null) {</span>
+<span class="fc bfc" id="L554" title="All 2 branches covered.">                    if (extra == null) {</span>
+                        // %nation% %type% | &quot;Dutch Free Colonist&quot;
+<span class="fc" id="L556">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L557">                            .add(nameKey(nationId))</span>
+<span class="fc" id="L558">                            .addName(&quot; &quot;)</span>
+<span class="fc" id="L559">                            .addStringTemplate(type);</span>
+                    } else {
+                        // %nation% %type% (%extra%) | &quot;Dutch Treasure Train (5000 gold)&quot;
+<span class="fc" id="L562">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L563">                            .add(nameKey(nationId))</span>
+<span class="fc" id="L564">                            .addName(&quot; &quot;)</span>
+<span class="fc" id="L565">                            .addStringTemplate(type)</span>
+<span class="fc" id="L566">                            .addName(&quot; (&quot;)</span>
+<span class="fc" id="L567">                            .addStringTemplate(extra)</span>
+<span class="fc" id="L568">                            .addName(&quot;)&quot;);</span>
+                    }
+                } else {
+<span class="fc bfc" id="L571" title="All 2 branches covered.">                    if (extra == null) {</span>
+                        // %nation% %role% (%type%) | &quot;Dutch Soldier (Free Colonist)&quot;
+<span class="fc" id="L573">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L574">                            .add(nameKey(nationId))</span>
+<span class="fc" id="L575">                            .addName(&quot; &quot;)</span>
+<span class="fc" id="L576">                            .add(nameKey(roleKey))</span>
+<span class="fc" id="L577">                            .addName(&quot; (&quot;)</span>
+<span class="fc" id="L578">                            .addStringTemplate(type)</span>
+<span class="fc" id="L579">                            .addName(&quot;)&quot;);</span>
+                    } else {
+                        // %nation% %role% (%type%/%extra%) | &quot;Dutch Soldier (Free Colonist/50 muskets)&quot;
+<span class="fc" id="L582">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L583">                            .add(nameKey(nationId))</span>
+<span class="fc" id="L584">                            .addName(&quot; &quot;)</span>
+<span class="fc" id="L585">                            .add(nameKey(roleKey))</span>
+<span class="fc" id="L586">                            .addName(&quot; (&quot;)</span>
+<span class="fc" id="L587">                            .addStringTemplate(type)</span>
+<span class="fc" id="L588">                            .addName(&quot;/&quot;)</span>
+<span class="fc" id="L589">                            .addStringTemplate(extra)</span>
+<span class="fc" id="L590">                            .addName(&quot;)&quot;);</span>
+                    }
+                }
+            }
+        } else {
+<span class="fc bfc" id="L595" title="All 2 branches covered.">            if (nationId == null) {</span>
+<span class="fc bfc" id="L596" title="All 2 branches covered.">                if (roleKey == null) {</span>
+<span class="pc bpc" id="L597" title="1 of 2 branches missed.">                    if (extra == null) {</span>
+                        // %name% (%type%) | &quot;Bob (Free Colonist)&quot;
+<span class="fc" id="L599">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L600">                            .addName(name)</span>
+<span class="fc" id="L601">                            .addName(&quot; (&quot;)</span>
+<span class="fc" id="L602">                            .addStringTemplate(type)</span>
+<span class="fc" id="L603">                            .addName(&quot;)&quot;);</span>
+                    } else {
+                        // %name% (%type%/%extra%) | &quot;Moolah (Treasure Train/5000 gold)&quot;
+<span class="nc" id="L606">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="nc" id="L607">                            .addName(name)</span>
+<span class="nc" id="L608">                            .addName(&quot; (&quot;)</span>
+<span class="nc" id="L609">                            .addStringTemplate(type)</span>
+<span class="nc" id="L610">                            .addName(&quot;/&quot;)</span>
+<span class="nc" id="L611">                            .addStringTemplate(extra)</span>
+<span class="nc" id="L612">                            .addName(&quot;)&quot;);</span>
+                    }
+                } else {
+<span class="pc bpc" id="L615" title="1 of 2 branches missed.">                    if (extra == null) {</span>
+                        // %name% (%role%/%type%) | &quot;Bob (Soldier/Free Colonist)&quot;
+<span class="fc" id="L617">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L618">                            .addName(name)</span>
+<span class="fc" id="L619">                            .addName(&quot; (&quot;)</span>
+<span class="fc" id="L620">                            .add(nameKey(roleKey))</span>
+<span class="fc" id="L621">                            .addName(&quot;/&quot;)</span>
+<span class="fc" id="L622">                            .addStringTemplate(type)</span>
+<span class="fc" id="L623">                            .addName(&quot;)&quot;);</span>
+                    } else {
+                        // %name% (%role%/%type%/%extra%) | &quot;Bob (Soldier/Free Colonist/50 muskets)&quot;
+<span class="nc" id="L626">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="nc" id="L627">                            .addName(name)</span>
+<span class="nc" id="L628">                            .addName(&quot; (&quot;)</span>
+<span class="nc" id="L629">                            .add(nameKey(roleKey))</span>
+<span class="nc" id="L630">                            .addName(&quot;/&quot;)</span>
+<span class="nc" id="L631">                            .addStringTemplate(type)</span>
+<span class="nc" id="L632">                            .addName(&quot;/&quot;)</span>
+<span class="nc" id="L633">                            .addStringTemplate(extra)</span>
+<span class="nc" id="L634">                            .addName(&quot;)&quot;);</span>
+                    }
+                }
+            } else {
+<span class="fc bfc" id="L638" title="All 2 branches covered.">                if (roleKey == null) {</span>
+<span class="fc bfc" id="L639" title="All 2 branches covered.">                    if (extra == null) {</span>
+                        // %name% (%nation% %type%) | &quot;Bob (Dutch Free Colonist)&quot;
+<span class="fc" id="L641">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L642">                            .addName(name)</span>
+<span class="fc" id="L643">                            .addName(&quot; (&quot;)</span>
+<span class="fc" id="L644">                            .add(nameKey(nationId))</span>
+<span class="fc" id="L645">                            .addName(&quot; &quot;)</span>
+<span class="fc" id="L646">                            .addStringTemplate(type)</span>
+<span class="fc" id="L647">                            .addName(&quot;)&quot;);</span>
+                    } else {
+                        // %name% (%nation% %type%/%extra%) | &quot;Moolah (Dutch Treasure Train/5000 gold)&quot;
+<span class="fc" id="L650">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L651">                            .addName(name)</span>
+<span class="fc" id="L652">                            .addName(&quot; (&quot;)</span>
+<span class="fc" id="L653">                            .add(nameKey(nationId))</span>
+<span class="fc" id="L654">                            .addName(&quot; &quot;)</span>
+<span class="fc" id="L655">                            .addStringTemplate(type)</span>
+<span class="fc" id="L656">                            .addName(&quot;/&quot;)</span>
+<span class="fc" id="L657">                            .addStringTemplate(extra)</span>
+<span class="fc" id="L658">                            .addName(&quot;)&quot;);</span>
+                    }
+                } else {
+<span class="fc bfc" id="L661" title="All 2 branches covered.">                    if (extra == null) {</span>
+                        // %name% (%nation% %role%/%type%) | &quot;Bob (Dutch Soldier/Free Colonist)&quot;
+<span class="fc" id="L663">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L664">                            .addName(name)</span>
+<span class="fc" id="L665">                            .addName(&quot; (&quot;)</span>
+<span class="fc" id="L666">                            .add(nameKey(nationId))</span>
+<span class="fc" id="L667">                            .addName(&quot; &quot;)</span>
+<span class="fc" id="L668">                            .add(nameKey(roleKey))</span>
+<span class="fc" id="L669">                            .addName(&quot;/&quot;)</span>
+<span class="fc" id="L670">                            .addStringTemplate(type)</span>
+<span class="fc" id="L671">                            .addName(&quot;)&quot;);</span>
+                    } else {
+                        // %name% (%nation% %role%/%type%/%extra%) | &quot;Bob (Dutch Soldier/Free Colonist/50 muskets)&quot;
+<span class="fc" id="L674">                        ret = StringTemplate.label(&quot;&quot;)</span>
+<span class="fc" id="L675">                            .addName(name)</span>
+<span class="fc" id="L676">                            .addName(&quot; (&quot;)</span>
+<span class="fc" id="L677">                            .add(nameKey(nationId))</span>
+<span class="fc" id="L678">                            .addName(&quot; &quot;)</span>
+<span class="fc" id="L679">                            .add(nameKey(roleKey))</span>
+<span class="fc" id="L680">                            .addName(&quot;/&quot;)</span>
+<span class="fc" id="L681">                            .addStringTemplate(type)</span>
+<span class="fc" id="L682">                            .addName(&quot;/&quot;)</span>
+<span class="fc" id="L683">                            .addStringTemplate(extra)</span>
+<span class="fc" id="L684">                            .addName(&quot;)&quot;);</span>
+                    }
+                }
+            }
+        }
+<span class="fc" id="L689">        return ret;</span>
+    }
+
+
+    // message().  The fundamental i18n routine, and its support.
+
+    /**
+     * Get the text mapping for a particular identifier in the
+     * default locale message bundle.  Returns the key as the value if
+     * there is no mapping found!
+     *
+     * @param messageId The key of the message to find.
+     * @return String text mapping or the key
+     */
+    public static String message(String messageId) {
+        // Check that all the values are correct.
+<span class="pc bpc" id="L705" title="1 of 2 branches missed.">        if (messageId == null) {</span>
+<span class="nc" id="L706">            throw new NullPointerException(&quot;Message id must not be null!&quot;);</span>
+        }
+
+        // return key as value if there is no mapping found
+<span class="fc" id="L710">        String message = messageBundle.get(messageId);</span>
+<span class="fc bfc" id="L711" title="All 2 branches covered.">        if (message == null) return messageId;</span>
+
+        // otherwise replace variables in the text
+<span class="fc" id="L714">        message = replaceChoices(message, null);</span>
+<span class="fc" id="L715">        return message.trim();</span>
+    }
+
+    /**
+     * Localizes a StringTemplate.
+     *
+     * @param template The {@code StringTemplate} to localize.
+     * @return The localized string.
+     */
+    public static String message(StringTemplate template) {
+<span class="pc bpc" id="L725" title="1 of 2 branches missed.">        if (template == null) return null;</span>
+<span class="fc" id="L726">        String result = &quot;&quot;;</span>
+<span class="fc bfc" id="L727" title="All 4 branches covered.">        switch (template.getTemplateType()) {</span>
+        case LABEL:
+<span class="pc bpc" id="L729" title="1 of 2 branches missed.">            if (template.isEmpty()) {</span>
+<span class="nc" id="L730">                result = message(template.getId());</span>
+            } else {
+<span class="fc" id="L732">                StringBuilder sb = new StringBuilder(64);</span>
+                for (SimpleEntry&lt;String,StringTemplate&gt; e
+<span class="fc bfc" id="L734" title="All 2 branches covered.">                         : template.entryList()) {</span>
+<span class="fc" id="L735">                    sb.append(template.getId()).append(message(e.getValue()));</span>
+<span class="fc" id="L736">                }</span>
+<span class="pc bpc" id="L737" title="1 of 2 branches missed.">                if (sb.length() &gt;= template.getId().length()) {</span>
+<span class="fc" id="L738">                    result = sb.toString().substring(template.getId().length());</span>
+                } else {
+<span class="nc" id="L740">                    logger.warning(&quot;incorrect use of template &quot; + template);</span>
+                }
+            }
+<span class="fc" id="L743">            break;</span>
+        case TEMPLATE:
+<span class="fc bfc" id="L745" title="All 2 branches covered.">            if (containsKey(template.getId())) {</span>
+<span class="fc" id="L746">                result = messageBundle.get(template.getId());</span>
+<span class="fc bfc" id="L747" title="All 2 branches covered.">            } else if (template.getDefaultId() != null) {</span>
+<span class="fc" id="L748">                result = messageBundle.get(template.getDefaultId());</span>
+            }
+<span class="fc" id="L750">            result = replaceChoices(result, template);</span>
+            for (SimpleEntry&lt;String, StringTemplate&gt; e
+<span class="fc bfc" id="L752" title="All 2 branches covered.">                     : template.entryList()) {</span>
+<span class="pc bpc" id="L753" title="1 of 2 branches missed.">                if (e.getKey() != null) {</span>
+<span class="fc" id="L754">                    result = result.replace(e.getKey(), message(e.getValue()));</span>
+                }
+<span class="fc" id="L756">            }</span>
+<span class="fc" id="L757">            break;</span>
+        case KEY:
+<span class="fc" id="L759">            String key = messageBundle.get(template.getId());</span>
+<span class="fc bfc" id="L760" title="All 2 branches covered.">            result = (key == null) ? template.getId()</span>
+<span class="fc" id="L761">                : replaceChoices(key, null);</span>
+<span class="fc" id="L762">            break;</span>
+        case NAME:
+        default:
+<span class="fc" id="L765">            result = template.getId();</span>
+            break;
+        }
+<span class="fc" id="L768">        return result;</span>
+    }
+
+    /**
+     * Replace all choice formats in the given string, using keys and
+     * replacement values from the given template, which may be null.
+     *
+     * A choice format is enclosed in double brackets and consists of
+     * a tag, followed by a colon, followed by an optional selector,
+     * followed by a pipe character, followed by one or several
+     * choices separated by pipe characters. If there is only one
+     * choice, it must be a message identifier or a
+     * variable. Otherwise, each choice consists of a key and a value
+     * separated by an assignment character. Example:
+     * &quot;{{tag:selector|key1=val1|key2=val2}}&quot;.
+     *
+     * @param input a {@code String} value
+     * @param template a {@code StringTemplate} value
+     * @return a {@code String} value
+     */
+    private static String replaceChoices(String input, StringTemplate template) {
+<span class="fc" id="L789">        int openChoice = 0;</span>
+<span class="fc" id="L790">        int closeChoice = 0;</span>
+<span class="fc" id="L791">        int highWaterMark = 0;</span>
+<span class="fc" id="L792">        StringBuilder result = new StringBuilder();</span>
+<span class="fc bfc" id="L793" title="All 2 branches covered.">        while ((openChoice = input.indexOf(&quot;{{&quot;, highWaterMark)) &gt;= 0) {</span>
+<span class="fc" id="L794">            result.append(input.substring(highWaterMark, openChoice));</span>
+<span class="fc" id="L795">            closeChoice = findMatchingBracket(input, openChoice + 2);</span>
+<span class="pc bpc" id="L796" title="1 of 2 branches missed.">            if (closeChoice &lt; 0) {</span>
+                // no closing brackets found
+<span class="nc" id="L798">                logger.warning(&quot;Mismatched brackets: &quot; + input);</span>
+<span class="nc" id="L799">                return result.toString();</span>
+            }
+<span class="fc" id="L801">            highWaterMark = closeChoice + 2;</span>
+<span class="fc" id="L802">            int colonIndex = input.indexOf(':', openChoice + 2);</span>
+<span class="pc bpc" id="L803" title="1 of 4 branches missed.">            if (colonIndex &lt; 0 || colonIndex &gt; closeChoice) {</span>
+<span class="fc" id="L804">                logger.warning(&quot;No tag found: &quot; + input);</span>
+<span class="fc" id="L805">                continue;</span>
+            }
+<span class="fc" id="L807">            String tag = input.substring(openChoice + 2, colonIndex);</span>
+<span class="fc" id="L808">            int pipeIndex = input.indexOf('|', colonIndex + 1);</span>
+<span class="pc bpc" id="L809" title="2 of 4 branches missed.">            if (pipeIndex &lt; 0 || pipeIndex &gt; closeChoice) {</span>
+<span class="nc" id="L810">                logger.warning(&quot;No choices found: &quot; + input);</span>
+<span class="nc" id="L811">                continue;</span>
+            }
+<span class="fc" id="L813">            String selector = input.substring(colonIndex + 1, pipeIndex);</span>
+<span class="fc bfc" id="L814" title="All 2 branches covered.">            if (selector.isEmpty()) {</span>
+<span class="fc" id="L815">                selector = &quot;default&quot;;</span>
+<span class="pc bpc" id="L816" title="1 of 4 branches missed.">            } else if (selector.startsWith(&quot;%&quot;) &amp;&amp; selector.endsWith(&quot;%&quot;)) {</span>
+<span class="fc bfc" id="L817" title="All 2 branches covered.">                if (template == null) {</span>
+<span class="fc" id="L818">                    selector = &quot;default&quot;;</span>
+                } else {
+<span class="fc" id="L820">                    StringTemplate replacement</span>
+<span class="fc" id="L821">                        = template.getReplacement(selector);</span>
+<span class="pc bpc" id="L822" title="1 of 2 branches missed.">                    if (replacement == null) {</span>
+<span class="nc" id="L823">                        logger.warning(&quot;Failed to find replacement for &quot;</span>
+                            + selector);
+<span class="nc" id="L825">                        continue;</span>
+                    } else {
+<span class="fc" id="L827">                        selector = message(replacement);</span>
+<span class="fc" id="L828">                        Selector taggedSelector = getSelector(tag);</span>
+<span class="fc bfc" id="L829" title="All 2 branches covered.">                        if (taggedSelector != null) {</span>
+<span class="fc" id="L830">                            selector = taggedSelector.getKey(selector, input);</span>
+                        }
+                    }
+<span class="fc" id="L833">                }</span>
+            } else {
+<span class="fc" id="L835">                Selector taggedSelector = getSelector(tag);</span>
+<span class="pc bpc" id="L836" title="1 of 2 branches missed.">                if (taggedSelector != null) {</span>
+<span class="nc" id="L837">                    selector = taggedSelector.getKey(selector, input);</span>
+                }
+            }
+<span class="fc" id="L840">            int keyIndex = input.indexOf(selector, pipeIndex + 1);</span>
+<span class="pc bpc" id="L841" title="1 of 4 branches missed.">            if (keyIndex &lt; 0 || keyIndex &gt; closeChoice) {</span>
+                // key not found, choice might be a key itself
+<span class="fc" id="L843">                String otherKey = input.substring(pipeIndex + 1, closeChoice);</span>
+<span class="pc bpc" id="L844" title="1 of 2 branches missed.">                if (template != null</span>
+<span class="pc bpc" id="L845" title="1 of 4 branches missed.">                    &amp;&amp; otherKey.startsWith(&quot;%&quot;) &amp;&amp; otherKey.endsWith(&quot;%&quot;)) {</span>
+<span class="fc" id="L846">                    StringTemplate replacement</span>
+<span class="fc" id="L847">                        = template.getReplacement(otherKey);</span>
+<span class="pc bpc" id="L848" title="1 of 2 branches missed.">                    if (replacement == null) {</span>
+<span class="nc" id="L849">                        logger.warning(&quot;Failed to find replacement for &quot;</span>
+                            + selector + &quot;/&quot; + otherKey);
+<span class="nc" id="L851">                        continue;</span>
+<span class="pc bpc" id="L852" title="1 of 2 branches missed.">                    } else if (replacement.getTemplateType() == TemplateType.KEY) {</span>
+<span class="fc" id="L853">                        otherKey = messageBundle.get(replacement.getId());</span>
+<span class="fc" id="L854">                        keyIndex = otherKey.indexOf(&quot;{{&quot;);</span>
+<span class="fc bfc" id="L855" title="All 2 branches covered.">                        if (keyIndex &lt; 0) {</span>
+                            // not a choice format
+<span class="fc" id="L857">                            result.append(otherKey);</span>
+                        } else {
+<span class="fc" id="L859">                            keyIndex = otherKey.indexOf(selector, keyIndex);</span>
+<span class="pc bpc" id="L860" title="1 of 2 branches missed.">                            if (keyIndex &lt; 0) {</span>
+<span class="nc" id="L861">                                logger.warning(&quot;Failed to find key &quot;</span>
+                                    + selector + &quot;/&quot; + otherKey
+                                    + &quot; in replacement &quot; + replacement);
+<span class="nc" id="L864">                                continue;</span>
+                            } else {
+<span class="fc" id="L866">                                result.append(getChoice(otherKey, selector));</span>
+                            }
+                        }
+                    } else {
+<span class="nc" id="L870">                        logger.warning(&quot;Choice substitution for &quot;</span>
+                            + selector + &quot;/&quot; + otherKey
+                            + &quot; attempted, but template was &quot; + replacement
+                            + &quot; for input &quot; + input);
+<span class="nc" id="L874">                        continue;</span>
+                    }
+<span class="pc bpc" id="L876" title="1 of 2 branches missed.">                } else if (containsKey(otherKey)) {</span>
+<span class="nc" id="L877">                    otherKey = getChoice(messageBundle.get(otherKey), selector);</span>
+<span class="nc" id="L878">                    result.append(otherKey);</span>
+                } else {
+<span class="fc" id="L880">                    logger.warning(&quot;Unknown key or untagged choice: '&quot;</span>
+                        + otherKey
+                        + &quot;', selector was '&quot; + selector
+                        + &quot;', trying 'default' instead&quot;);
+<span class="fc" id="L884">                    int defaultStart = otherKey.indexOf(&quot;default=&quot;);</span>
+<span class="pc bpc" id="L885" title="1 of 2 branches missed.">                    if (defaultStart &gt;= 0) {</span>
+<span class="fc" id="L886">                        defaultStart += 8;</span>
+<span class="fc" id="L887">                        int defaultEnd = otherKey.indexOf('|', defaultStart);</span>
+                        String defaultChoice;
+<span class="pc bpc" id="L889" title="1 of 2 branches missed.">                        if (defaultEnd &lt; 0) {</span>
+<span class="fc" id="L890">                            defaultChoice = otherKey.substring(defaultStart);</span>
+                        } else {
+<span class="nc" id="L892">                            defaultChoice = otherKey.substring(defaultStart, defaultEnd);</span>
+                        }
+<span class="fc" id="L894">                        result.append(defaultChoice);</span>
+<span class="fc" id="L895">                    } else {</span>
+<span class="nc" id="L896">                        logger.warning(&quot;No default choice found.&quot;);</span>
+<span class="nc" id="L897">                        continue;</span>
+                    }
+                }
+<span class="fc" id="L900">            } else {</span>
+<span class="fc" id="L901">                int start = keyIndex + selector.length() + 1;</span>
+<span class="fc" id="L902">                int replacementIndex = input.indexOf('|', start);</span>
+<span class="fc" id="L903">                int nextOpenIndex = input.indexOf(&quot;{{&quot;, start);</span>
+<span class="pc bpc" id="L904" title="1 of 4 branches missed.">                if (nextOpenIndex &gt;= 0 &amp;&amp; nextOpenIndex &lt; replacementIndex) {</span>
+<span class="fc" id="L905">                    replacementIndex = input.indexOf('|',</span>
+<span class="fc" id="L906">                        findMatchingBracket(input, nextOpenIndex + 2) + 2);</span>
+                }
+<span class="fc bfc" id="L908" title="All 4 branches covered.">                int end = (replacementIndex &lt; 0</span>
+<span class="fc" id="L909">                    || replacementIndex &gt; closeChoice) ? closeChoice</span>
+<span class="fc" id="L910">                    : replacementIndex;</span>
+<span class="fc" id="L911">                String replacement = input.substring(start, end);</span>
+<span class="fc bfc" id="L912" title="All 2 branches covered.">                if (!replacement.contains(&quot;{{&quot;)) {</span>
+<span class="fc" id="L913">                    result.append(replacement);</span>
+                } else {
+<span class="fc" id="L915">                    result.append(replaceChoices(replacement, template));</span>
+                }
+            }
+<span class="fc" id="L918">        }</span>
+<span class="fc" id="L919">        result.append(input.substring(highWaterMark));</span>
+<span class="fc" id="L920">        return result.toString();</span>
+    }
+
+    /**
+     * Return the choice tagged with the given key, or null, if the
+     * given input string does not contain the key.
+     *
+     * @param input a {@code String} value
+     * @param key a {@code String} value
+     * @return a {@code String} value
+     */
+    private static String getChoice(String input, String key) {
+<span class="fc" id="L932">        int keyIndex = input.indexOf(key);</span>
+<span class="pc bpc" id="L933" title="1 of 2 branches missed.">        if (keyIndex &lt; 0) {</span>
+<span class="nc" id="L934">            return null;</span>
+        } else {
+<span class="fc" id="L936">            int start = keyIndex + key.length() + 1;</span>
+<span class="fc" id="L937">            int end = input.indexOf('|', start);</span>
+<span class="fc bfc" id="L938" title="All 2 branches covered.">            if (end &lt; 0) {</span>
+<span class="fc" id="L939">                end = input.indexOf(&quot;}}&quot;, start);</span>
+<span class="pc bpc" id="L940" title="1 of 2 branches missed.">                if (end &lt; 0) {</span>
+<span class="nc" id="L941">                    logger.warning(&quot;Failed to find end of choice for key &quot; + key</span>
+                                   + &quot; in input &quot; + input);
+<span class="nc" id="L943">                    return null;</span>
+                }
+            }
+<span class="fc" id="L946">            return input.substring(start, end);</span>
+        }
+    }
+
+    /**
+     * Return the index of the matching pair of brackets, or -1 if
+     * none is found.
+     *
+     * @param input a {@code String} value
+     * @param start an {@code int} value
+     * @return an {@code int} value
+     */
+    private static int findMatchingBracket(String input, int start) {
+<span class="fc" id="L959">        char last = 0;</span>
+<span class="fc" id="L960">        int level = 0;</span>
+<span class="pc bpc" id="L961" title="1 of 2 branches missed.">        for (int index = start; index &lt; input.length(); index++) {</span>
+<span class="fc bfc" id="L962" title="All 3 branches covered.">            switch (input.charAt(index)) {</span>
+            case '{':
+<span class="fc bfc" id="L964" title="All 2 branches covered.">                if (last == '{') {</span>
+<span class="fc" id="L965">                    last = 0;</span>
+<span class="fc" id="L966">                    level++;</span>
+                } else {
+<span class="fc" id="L968">                    last = '{';</span>
+                }
+<span class="fc" id="L970">                break;</span>
+            case '}':
+<span class="fc bfc" id="L972" title="All 2 branches covered.">                if (last == '}') {</span>
+<span class="fc bfc" id="L973" title="All 2 branches covered.">                    if (level == 0) {</span>
+<span class="fc" id="L974">                        return index - 1;</span>
+                    } else {
+<span class="fc" id="L976">                        last = 0;</span>
+<span class="fc" id="L977">                        level--;</span>
+                    }
+                } else {
+<span class="fc" id="L980">                    last = '}';</span>
+                }
+<span class="fc" id="L982">                break;</span>
+            default:
+                break;
+            }
+        }
+        // found no matching bracket
+<span class="nc" id="L988">        return -1;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

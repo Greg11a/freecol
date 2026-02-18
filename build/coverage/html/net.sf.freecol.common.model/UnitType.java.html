@@ -1,0 +1,1059 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnitType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">UnitType.java</span></div><h1>UnitType.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Stream;
+
+import javax.swing.JList;
+import javax.swing.ListModel;
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import net.sf.freecol.common.model.Colony.NoBuildReason;
+import static net.sf.freecol.common.model.Constants.*;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+/**
+ * The various types of units in FreeCol.
+ */
+public final class UnitType extends BuildableType implements Consumer {
+
+    public static final String TAG = &quot;unit-type&quot;;
+
+    /** Comparator for defence ability. */
+<span class="fc" id="L46">    public static final Comparator&lt;UnitType&gt; defenceComparator = Comparator.comparingDouble(UnitType::getDefence);</span>
+
+    /** The default offence value. */
+    public static final int DEFAULT_OFFENCE = 0;
+
+    /** The default offence value. */
+    public static final int DEFAULT_DEFENCE = 1;
+
+    /**
+     * The offence of this UnitType. Only Units with an offence value
+     * greater than zero can attack.
+     */
+<span class="fc" id="L58">    private int baseOffence = DEFAULT_OFFENCE;</span>
+
+    /** The defence of this UnitType. */
+<span class="fc" id="L61">    private int baseDefence = DEFAULT_DEFENCE;</span>
+
+    /** The capacity of this UnitType. */
+<span class="fc" id="L64">    private int space = 0;</span>
+
+    /** Is this the default unit type? */
+<span class="fc" id="L67">    private boolean defaultUnitType = false;</span>
+
+    /**
+     * The number of hit points this UnitType has. At the moment, this
+     * is only used for ships. All other UnitTypes are downgraded or
+     * destroyed if they lose a battle.
+     */
+<span class="fc" id="L74">    private int hitPoints = 0;</span>
+
+    /** The space taken by this UnitType. */
+<span class="fc" id="L77">    private int spaceTaken = 1;</span>
+
+    /** The skill level of this UnitType. */
+<span class="fc" id="L80">    private int skill = UNDEFINED;</span>
+
+    /** The price of this UnitType. */
+<span class="fc" id="L83">    private int price = UNDEFINED;</span>
+
+    /** The optional price of this UnitType for use by mercenary forces. */
+<span class="fc" id="L86">    private int mercenaryPrice = UNDEFINED;</span>
+
+    /** The initial moves of this UnitType. */
+<span class="fc" id="L89">    private int movement = 3;</span>
+
+    /** The maximum distance of tiles this UnitType can observe. */
+<span class="fc" id="L92">    private int lineOfSight = 1;</span>
+
+    /** The probability of recruiting a Unit of this type in Europe. */
+<span class="fc" id="L95">    private int recruitProbability = 0;</span>
+
+    /** The expert production of this UnitType. */
+<span class="fc" id="L98">    private GoodsType expertProduction = null;</span>
+
+    /** How much a Unit of this type contributes to the Player's score. */
+<span class="fc" id="L101">    private int scoreValue = 0;</span>
+
+    /** The maximum experience a unit of this type can accumulate. */
+<span class="fc" id="L104">    private int maximumExperience = 0;</span>
+    
+<span class="fc" id="L106">    private int attackRange = 0;</span>
+
+    /**
+     * The maximum attrition this UnitType can accumulate without
+     * being destroyed.
+     */
+<span class="fc" id="L112">    private int maximumAttrition = INFINITY;</span>
+
+    /** Consumption order. */
+<span class="fc" id="L115">    private int priority = Consumer.UNIT_PRIORITY;</span>
+
+    /** The skill this UnitType teaches, mostly its own. */
+<span class="fc" id="L118">    private UnitType skillTaught = null;</span>
+
+    /** The default role for a unit of this type. */
+<span class="fc" id="L121">    private Role defaultRole = null;</span>
+
+    /** The goods consumed per turn when in a settlement. */
+<span class="fc" id="L124">    private TypeCountMap&lt;GoodsType&gt; consumption = null;</span>
+
+    /**
+     * Creates a new {@code UnitType} instance.
+     *
+     * @param id            The object identifier.
+     * @param specification The {@code Specification} to refer to.
+     */
+    public UnitType(String id, Specification specification) {
+<span class="fc" id="L133">        super(id, specification);</span>
+
+<span class="fc" id="L135">        this.defaultRole = specification.getDefaultRole();</span>
+<span class="fc" id="L136">    }</span>
+
+    /**
+     * Get a key for the working as this unit type message.
+     *
+     * @return A message key.
+     */
+    public final String getWorkingAsKey() {
+<span class="nc" id="L144">        return getId() + &quot;.workingAs&quot;;</span>
+    }
+
+    /**
+     * Can this unit type carry units?
+     *
+     * @return True if units can be carried.
+     */
+    public boolean canCarryUnits() {
+<span class="fc" id="L153">        return hasAbility(Ability.CARRY_UNITS);</span>
+    }
+
+    /**
+     * Can this unit type carry goods?
+     *
+     * @return True if goods can be carried.
+     */
+    public boolean canCarryGoods() {
+<span class="fc" id="L162">        return hasAbility(Ability.CARRY_GOODS);</span>
+    }
+
+    /**
+     * Can this unit type carry treasure?
+     * 
+     * @return True if unit can carry treasure
+     */
+    public boolean canCarryTreasure() {
+<span class="nc" id="L171">        return hasAbility(Ability.CARRY_TREASURE);</span>
+    }
+
+    /**
+     * Gets the score for acquiring a unit of this type.
+     *
+     * @return The score for this unit type.
+     */
+    public int getScoreValue() {
+<span class="nc" id="L180">        return scoreValue;</span>
+    }
+
+    /**
+     * Get the base offence value.
+     *
+     * @return The base offence value.
+     */
+    public int getBaseOffence() {
+<span class="fc" id="L189">        return this.baseOffence;</span>
+    }
+
+    /**
+     * Get the offence of this unit type.
+     *
+     * @return The offence value.
+     */
+    public double getOffence() {
+<span class="fc" id="L198">        return apply(this.baseOffence, null, Modifier.OFFENCE);</span>
+    }
+
+    /**
+     * Is this an offensive unit type?
+     *
+     * @return True if base offensive ability is greater than the default.
+     */
+    public boolean isOffensive() {
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        return getBaseOffence() &gt; UnitType.DEFAULT_OFFENCE;</span>
+    }
+
+    /**
+     * Get the base defence value.
+     *
+     * @return The defence value.
+     */
+    public int getBaseDefence() {
+<span class="fc" id="L216">        return this.baseDefence;</span>
+    }
+
+    /**
+     * Get the total defence of this unit type.
+     *
+     * @return The defence value.
+     */
+    public double getDefence() {
+<span class="fc" id="L225">        return apply(this.baseDefence, null, Modifier.DEFENCE);</span>
+    }
+
+    /**
+     * Is this a defensive unit type?
+     *
+     * Default defence is 1, same a for colonists, thus to be defensive, a
+     * colonist must have a military role. Artillery of all sorts has
+     * higher defense so they are automatically defensive.
+     *
+     * @return True if base defensive ability is greater than the default.
+     */
+    public boolean isDefensive() {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        return getBaseDefence() &gt; UnitType.DEFAULT_DEFENCE;</span>
+    }
+
+    /**
+     * Is this the default unit type?
+     *
+     * @return True if this is the default unit type.
+     */
+    public boolean isDefaultUnitType() {
+<span class="fc" id="L247">        return this.defaultUnitType;</span>
+    }
+
+    /**
+     * Get the `line of sight' distance (in tiles).
+     *
+     * @return The line of sight distance.
+     */
+    public int getLineOfSight() {
+<span class="fc" id="L256">        return lineOfSight;</span>
+    }
+    
+    /**
+     * Sets `line of sight' (used by Introspector).
+     */
+    public void setLineOfSight(int lineOfSight) {
+<span class="nc" id="L263">        this.lineOfSight = lineOfSight;</span>
+<span class="nc" id="L264">    }</span>
+
+    /**
+     * Get the space this unit type has to carry cargo.
+     *
+     * @return The cargo capacity of this unit type.
+     */
+    public int getSpace() {
+<span class="fc" id="L272">        return space;</span>
+    }
+
+    /**
+     * Set the space this unit type has to carry cargo.
+     * Required by the test suite.
+     *
+     * @param newSpace The new cargo capacity.
+     */
+    public void setSpace(final int newSpace) {
+<span class="fc" id="L282">        this.space = newSpace;</span>
+<span class="fc" id="L283">    }</span>
+
+    /**
+     * Get the unit type hit points.
+     *
+     * @return The hit points.
+     */
+    public int getHitPoints() {
+<span class="fc" id="L291">        return hitPoints;</span>
+    }
+    
+    /**
+     * Sets `hit points' (used by Introspector).
+     */
+    public void setHitPoints(int hitPoints) {
+<span class="nc" id="L298">        this.hitPoints = hitPoints;</span>
+<span class="nc" id="L299">    }</span>
+
+    /**
+     * Gets the number of cargo slots a unit of this type takes on a carrier.
+     *
+     * @return The number of cargo slots.
+     */
+    public int getSpaceTaken() {
+<span class="fc" id="L307">        return Math.max(spaceTaken, space + 1);</span>
+    }
+
+    /**
+     * Set the number of cargo slots a unit of this type takes on a carrier.
+     * Required by the test suite.
+     *
+     * @param newSpaceTaken The new number of cargo slots.
+     */
+    public void setSpaceTaken(final int newSpaceTaken) {
+<span class="fc" id="L317">        this.spaceTaken = newSpaceTaken;</span>
+<span class="fc" id="L318">    }</span>
+
+    /**
+     * Is this UnitType recruitable in Europe?
+     *
+     * @return True if European-recruitable.
+     */
+    public boolean isRecruitable() {
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        return recruitProbability &gt; 0;</span>
+    }
+
+    /**
+     * Get the relative probability of recruiting this unit in Europe.
+     *
+     * @return A relative probability.
+     */
+    public int getRecruitProbability() {
+<span class="fc" id="L335">        return recruitProbability;</span>
+    }
+
+    /**
+     * Get the skill level associated with this unit type.
+     *
+     * @return The skill level.
+     */
+    public int getSkill() {
+<span class="fc" id="L344">        return skill;</span>
+    }
+
+    /**
+     * Set the skill level associated with this unit type.
+     * Required by the test suite.
+     *
+     * @param newSkill The new skill level.
+     */
+    public void setSkill(final int newSkill) {
+<span class="fc" id="L354">        this.skill = newSkill;</span>
+<span class="fc" id="L355">    }</span>
+
+    /**
+     * Get the base price of this unit type.
+     * For the actual price of the unit, use
+     * {@link Europe#getUnitPrice(UnitType)}
+     *
+     * @return The base price.
+     */
+    public int getPrice() {
+<span class="fc" id="L365">        return price;</span>
+    }
+
+    /**
+     * Get the special price used by mercenary forces when there is no
+     * standard base price (e.g. ManOWar).
+     *
+     * @return The mercenary price.
+     */
+    public int getMercenaryPrice() {
+<span class="fc" id="L375">        return mercenaryPrice;</span>
+    }
+
+    // @compat 0.11.6
+    // Only used in spec fixups
+    /**
+     * Set the mercenary price.
+     *
+     * @param price The mercenary price.
+     */
+    public void setMercenaryPrice(int price) {
+<span class="nc" id="L386">        this.mercenaryPrice = price;</span>
+<span class="nc" id="L387">    }</span>
+    // end @compat 0.11.6
+
+    /**
+     * Get the base movement of this unit type.
+     *
+     * @return The base movement.
+     */
+    public int getMovement() {
+<span class="fc" id="L396">        return movement;</span>
+    }
+
+    /**
+     * Get the maximum experience required a unit of this type may achieve.
+     *
+     * @return The maximum experience.
+     */
+    public final int getMaximumExperience() {
+<span class="fc" id="L405">        return maximumExperience;</span>
+    }
+
+    /**
+     * Is this unit type subject to attrition?
+     *
+     * @return True if attrition can happen for this unit type.
+     */
+    public boolean hasMaximumAttrition() {
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        return maximumAttrition != INFINITY;</span>
+    }
+
+    /**
+     * Get the maximum attrition for this unit type (greater attrition than
+     * this destroys the unit).
+     *
+     * @return The maximum attrition.
+     */
+    public int getMaximumAttrition() {
+<span class="fc" id="L424">        return maximumAttrition;</span>
+    }
+
+    /**
+     * Get the type of goods this unit type has expert ability to produce.
+     *
+     * @return The expert production {@code GoodsType}.
+     */
+    public GoodsType getExpertProduction() {
+<span class="fc" id="L433">        return expertProduction;</span>
+    }
+
+    /**
+     * Get the skill taught by this unit type.
+     *
+     * @return The skill taught by this unit type.
+     */
+    public UnitType getSkillTaught() {
+<span class="fc" id="L442">        return skillTaught;</span>
+    }
+
+    /**
+     * Gets the default role of this unit type, mostly model.role.default.
+     *
+     * @return The default {@code Role}.
+     */
+    public Role getDefaultRole() {
+<span class="fc" id="L451">        return defaultRole;</span>
+    }
+
+    /**
+     * Returns a list of roles for which a unit of this type is an
+     * expert.
+     *
+     * @return a list of expert roles
+     */
+    public List&lt;Role&gt; getExpertRoles() {
+<span class="fc" id="L461">        return transform(getSpecification().getRoles(),</span>
+<span class="fc" id="L462">                matchKey(this, Role::getExpertUnit));</span>
+    }
+
+    /**
+     * Get a role identifier for display routines to use for this unit type.
+     *
+     * @return A suitable role identifier for display purposes.
+     */
+    public String getDisplayRoleId() {
+<span class="nc" id="L471">        Role r = first(getExpertRoles());</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">        return (r != null) ? r.getId() : Specification.DEFAULT_ROLE_ID;</span>
+    }
+
+    /**
+     * Get the type that this unit type can be educated to by a
+     * teacher unit type, if any.
+     *
+     * @param teacherType The {@code UnitType} of the teacher.
+     * @return The {@code UnitType} that this unit type can be educated
+     *         to by the teacher unit type, or null if education is not possible.
+     */
+    public UnitType getTeachingType(UnitType teacherType) {
+<span class="fc" id="L484">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L485">        final UnitType taught = teacherType.getSkillTaught();</span>
+<span class="fc" id="L486">        final int taughtLevel = taught.getSkill();</span>
+<span class="fc bfc" id="L487" title="All 2 branches covered.">        if (getSkill() &gt;= taughtLevel)</span>
+<span class="fc" id="L488">            return null; // Fail fast</span>
+
+        // Is there an education change that gets this unit type to the
+        // type taught by the teacher type? If so, the taught type is valid
+        // and should be returned at once. Accumulate other intermediate
+        // changes that do not reach the taught type level.
+<span class="fc" id="L494">        List&lt;UnitType&gt; todo = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">        for (UnitTypeChange uc : spec.getUnitChanges(UnitChangeType.EDUCATION, this)) {</span>
+<span class="fc bfc" id="L496" title="All 2 branches covered.">            if (uc.to == taught)</span>
+<span class="fc" id="L497">                return taught;</span>
+<span class="fc bfc" id="L498" title="All 2 branches covered.">            if (uc.to.getSkill() &lt; taughtLevel)</span>
+<span class="fc" id="L499">                todo.add(uc.to);</span>
+<span class="fc" id="L500">        }</span>
+        // Can the teacher teach any of the intermediate changes? If so,
+        // that change is valid. Otherwise, education is not possible.
+<span class="fc bfc" id="L503" title="All 2 branches covered.">        for (UnitType ut : todo) {</span>
+<span class="pc bpc" id="L504" title="1 of 2 branches missed.">            if (ut.getTeachingType(teacherType) != null)</span>
+<span class="fc" id="L505">                return ut;</span>
+<span class="nc" id="L506">        }</span>
+<span class="fc" id="L507">        return null;</span>
+    }
+
+    /**
+     * Is this a naval unit type?
+     *
+     * @return True if this is a naval unit type.
+     */
+    public boolean isNaval() {
+<span class="fc" id="L516">        return hasAbility(Ability.NAVAL_UNIT);</span>
+    }
+
+    /**
+     * Is this a person, not a ship or wagon?
+     *
+     * @return True if this unit type represents a person
+     */
+    public boolean isPerson() {
+<span class="nc" id="L525">        return hasAbility(Ability.PERSON);</span>
+    }
+
+    /**
+     * Is this unit type able to build a colony?
+     *
+     * @return True if this unit type can build colonies.
+     */
+    public boolean canBuildColony() {
+<span class="fc" id="L534">        return hasAbility(Ability.FOUND_COLONY);</span>
+    }
+
+    /**
+     * Can this unit type move to the High Seas?
+     *
+     * ATM this is synonymous with being a naval unit, but we should use
+     * this routine instead of isNaval() in case this changes.
+     *
+     * @return True if units of this type can move to the High Seas.
+     */
+    public boolean canMoveToHighSeas() {
+<span class="fc" id="L546">        return isNaval();</span>
+    }
+
+    /**
+     * Does this UnitType have a skill?
+     *
+     * @return True if this unit type has a skill.
+     */
+    public boolean hasSkill() {
+<span class="fc bfc" id="L555" title="All 2 branches covered.">        return skill != UNDEFINED;</span>
+    }
+
+    /**
+     * Does this UnitType have a price?
+     *
+     * @return True if the unit type has a price.
+     */
+    public boolean hasPrice() {
+<span class="fc bfc" id="L564" title="All 2 branches covered.">        return price != UNDEFINED;</span>
+    }
+
+    /**
+     * Get the consumption map.
+     *
+     * @return The map of the consumed goods.
+     */
+    protected TypeCountMap&lt;GoodsType&gt; getConsumption() {
+<span class="nc" id="L573">        return this.consumption;</span>
+    }
+
+    /**
+     * Set the consumption map.
+     *
+     * @param consumption The new map of the consumed goods.
+     */
+    protected void setConsumption(TypeCountMap&lt;GoodsType&gt; consumption) {
+<span class="nc" id="L582">        this.consumption = consumption;</span>
+<span class="nc" id="L583">    }</span>
+
+    /**
+     * Gets the number of units of the given GoodsType this UnitType
+     * consumes per turn (when in a settlement).
+     *
+     * @param goodsType The {@code GoodsType} to consume.
+     * @return The amount of goods consumed per turn.
+     */
+    public int getConsumptionOf(GoodsType goodsType) {
+<span class="fc bfc" id="L593" title="All 2 branches covered.">        return (consumption == null) ? 0 : consumption.getCount(goodsType);</span>
+    }
+
+    /**
+     * Add consumption.
+     *
+     * @param type   The {@code GoodsType} to consume.
+     * @param amount The amount of goods to consume.
+     */
+    private void addConsumption(GoodsType type, int amount) {
+<span class="fc bfc" id="L603" title="All 2 branches covered.">        if (consumption == null) {</span>
+<span class="fc" id="L604">            consumption = new TypeCountMap&lt;&gt;();</span>
+        }
+<span class="fc" id="L606">        consumption.incrementCount(type, amount);</span>
+<span class="fc" id="L607">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    public NoBuildReason canBeBuiltInColony(Colony colony,
+            List&lt;BuildableType&gt; assumeBuilt) {
+        // Non-person units need a BUILD ability, present or assumed.
+<span class="fc bfc" id="L615" title="All 2 branches covered.">        if (!hasAbility(Ability.PERSON)</span>
+<span class="fc bfc" id="L616" title="All 2 branches covered.">                &amp;&amp; !colony.hasAbility(Ability.BUILD, this)</span>
+<span class="pc bpc" id="L617" title="1 of 2 branches missed.">                &amp;&amp; none(assumeBuilt, bt -&gt; bt.hasAbility(Ability.BUILD, this))) {</span>
+<span class="fc" id="L618">            return Colony.NoBuildReason.MISSING_BUILD_ABILITY;</span>
+        }
+<span class="fc" id="L620">        return Colony.NoBuildReason.NONE;</span>
+    }
+
+    @Override
+    public int getMinimumIndex(Colony colony, JList&lt;BuildableType&gt; buildQueueList, int UNABLE_TO_BUILD) {
+<span class="nc" id="L625">        ListModel&lt;BuildableType&gt; buildQueue = buildQueueList.getModel();</span>
+<span class="nc bnc" id="L626" title="All 2 branches missed.">        if (colony.canBuild(this))</span>
+<span class="nc" id="L627">            return 0;</span>
+<span class="nc bnc" id="L628" title="All 2 branches missed.">        for (int index = 0; index &lt; buildQueue.getSize(); index++) {</span>
+<span class="nc bnc" id="L629" title="All 2 branches missed.">            if (buildQueue.getElementAt(index).hasAbility(Ability.BUILD, this))</span>
+<span class="nc" id="L630">                return index + 1;</span>
+        }
+<span class="nc" id="L632">        return UNABLE_TO_BUILD;</span>
+    }
+
+    @Override
+    public int getMaximumIndex(Colony colony, JList&lt;BuildableType&gt; buildQueueList, int UNABLE_TO_BUILD) {
+<span class="nc" id="L637">        ListModel&lt;BuildableType&gt; buildQueue = buildQueueList.getModel();</span>
+<span class="nc" id="L638">        final int buildQueueLastPos = buildQueue.getSize();</span>
+
+<span class="nc" id="L640">        boolean canBuild = false;</span>
+<span class="nc bnc" id="L641" title="All 2 branches missed.">        if (colony.canBuild(this)) {</span>
+<span class="nc" id="L642">            canBuild = true;</span>
+        }
+
+        // does not depend on anything, nothing depends on it
+        // can be built at any time
+<span class="nc bnc" id="L647" title="All 2 branches missed.">        if (canBuild)</span>
+<span class="nc" id="L648">            return buildQueueLastPos;</span>
+        // check for building in queue that allows builting this unit
+<span class="nc bnc" id="L650" title="All 2 branches missed.">        for (int index = 0; index &lt; buildQueue.getSize(); index++) {</span>
+<span class="nc" id="L651">            BuildableType toBuild = buildQueue.getElementAt(index);</span>
+<span class="nc bnc" id="L652" title="All 2 branches missed.">            if (toBuild == this)</span>
+<span class="nc" id="L653">                continue;</span>
+<span class="nc bnc" id="L654" title="All 2 branches missed.">            if (toBuild.hasAbility(Ability.BUILD, this)) {</span>
+<span class="nc" id="L655">                return buildQueueLastPos;</span>
+            }
+        }
+<span class="nc" id="L658">        return UNABLE_TO_BUILD;</span>
+    }
+
+    // Interface Consumer
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;AbstractGoods&gt; getConsumedGoods() {
+<span class="fc bfc" id="L668" title="All 2 branches covered.">        return (consumption == null) ? Collections.&lt;AbstractGoods&gt;emptyList()</span>
+<span class="fc" id="L669">                : transform(consumption.keySet(),</span>
+<span class="pc bpc" id="L670" title="1 of 2 branches missed.">                        gt -&gt; consumption.getCount(gt) != 0,</span>
+<span class="fc" id="L671">                        gt -&gt; new AbstractGoods(gt, consumption.getCount(gt)));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getPriority() {
+<span class="fc" id="L679">        return priority;</span>
+    }
+    
+    public int getAttackRange() {
+<span class="nc" id="L683">        return attackRange;</span>
+    }
+    
+    
+    /**
+     * Sets attack range (used by Introspector).
+     */
+    public void setAttackRange(int attackRange) {
+<span class="nc" id="L691">        this.attackRange = attackRange;</span>
+<span class="nc" id="L692">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Stream&lt;Modifier&gt; getConsumptionModifiers(String id) {
+<span class="nc" id="L699">        return getModifiers(id);</span>
+    }
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L709">        UnitType o = copyInCast(other, UnitType.class);</span>
+<span class="nc bnc" id="L710" title="All 4 branches missed.">        if (o == null || !super.copyIn(o))</span>
+<span class="nc" id="L711">            return false;</span>
+<span class="nc" id="L712">        this.baseOffence = o.getBaseOffence();</span>
+<span class="nc" id="L713">        this.baseDefence = o.getBaseDefence();</span>
+<span class="nc" id="L714">        this.space = o.getSpace();</span>
+<span class="nc" id="L715">        this.defaultUnitType = o.isDefaultUnitType();</span>
+<span class="nc" id="L716">        this.hitPoints = o.getHitPoints();</span>
+<span class="nc" id="L717">        this.spaceTaken = o.getSpaceTaken();</span>
+<span class="nc" id="L718">        this.skill = o.getSkill();</span>
+<span class="nc" id="L719">        this.price = o.getPrice();</span>
+<span class="nc" id="L720">        this.movement = o.getMovement();</span>
+<span class="nc" id="L721">        this.lineOfSight = o.getLineOfSight();</span>
+<span class="nc" id="L722">        this.recruitProbability = o.getRecruitProbability();</span>
+<span class="nc" id="L723">        this.expertProduction = o.getExpertProduction();</span>
+<span class="nc" id="L724">        this.scoreValue = o.getScoreValue();</span>
+<span class="nc" id="L725">        this.maximumExperience = o.getMaximumExperience();</span>
+<span class="nc" id="L726">        this.maximumAttrition = o.getMaximumAttrition();</span>
+<span class="nc" id="L727">        this.priority = o.getPriority();</span>
+<span class="nc" id="L728">        this.skillTaught = o.getSkillTaught();</span>
+<span class="nc" id="L729">        this.defaultRole = o.getDefaultRole();</span>
+<span class="nc" id="L730">        this.consumption = o.getConsumption();</span>
+<span class="nc" id="L731">        return true;</span>
+    }
+
+    // Serialization
+    
+    private static final String ATTACK_RANGE_TAG = &quot;attack-range&quot;;
+    private static final String CONSUMES_TAG = &quot;consumes&quot;;
+    private static final String DEFAULT_ROLE_TAG = &quot;default-role&quot;;
+    private static final String DEFAULT_UNIT_TAG = &quot;default-unit&quot;;
+    private static final String DEFENCE_TAG = &quot;defence&quot;;
+    private static final String EXPERT_PRODUCTION_TAG = &quot;expert-production&quot;;
+    private static final String HIT_POINTS_TAG = &quot;hit-points&quot;;
+    private static final String LINE_OF_SIGHT_TAG = &quot;line-of-sight&quot;;
+    private static final String MERCENARY_PRICE_TAG = &quot;mercenary-price&quot;;
+    private static final String MOVEMENT_TAG = &quot;movement&quot;;
+    private static final String MAXIMUM_EXPERIENCE_TAG = &quot;maximum-experience&quot;;
+    private static final String MAXIMUM_ATTRITION_TAG = &quot;maximum-attrition&quot;;
+    private static final String OFFENCE_TAG = &quot;offence&quot;;
+    private static final String PRICE_TAG = &quot;price&quot;;
+    private static final String PRIORITY_TAG = &quot;priority&quot;;
+    private static final String RECRUIT_PROBABILITY_TAG = &quot;recruit-probability&quot;;
+    private static final String SCORE_VALUE_TAG = &quot;score-value&quot;;
+    private static final String SKILL_TAG = &quot;skill&quot;;
+    private static final String SKILL_TAUGHT_TAG = &quot;skill-taught&quot;;
+    private static final String SPACE_TAG = &quot;space&quot;;
+    private static final String SPACE_TAKEN_TAG = &quot;space-taken&quot;;
+    // @compat 0.11.0
+    private static final String OLD_DEFAULT_EQUIPMENT_TAG = &quot;default-equipment&quot;;
+    // end @compat 0.11.0
+    // @compat 0.11.3
+    private static final String OLD_DEFAULT_UNIT_TAG = &quot;defaultUnit&quot;;
+    private static final String OLD_HIT_POINTS_TAG = &quot;hitPoints&quot;;
+    private static final String OLD_LINE_OF_SIGHT_TAG = &quot;lineOfSight&quot;;
+    private static final String OLD_MAXIMUM_EXPERIENCE_TAG = &quot;maximumExperience&quot;;
+    private static final String OLD_MAXIMUM_ATTRITION_TAG = &quot;maximumAttrition&quot;;
+    private static final String OLD_RECRUIT_PROBABILITY_TAG = &quot;recruitProbability&quot;;
+    private static final String OLD_SCORE_VALUE_TAG = &quot;scoreValue&quot;;
+    private static final String OLD_SKILL_TAUGHT_TAG = &quot;skillTaught&quot;;
+    private static final String OLD_SPACE_TAKEN_TAG = &quot;spaceTaken&quot;;
+    // end @compat 0.11.3
+    // @compat 0.11.6
+    private static final String DOWNGRADE_TAG = &quot;downgrade&quot;;
+    private static final String UPGRADE_TAG = &quot;upgrade&quot;;
+    // end @compat 0.11.6
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L781">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L783">        xw.writeAttribute(OFFENCE_TAG, baseOffence);</span>
+
+<span class="fc" id="L785">        xw.writeAttribute(DEFENCE_TAG, baseDefence);</span>
+
+<span class="fc" id="L787">        xw.writeAttribute(DEFAULT_UNIT_TAG, this.defaultUnitType);</span>
+
+<span class="fc" id="L789">        xw.writeAttribute(MOVEMENT_TAG, movement);</span>
+
+<span class="fc" id="L791">        xw.writeAttribute(LINE_OF_SIGHT_TAG, lineOfSight);</span>
+
+<span class="fc" id="L793">        xw.writeAttribute(SCORE_VALUE_TAG, scoreValue);</span>
+
+<span class="fc" id="L795">        xw.writeAttribute(SPACE_TAG, space);</span>
+
+<span class="fc" id="L797">        xw.writeAttribute(SPACE_TAKEN_TAG, spaceTaken);</span>
+
+<span class="fc" id="L799">        xw.writeAttribute(HIT_POINTS_TAG, hitPoints);</span>
+        
+<span class="fc" id="L801">        xw.writeAttribute(ATTACK_RANGE_TAG, attackRange);</span>
+
+<span class="fc" id="L803">        xw.writeAttribute(MAXIMUM_EXPERIENCE_TAG, maximumExperience);</span>
+
+<span class="fc bfc" id="L805" title="All 2 branches covered.">        if (hasMaximumAttrition()) {</span>
+<span class="fc" id="L806">            xw.writeAttribute(MAXIMUM_ATTRITION_TAG, maximumAttrition);</span>
+        }
+
+<span class="fc" id="L809">        xw.writeAttribute(RECRUIT_PROBABILITY_TAG, recruitProbability);</span>
+
+<span class="fc bfc" id="L811" title="All 2 branches covered.">        if (hasSkill()) {</span>
+<span class="fc" id="L812">            xw.writeAttribute(SKILL_TAG, skill);</span>
+        }
+
+<span class="fc bfc" id="L815" title="All 2 branches covered.">        if (hasPrice()) {</span>
+<span class="fc" id="L816">            xw.writeAttribute(PRICE_TAG, price);</span>
+        }
+
+<span class="fc bfc" id="L819" title="All 2 branches covered.">        if (mercenaryPrice != UNDEFINED) {</span>
+<span class="fc" id="L820">            xw.writeAttribute(MERCENARY_PRICE_TAG, mercenaryPrice);</span>
+        }
+
+<span class="fc" id="L823">        xw.writeAttribute(SKILL_TAUGHT_TAG, skillTaught);</span>
+
+<span class="fc bfc" id="L825" title="All 2 branches covered.">        if (expertProduction != null) {</span>
+<span class="fc" id="L826">            xw.writeAttribute(EXPERT_PRODUCTION_TAG, expertProduction);</span>
+        }
+
+<span class="fc" id="L829">        xw.writeAttribute(PRIORITY_TAG, priority);</span>
+<span class="fc" id="L830">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L837">        super.writeChildren(xw);</span>
+
+<span class="fc" id="L839">        final Specification spec = getSpecification();</span>
+
+<span class="pc bpc" id="L841" title="1 of 4 branches missed.">        if (defaultRole != null &amp;&amp; defaultRole != spec.getDefaultRole()) {</span>
+<span class="fc" id="L842">            xw.writeStartElement(DEFAULT_ROLE_TAG);</span>
+
+<span class="fc" id="L844">            xw.writeAttribute(ID_ATTRIBUTE_TAG, defaultRole);</span>
+
+<span class="fc" id="L846">            xw.writeEndElement();</span>
+        }
+
+<span class="fc bfc" id="L849" title="All 2 branches covered.">        if (consumption != null) {</span>
+<span class="fc bfc" id="L850" title="All 2 branches covered.">            for (GoodsType goodsType : consumption.keySet()) {</span>
+<span class="fc" id="L851">                xw.writeStartElement(CONSUMES_TAG);</span>
+
+<span class="fc" id="L853">                xw.writeAttribute(ID_ATTRIBUTE_TAG, goodsType);</span>
+
+<span class="fc" id="L855">                xw.writeAttribute(VALUE_TAG, consumption.getCount(goodsType));</span>
+
+<span class="fc" id="L857">                xw.writeEndElement();</span>
+<span class="fc" id="L858">            }</span>
+        }
+<span class="fc" id="L860">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L867">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L869">        final Specification spec = getSpecification();</span>
+
+<span class="fc" id="L871">        UnitType parent = xr.getAlreadyInitializedType(spec, EXTENDS_TAG, UnitType.class, this);</span>
+
+<span class="fc" id="L873">        this.baseOffence = xr.getAttribute(OFFENCE_TAG, parent.baseOffence);</span>
+
+<span class="fc" id="L875">        this.baseDefence = xr.getAttribute(DEFENCE_TAG, parent.baseDefence);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L878" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_DEFAULT_UNIT_TAG)) {</span>
+<span class="nc" id="L879">            this.defaultUnitType = xr.getAttribute(OLD_DEFAULT_UNIT_TAG, false);</span>
+        } else
+            // end @compat 0.11.3
+<span class="fc" id="L882">            this.defaultUnitType = xr.getAttribute(DEFAULT_UNIT_TAG, false);</span>
+
+<span class="fc" id="L884">        movement = xr.getAttribute(MOVEMENT_TAG, parent.movement);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L887" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_LINE_OF_SIGHT_TAG)) {</span>
+<span class="nc" id="L888">            lineOfSight = xr.getAttribute(OLD_LINE_OF_SIGHT_TAG, parent.lineOfSight);</span>
+        } else
+            // end @compat 0.11.3
+<span class="fc" id="L891">            lineOfSight = xr.getAttribute(LINE_OF_SIGHT_TAG, parent.lineOfSight);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L894" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_SCORE_VALUE_TAG)) {</span>
+<span class="nc" id="L895">            scoreValue = xr.getAttribute(OLD_SCORE_VALUE_TAG, parent.scoreValue);</span>
+        } else
+            // end @compat 0.11.3
+<span class="fc" id="L898">            scoreValue = xr.getAttribute(SCORE_VALUE_TAG, parent.scoreValue);</span>
+
+<span class="fc" id="L900">        space = xr.getAttribute(SPACE_TAG, parent.space);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L903" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_HIT_POINTS_TAG)) {</span>
+<span class="nc" id="L904">            hitPoints = xr.getAttribute(OLD_HIT_POINTS_TAG, parent.hitPoints);</span>
+        } else
+            // end @compat 0.11.3
+<span class="fc" id="L907">            hitPoints = xr.getAttribute(HIT_POINTS_TAG, parent.hitPoints);</span>
+        
+<span class="fc" id="L909">        attackRange = xr.getAttribute(ATTACK_RANGE_TAG, parent.attackRange);</span>
+
+        // @compat 0.11.3
+<span class="fc bfc" id="L912" title="All 2 branches covered.">        if (xr.hasAttribute(OLD_SPACE_TAKEN_TAG)) {</span>
+<span class="fc" id="L913">            spaceTaken = xr.getAttribute(OLD_SPACE_TAKEN_TAG, parent.spaceTaken);</span>
+        } else
+            // end @compat 0.11.3
+<span class="fc" id="L916">            spaceTaken = xr.getAttribute(SPACE_TAKEN_TAG, parent.spaceTaken);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L919" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_MAXIMUM_EXPERIENCE_TAG)) {</span>
+<span class="nc" id="L920">            maximumExperience = xr.getAttribute(OLD_MAXIMUM_EXPERIENCE_TAG,</span>
+                    parent.maximumExperience);
+        } else
+            // end @compat 0.11.3
+<span class="fc" id="L924">            maximumExperience = xr.getAttribute(MAXIMUM_EXPERIENCE_TAG,</span>
+                    parent.maximumExperience);
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L928" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_MAXIMUM_ATTRITION_TAG)) {</span>
+<span class="nc" id="L929">            maximumAttrition = xr.getAttribute(OLD_MAXIMUM_ATTRITION_TAG,</span>
+                    parent.maximumAttrition);
+        } else
+            // end @compat 0.11.3
+<span class="fc" id="L933">            maximumAttrition = xr.getAttribute(MAXIMUM_ATTRITION_TAG,</span>
+                    parent.maximumAttrition);
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L937" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_SKILL_TAUGHT_TAG)) {</span>
+<span class="nc" id="L938">            skillTaught = xr.getType(spec, OLD_SKILL_TAUGHT_TAG, UnitType.class, this);</span>
+        } else
+            // end @compat 0.11.3
+<span class="fc" id="L941">            skillTaught = xr.getType(spec, SKILL_TAUGHT_TAG, UnitType.class, this);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L944" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_RECRUIT_PROBABILITY_TAG)) {</span>
+<span class="nc" id="L945">            recruitProbability = xr.getAttribute(OLD_RECRUIT_PROBABILITY_TAG,</span>
+                    parent.recruitProbability);
+        } else
+            // end @compat 0.11.3
+<span class="fc" id="L949">            recruitProbability = xr.getAttribute(RECRUIT_PROBABILITY_TAG,</span>
+                    parent.recruitProbability);
+
+        // New in 0.11.4, but default is backward compatible.
+<span class="fc" id="L953">        priority = xr.getAttribute(PRIORITY_TAG, Consumer.UNIT_PRIORITY);</span>
+
+<span class="fc" id="L955">        skill = xr.getAttribute(SKILL_TAG, parent.skill);</span>
+
+<span class="fc" id="L957">        price = xr.getAttribute(PRICE_TAG, parent.price);</span>
+
+<span class="fc" id="L959">        mercenaryPrice = xr.getAttribute(MERCENARY_PRICE_TAG,</span>
+                parent.mercenaryPrice);
+
+<span class="fc" id="L962">        expertProduction = xr.getType(spec, EXPERT_PRODUCTION_TAG,</span>
+                GoodsType.class, parent.expertProduction);
+
+<span class="fc bfc" id="L965" title="All 2 branches covered.">        if (parent != this) { // Handle &quot;extends&quot; for super-type fields</span>
+<span class="pc bpc" id="L966" title="1 of 2 branches missed.">            if (!xr.hasAttribute(REQUIRED_POPULATION_TAG)) {</span>
+<span class="fc" id="L967">                setRequiredPopulation(parent.getRequiredPopulation());</span>
+            }
+        }
+<span class="fc" id="L970">    }</span>
+    
+    /**
+    * {@inheritDoc}
+    */
+    @Override
+    protected void clearContainers(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L977">        super.clearContainers(xr);</span>
+<span class="fc" id="L978">        consumption = null;</span>
+<span class="fc" id="L979">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L986">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L987">        defaultRole = spec.getDefaultRole();</span>
+
+<span class="fc" id="L989">        UnitType parent = xr.getAlreadyInitializedType(spec, EXTENDS_TAG, UnitType.class, this);</span>
+<span class="fc bfc" id="L990" title="All 2 branches covered.">        if (parent != this) {</span>
+<span class="fc" id="L991">            defaultRole = parent.defaultRole;</span>
+
+<span class="fc bfc" id="L993" title="All 2 branches covered.">            if (parent.consumption != null) {</span>
+<span class="pc bpc" id="L994" title="1 of 2 branches missed.">                if (consumption == null)</span>
+<span class="fc" id="L995">                    consumption = new TypeCountMap&lt;&gt;();</span>
+<span class="fc" id="L996">                consumption.putAll(parent.consumption);</span>
+            }
+
+<span class="fc" id="L999">            addFeatures(parent);</span>
+<span class="pc bpc" id="L1000" title="1 of 2 branches missed.">            if (parent.isAbstractType()) {</span>
+<span class="fc" id="L1001">                getFeatureContainer().replaceSource(parent, this);</span>
+            }
+        }
+
+<span class="fc" id="L1005">        super.readChildren(xr);</span>
+<span class="fc" id="L1006">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L1013">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L1014">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L1016" title="All 2 branches covered.">        if (CONSUMES_TAG.equals(tag)) {</span>
+<span class="fc" id="L1017">            addConsumption(xr.getType(spec, ID_ATTRIBUTE_TAG,</span>
+                    GoodsType.class, (GoodsType) null),
+<span class="fc" id="L1019">                    xr.getAttribute(VALUE_TAG, UNDEFINED));</span>
+<span class="fc" id="L1020">            xr.closeTag(CONSUMES_TAG);</span>
+
+            // @compat 0.11.0
+<span class="pc bpc" id="L1023" title="1 of 2 branches missed.">        } else if (OLD_DEFAULT_EQUIPMENT_TAG.equals(tag)) {</span>
+<span class="nc" id="L1024">            xr.swallowTag(OLD_DEFAULT_EQUIPMENT_TAG);</span>
+            // end @compat 0.11.0
+
+<span class="fc bfc" id="L1027" title="All 2 branches covered.">        } else if (DEFAULT_ROLE_TAG.equals(tag)) {</span>
+<span class="fc" id="L1028">            defaultRole = xr.getType(spec, ID_ATTRIBUTE_TAG,</span>
+<span class="fc" id="L1029">                    Role.class, spec.getDefaultRole());</span>
+<span class="fc" id="L1030">            xr.closeTag(DEFAULT_ROLE_TAG);</span>
+
+            // @compat 0.11.6
+<span class="pc bpc" id="L1033" title="2 of 4 branches missed.">        } else if (DOWNGRADE_TAG.equals(tag) || UPGRADE_TAG.equals(tag)) {</span>
+<span class="nc" id="L1034">            xr.closeTag(tag, Scope.TAG);</span>
+            // end @compat 0.11.6
+
+        } else {
+<span class="fc" id="L1038">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L1040">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getXMLTagName() {
+<span class="fc" id="L1046">        return TAG;</span>
+    }
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L1056">        return getId();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

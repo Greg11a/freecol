@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ListOptionUI.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.option</a> &gt; <span class="el_source">ListOptionUI.java</span></div><h1>ListOptionUI.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.option;
+
+import static net.sf.freecol.common.util.CollectionUtils.first;
+
+import java.awt.event.ActionEvent;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.function.Function;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.swing.DefaultListModel;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.gui.GUI;
+import net.sf.freecol.client.gui.panel.MigPanel;
+import net.sf.freecol.client.gui.panel.Utility;
+import net.sf.freecol.common.option.AbstractOption;
+import net.sf.freecol.common.option.ListOption;
+
+
+/**
+ * This class provides visualization for a list of
+ * {@link net.sf.freecol.common.option.AbstractOption}s in order to enable
+ * values to be both seen and changed.
+ */
+public final class ListOptionUI&lt;T&gt; extends OptionUI&lt;ListOption&lt;T&gt;&gt;
+    implements ListSelectionListener {
+
+<span class="nc" id="L57">    private static final Logger logger = Logger.getLogger(ListOptionUI.class.getName());</span>
+
+    private final JPanel panel;
+    private final JList&lt;AbstractOption&lt;T&gt;&gt; list;
+    private final DefaultListModel&lt;AbstractOption&lt;T&gt;&gt; model;
+
+<span class="nc" id="L63">    private final JButton editButton = Utility.localizedButton(&quot;list.edit&quot;);</span>
+<span class="nc" id="L64">    private final JButton addButton = Utility.localizedButton(&quot;list.add&quot;);</span>
+<span class="nc" id="L65">    private final JButton removeButton = Utility.localizedButton(&quot;list.remove&quot;);</span>
+<span class="nc" id="L66">    private final JButton upButton = Utility.localizedButton(&quot;list.up&quot;);</span>
+<span class="nc" id="L67">    private final JButton downButton = Utility.localizedButton(&quot;list.down&quot;);</span>
+    
+    private final Function&lt;AbstractOption&lt;?&gt;, Boolean&gt; choiceModifiableCheck;
+
+
+    /**
+     * Creates a new {@code ListOptionUI} for the given
+     * {@code ListOption}.
+     *
+     * @param gui The {@code GUI} to display on.
+     * @param option The {@code ListOption} to display.
+     * @param editable boolean whether user can modify the setting
+     * @param choiceModifiableCheck Checks if a specific option can
+     *      be added/modified in the list.
+     */
+    public ListOptionUI(final GUI gui, final ListOption&lt;T&gt; option,
+                        boolean editable, Function&lt;AbstractOption&lt;?&gt;, Boolean&gt; choiceModifiableCheck) {
+<span class="nc" id="L84">        super(option, editable);</span>
+
+<span class="nc" id="L86">        this.choiceModifiableCheck = choiceModifiableCheck;</span>
+<span class="nc" id="L87">        this.panel = new MigPanel(new MigLayout(&quot;wrap 2, fill&quot;,</span>
+                                                &quot;[fill, grow]20[fill]&quot;));
+<span class="nc" id="L89">        this.panel.setBorder(Utility.localizedBorder(super.getJLabel().getText(),</span>
+<span class="nc" id="L90">                Utility.getBorderColor()));</span>
+
+<span class="nc" id="L92">        this.model = new DefaultListModel&lt;&gt;();</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        for (AbstractOption&lt;T&gt; o : option.getValue()) {</span>
+            try {
+<span class="nc" id="L95">                AbstractOption&lt;T&gt; c = o.cloneOption();</span>
+<span class="nc" id="L96">                this.model.addElement(c);</span>
+<span class="nc" id="L97">            } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L98">                logger.log(Level.WARNING, &quot;Can not clone &quot; + o.getId(), e);</span>
+<span class="nc" id="L99">            }</span>
+<span class="nc" id="L100">        }</span>
+<span class="nc" id="L101">        this.list = new JList&lt;&gt;(this.model);</span>
+<span class="nc" id="L102">        AbstractOption&lt;T&gt; o = first(option.getValue());</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (o == null) o = option.getTemplate();</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (o != null) {</span>
+<span class="nc" id="L105">            setCellRenderer(gui, o, editable);</span>
+<span class="nc" id="L106">            this.list.setSelectedIndex(0);</span>
+        }
+<span class="nc" id="L108">        this.list.setVisibleRowCount(4);</span>
+<span class="nc" id="L109">        JScrollPane pane = new JScrollPane(this.list);</span>
+<span class="nc" id="L110">        this.panel.add(pane, &quot;grow, spany 5&quot;);</span>
+        
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (option.getAllowDuplicates()) {</span>
+            /*
+             * The edit option is not available since it it's confusing and
+             * can also produce duplicates.
+             */
+<span class="nc" id="L117">            editButton.setEnabled(editable);</span>
+<span class="nc" id="L118">            this.panel.add(editButton);</span>
+        }
+        
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        for (JButton button : new JButton[] {</span>
+                addButton, removeButton, upButton, downButton }) {
+<span class="nc" id="L123">            button.setEnabled(editable);</span>
+<span class="nc" id="L124">            this.panel.add(button);</span>
+        }
+
+        // Disable add button if there is no template to generate choices with
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (option.getTemplate() == null) addButton.setEnabled(false);</span>
+        
+<span class="nc" id="L130">        addButton.addActionListener((ActionEvent ae) -&gt; {</span>
+                try {
+<span class="nc" id="L132">                    AbstractOption&lt;T&gt; ao = option.getTemplate().cloneOption();</span>
+<span class="nc bnc" id="L133" title="All 4 branches missed.">                    if (gui.showEditOptionDialog(ao) &amp;&amp; option.canAdd(ao)) {</span>
+<span class="nc bnc" id="L134" title="All 4 branches missed.">                        if (!option.getAllowDuplicates() &amp;&amp; getValue().contains(ao)) {</span>
+                            /*
+                             * Ignore when trying to add the same element twice. Note that
+                             * we need to check the list instead of just the option. The
+                             * reason being that the option is only updated when the
+                             * change is confirmed in the options dialog.
+                             */
+<span class="nc" id="L141">                            return;</span>
+                        }
+<span class="nc bnc" id="L143" title="All 2 branches missed.">                        if (!canModifyChoice(ao)) {</span>
+<span class="nc" id="L144">                            return;</span>
+                        }
+<span class="nc" id="L146">                        this.model.addElement(ao);</span>
+<span class="nc" id="L147">                        this.list.setSelectedValue(ao, true);</span>
+<span class="nc" id="L148">                        this.list.repaint();</span>
+                    }
+<span class="nc" id="L150">                } catch (CloneNotSupportedException cnse) {</span>
+<span class="nc" id="L151">                    logger.log(Level.WARNING, &quot;Can not clone: &quot;</span>
+<span class="nc" id="L152">                        + option.getTemplate(), cnse);</span>
+<span class="nc" id="L153">                }</span>
+<span class="nc" id="L154">            });</span>
+<span class="nc" id="L155">        editButton.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc" id="L156">                AbstractOption&lt;T&gt; ao = this.list.getSelectedValue();</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">                if (gui.showEditOptionDialog(ao)) {</span>
+<span class="nc" id="L158">                    this.list.repaint();</span>
+                }
+<span class="nc" id="L160">            });</span>
+<span class="nc" id="L161">        removeButton.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">                if (!canModifyChoice(this.list.getSelectedValue())) {</span>
+<span class="nc" id="L163">                    return;</span>
+                }
+<span class="nc" id="L165">                this.model.removeElementAt(this.list.getSelectedIndex());</span>
+<span class="nc" id="L166">            });</span>
+<span class="nc" id="L167">        upButton.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">                if (this.list.getSelectedIndex() == 0) {</span>
+<span class="nc" id="L169">                    return;</span>
+                }
+<span class="nc bnc" id="L171" title="All 2 branches missed.">                if (!canModifyChoice(this.list.getSelectedValue())) {</span>
+<span class="nc" id="L172">                    return;</span>
+                }
+<span class="nc" id="L174">                final int index = this.list.getSelectedIndex();</span>
+<span class="nc" id="L175">                final AbstractOption&lt;T&gt; temp = this.model.getElementAt(index);</span>
+<span class="nc" id="L176">                this.model.setElementAt(this.model.getElementAt(index-1), index);</span>
+<span class="nc" id="L177">                this.model.setElementAt(temp, index-1);</span>
+<span class="nc" id="L178">                this.list.setSelectedIndex(index-1);</span>
+<span class="nc" id="L179">            });</span>
+<span class="nc" id="L180">        downButton.addActionListener((ActionEvent ae) -&gt; {</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                if (this.list.getSelectedIndex() == this.model.getSize() - 1) {</span>
+<span class="nc" id="L182">                    return;</span>
+                }
+<span class="nc bnc" id="L184" title="All 2 branches missed.">                if (!canModifyChoice(this.list.getSelectedValue())) {</span>
+<span class="nc" id="L185">                    return;</span>
+                }
+<span class="nc" id="L187">                final int index = this.list.getSelectedIndex();</span>
+<span class="nc" id="L188">                final AbstractOption&lt;T&gt; temp = this.model.getElementAt(index);</span>
+<span class="nc" id="L189">                this.model.setElementAt(this.model.getElementAt(index+1), index);</span>
+<span class="nc" id="L190">                this.model.setElementAt(temp, index+1);</span>
+<span class="nc" id="L191">                this.list.setSelectedIndex(index+1);</span>
+<span class="nc" id="L192">            });</span>
+
+<span class="nc" id="L194">        this.list.addListSelectionListener(this);</span>
+<span class="nc" id="L195">        initialize();</span>
+<span class="nc" id="L196">    }</span>
+    
+    private boolean canModifyChoice(AbstractOption&lt;T&gt; choice) {
+<span class="nc" id="L199">        return choiceModifiableCheck.apply(choice);</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private void setCellRenderer(GUI gui, AbstractOption&lt;T&gt; o,
+                                 boolean editable) {
+<span class="nc" id="L205">        OptionUI&lt;AbstractOption&lt;T&gt;&gt; ui = (OptionUI&lt;AbstractOption&lt;T&gt;&gt;) OptionUI.getOptionUI(gui, o, editable);</span>
+<span class="nc bnc" id="L206" title="All 4 branches missed.">        if (ui != null &amp;&amp; ui.getListCellRenderer() != null) {</span>
+<span class="nc" id="L207">            this.list.setCellRenderer(ui.getListCellRenderer());</span>
+        }
+<span class="nc" id="L209">    }</span>
+
+    private List&lt;AbstractOption&lt;T&gt;&gt; getValue() {
+<span class="nc" id="L212">        List&lt;AbstractOption&lt;T&gt;&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L213">        for (Enumeration&lt;AbstractOption&lt;T&gt;&gt; e = this.model.elements();</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">             e.hasMoreElements();) {</span>
+<span class="nc" id="L215">            result.add(e.nextElement());</span>
+        }
+<span class="nc" id="L217">        return result;</span>
+    }
+
+
+    // Implement OptionUI
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final JLabel getJLabel() {
+<span class="nc" id="L228">        return null;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public JPanel getComponent() {
+<span class="nc" id="L236">        return this.panel;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void updateOption() {
+<span class="nc" id="L244">        getOption().setValue(getValue());</span>
+<span class="nc" id="L245">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void reset() {
+<span class="nc" id="L252">        this.model.clear();</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        for (AbstractOption&lt;T&gt; o : getOption().getValue()) {</span>
+<span class="nc" id="L254">            this.model.addElement(o);</span>
+<span class="nc" id="L255">        }</span>
+<span class="nc" id="L256">    }</span>
+
+    // Interface ListSelectionListener
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void valueChanged(ListSelectionEvent e) {
+<span class="nc bnc" id="L265" title="All 2 branches missed.">        if (e.getValueIsAdjusting() == false) {</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">            boolean enabled = isEditable()</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">                &amp;&amp; this.list.getSelectedValue() != null;</span>
+<span class="nc" id="L268">            this.editButton.setEnabled(enabled);</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">            this.addButton.setEnabled(isEditable()</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">                &amp;&amp; getOption().getTemplate() != null);</span>
+<span class="nc" id="L271">            this.removeButton.setEnabled(enabled);</span>
+<span class="nc" id="L272">            this.upButton.setEnabled(enabled);</span>
+<span class="nc" id="L273">            this.downButton.setEnabled(enabled);</span>
+        }
+<span class="nc" id="L275">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

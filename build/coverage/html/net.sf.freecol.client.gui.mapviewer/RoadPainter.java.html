@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RoadPainter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.mapviewer</a> &gt; <span class="el_source">RoadPainter.java</span></div><h1>RoadPainter.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.mapviewer;
+
+import static net.sf.freecol.common.util.CollectionUtils.alwaysTrue;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.Stroke;
+import java.awt.geom.GeneralPath;
+import java.awt.geom.Point2D;
+import java.awt.image.RescaleOp;
+import java.util.Arrays;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.function.Predicate;
+
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.Map;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.TileImprovement;
+
+
+/**
+ * This class is responsible for drawing the Roads on a tile.
+ */
+final class RoadPainter {
+
+    /** Helper variables for displaying the map. */
+    private int tileHeight, tileWidth, halfHeight, halfWidth;
+
+<span class="nc" id="L54">    private final EnumMap&lt;Direction, Point2D.Float&gt; corners</span>
+        = new EnumMap&lt;&gt;(Direction.class);
+<span class="nc" id="L56">    private final EnumMap&lt;Direction, List&lt;Direction&gt;&gt; prohibitedRoads</span>
+        = new EnumMap&lt;&gt;(Direction.class);
+
+<span class="nc" id="L59">    private Stroke roadStroke = new BasicStroke(2);</span>
+
+
+    /**
+     * Create a new road painter for a given tile size.
+     *
+     * @param tileSize The tile size as a {@code Dimension}.
+     */
+<span class="nc" id="L67">    RoadPainter(Dimension tileSize) {</span>
+<span class="nc" id="L68">        this.tileHeight = tileSize.height;</span>
+<span class="nc" id="L69">        this.tileWidth  = tileSize.width;</span>
+<span class="nc" id="L70">        this.halfHeight = this.tileHeight/2;</span>
+<span class="nc" id="L71">        this.halfWidth  = this.tileWidth/2;</span>
+<span class="nc" id="L72">        int dy = this.tileHeight/16;</span>
+<span class="nc" id="L73">        this.roadStroke = new BasicStroke(dy / 2.0f);</span>
+
+        // Corners
+<span class="nc" id="L76">        corners.put(Direction.N,  new Point2D.Float(this.halfWidth, 0));</span>
+<span class="nc" id="L77">        corners.put(Direction.NE, new Point2D.Float(0.75f * this.tileWidth,</span>
+                                                    0.25f * this.tileHeight));
+<span class="nc" id="L79">        corners.put(Direction.E,  new Point2D.Float(this.tileWidth,</span>
+                                                    this.halfHeight));
+<span class="nc" id="L81">        corners.put(Direction.SE, new Point2D.Float(0.75f * this.tileWidth,</span>
+                                                    0.75f * this.tileHeight));
+<span class="nc" id="L83">        corners.put(Direction.S,  new Point2D.Float(this.halfWidth,</span>
+                                                    this.tileHeight));
+<span class="nc" id="L85">        corners.put(Direction.SW, new Point2D.Float(0.25f * this.tileWidth,</span>
+                                                    0.75f * this.tileHeight));
+<span class="nc" id="L87">        corners.put(Direction.W,  new Point2D.Float(0, this.halfHeight));</span>
+<span class="nc" id="L88">        corners.put(Direction.NW, new Point2D.Float(0.25f * this.tileWidth,</span>
+                                                    0.25f * this.tileHeight));
+
+        // Road pairs to skip drawing when doing 3 or 4 exit point tiles.
+        // Don't put more than two directions in each list, otherwise
+        // a 3-point tile may not draw any roads at all!
+<span class="nc" id="L94">        prohibitedRoads.put(Direction.N,</span>
+<span class="nc" id="L95">                            Arrays.asList(Direction.NW, Direction.NE));</span>
+<span class="nc" id="L96">        prohibitedRoads.put(Direction.NE,</span>
+<span class="nc" id="L97">                            Arrays.asList(Direction.N,  Direction.E));</span>
+<span class="nc" id="L98">        prohibitedRoads.put(Direction.E,</span>
+<span class="nc" id="L99">                            Arrays.asList(Direction.NE, Direction.SE));</span>
+<span class="nc" id="L100">        prohibitedRoads.put(Direction.SE,</span>
+<span class="nc" id="L101">                            Arrays.asList(Direction.E,  Direction.S));</span>
+<span class="nc" id="L102">        prohibitedRoads.put(Direction.S,</span>
+<span class="nc" id="L103">                            Arrays.asList(Direction.SE, Direction.SW));</span>
+<span class="nc" id="L104">        prohibitedRoads.put(Direction.SW,</span>
+<span class="nc" id="L105">                            Arrays.asList(Direction.S,  Direction.W));</span>
+<span class="nc" id="L106">        prohibitedRoads.put(Direction.W,</span>
+<span class="nc" id="L107">                            Arrays.asList(Direction.SW, Direction.NW));</span>
+<span class="nc" id="L108">        prohibitedRoads.put(Direction.NW,</span>
+<span class="nc" id="L109">                            Arrays.asList(Direction.W,  Direction.N));</span>
+<span class="nc" id="L110">    }</span>
+
+    /**
+     * Draws all roads on the given Tile.
+     *
+     * @param g The {@code Graphics} to draw the road upon.
+     * @param tile The {@code Tile} with the road.
+     * @param rop An optional RescaleOp for fog of war.
+     */
+    void displayRoad(Graphics2D g, Tile tile, RescaleOp rop) {
+<span class="nc" id="L120">        Color oldColor = g.getColor();</span>
+<span class="nc" id="L121">        g.setColor(ImageLibrary.getRoadColor()); // TODO: Apply rop?</span>
+<span class="nc" id="L122">        g.setStroke(roadStroke);</span>
+<span class="nc" id="L123">        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,</span>
+                           RenderingHints.VALUE_ANTIALIAS_ON);
+
+<span class="nc" id="L126">        final Map map = tile.getMap();</span>
+<span class="nc" id="L127">        final int x = tile.getX();</span>
+<span class="nc" id="L128">        final int y = tile.getY();</span>
+<span class="nc" id="L129">        final Predicate&lt;Direction&gt; borderPred = d -&gt; {</span>
+<span class="nc" id="L130">            Tile borderingTile = map.getTile(d.step(x, y));</span>
+            TileImprovement r;
+<span class="nc bnc" id="L132" title="All 2 branches missed.">            return borderingTile != null</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">                &amp;&amp; (r = borderingTile.getRoad()) != null</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">                &amp;&amp; r.isComplete();</span>
+        };
+<span class="nc" id="L136">        List&lt;Direction&gt; directions = transform(Direction.allDirections, borderPred);</span>
+<span class="nc" id="L137">        List&lt;Point2D.Float&gt; points = transform(directions, alwaysTrue(),</span>
+<span class="nc" id="L138">                                               d -&gt; corners.get(d));</span>
+<span class="nc" id="L139">        GeneralPath path = new GeneralPath();</span>
+<span class="nc bnc" id="L140" title="All 5 branches missed.">        switch (points.size()) {</span>
+        case 0:
+<span class="nc" id="L142">            path.moveTo(0.35f * tileWidth, 0.35f * tileHeight);</span>
+<span class="nc" id="L143">            path.lineTo(0.65f * tileWidth, 0.65f * tileHeight);</span>
+<span class="nc" id="L144">            path.moveTo(0.35f * tileWidth, 0.65f * tileHeight);</span>
+<span class="nc" id="L145">            path.lineTo(0.65f * tileWidth, 0.35f * tileHeight);</span>
+<span class="nc" id="L146">            break;</span>
+        case 1:
+<span class="nc" id="L148">            path.moveTo(halfWidth, halfHeight);</span>
+<span class="nc" id="L149">            path.lineTo(points.get(0).getX(), points.get(0).getY());</span>
+<span class="nc" id="L150">            break;</span>
+        case 2:
+<span class="nc" id="L152">            path.moveTo(points.get(0).getX(), points.get(0).getY());</span>
+<span class="nc" id="L153">            path.quadTo(halfWidth, halfHeight,</span>
+<span class="nc" id="L154">                        points.get(1).getX(), points.get(1).getY());</span>
+<span class="nc" id="L155">            break;</span>
+        case 3: case 4:
+<span class="nc" id="L157">            Direction pen = directions.get(directions.size() - 1);</span>
+<span class="nc" id="L158">            Point2D pt = corners.get(pen);</span>
+<span class="nc" id="L159">            path.moveTo(pt.getX(), pt.getY());</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            for (Direction d : directions) {</span>
+<span class="nc" id="L161">                pt = corners.get(d);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">                if (prohibitedRoads.get(pen).contains(d)) {</span>
+<span class="nc" id="L163">                    path.moveTo(pt.getX(), pt.getY());</span>
+                } else {
+<span class="nc" id="L165">                    path.quadTo(halfWidth, halfHeight, pt.getX(), pt.getY());</span>
+                }
+<span class="nc" id="L167">                pen = d;</span>
+<span class="nc" id="L168">            }</span>
+<span class="nc" id="L169">            break;</span>
+        default:
+<span class="nc bnc" id="L171" title="All 2 branches missed.">            for (Point2D p : points) {</span>
+<span class="nc" id="L172">                path.moveTo(halfWidth, halfHeight);</span>
+<span class="nc" id="L173">                path.lineTo(p.getX(), p.getY());</span>
+<span class="nc" id="L174">            }</span>
+            break;
+        }
+<span class="nc" id="L177">        g.draw(path);</span>
+<span class="nc" id="L178">        g.setColor(oldColor);</span>
+<span class="nc" id="L179">        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,</span>
+                           RenderingHints.VALUE_ANTIALIAS_OFF);
+<span class="nc" id="L181">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

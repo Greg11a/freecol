@@ -1,0 +1,623 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Connection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">Connection.java</span></div><h1>Connection.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import java.io.BufferedReader;
+import java.io.Closeable;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.StringReader;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeoutException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.debug.FreeColDebugger;
+import net.sf.freecol.common.io.FreeColDirectories;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+
+
+/**
+ * A network connection.
+ * Responsible for both sending and receiving network messages.
+ */
+public class Connection implements Closeable {
+
+<span class="fc" id="L50">    private static final Logger logger = Logger.getLogger(Connection.class.getName());</span>
+
+    /**
+     * The default timeout when waiting for a reply from the server. Defined
+     * in milliseconds.
+     * 
+     * Setting 30s for now since there was no timeout earlier when waiting
+     * for å reply.
+     */
+    public static final long DEFAULT_REPLY_TIMEOUT = 30000;
+    
+    public static final char END_OF_STREAM = '\n';
+<span class="fc" id="L62">    private static final char[] END_OF_STREAM_ARRAY = { END_OF_STREAM };</span>
+    public static final int BUFFER_SIZE = 1 &lt;&lt; 14;
+    
+    public static final String NETWORK_REPLY_ID_TAG = &quot;networkReplyId&quot;;
+    public static final String QUESTION_TAG = &quot;question&quot;;
+    public static final String REPLY_TAG = &quot;reply&quot;;
+    public static final String SEND_SUFFIX = &quot;-send&quot;;
+    public static final String REPLY_SUFFIX = &quot;-reply&quot;;
+
+    private static final int TIMEOUT = 5000; // 5s
+
+    /** The name of the connection. */
+    private String name;
+
+    /** A lock for access to the socket. */
+<span class="fc" id="L77">    private final Object socketLock = new Object();</span>
+    /** The socket connected to the other end of the connection. */
+<span class="fc" id="L79">    private Socket socket = null;</span>
+
+    /** A lock for the input side. */
+<span class="fc" id="L82">    private final Object inputLock = new Object();</span>
+    /** The wrapped version of the input side of the socket. */
+    private BufferedReader br;
+    /** An XML stream wrapping of an input line. */
+    private FreeColXMLReader xr;
+
+    /** A lock for the output side. */
+<span class="fc" id="L89">    private final Object outputLock = new Object();</span>
+    /** Main message writer. */
+    private FreeColXMLWriter xw;
+
+    /** The FreeColXMLWriter to write logging messages to. */
+    private FreeColXMLWriter lw;
+
+    /** The subthread to read the input. */
+    private ReceivingThread receivingThread;
+    
+<span class="fc" id="L99">    private final Object receivingThreadLock = new Object();</span>
+
+    /** The message handler to process incoming messages with. */
+<span class="fc" id="L102">    private MessageHandler messageHandler = null;</span>
+
+    /** Is there an active connection. */
+<span class="fc" id="L105">    private boolean connected = false;</span>
+    
+
+    /**
+     * Trivial constructor.
+     *
+     * @param name The name of the connection.
+     */
+<span class="fc" id="L113">    protected Connection(String name) {</span>
+<span class="fc" id="L114">        this.name = name;</span>
+
+<span class="fc" id="L116">        setSocket(null);</span>
+<span class="fc" id="L117">        this.br = null;</span>
+<span class="fc" id="L118">        this.xr = null;</span>
+<span class="fc" id="L119">        this.receivingThread = null;</span>
+<span class="fc" id="L120">        this.messageHandler = null;</span>
+<span class="fc" id="L121">        this.xw = null;</span>
+
+        // Make a (pretty printing) transformer, but only make the log
+        // writer in COMMS-debug mode.
+<span class="fc" id="L125">        setCommsLogging(FreeColDebugger.isInDebugMode(FreeColDebugger.DebugMode.COMMS));</span>
+<span class="fc" id="L126">        this.connected = false;</span>
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * Creates a new {@code Connection} with the specified
+     * {@code Socket} and {@link MessageHandler}.
+     *
+     * @param socket The socket to the client.
+     * @param name The connection name.
+     * @exception IOException if streams can not be derived from the socket.
+     */
+    @SuppressWarnings(&quot;resource&quot;)
+    public Connection(Socket socket, String name) throws IOException {
+<span class="fc" id="L139">        this(name);</span>
+
+<span class="fc" id="L141">        setSocket(socket);</span>
+<span class="fc" id="L142">        this.br = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));</span>
+<span class="fc" id="L143">        this.receivingThread = new ReceivingThread(this, name);</span>
+<span class="fc" id="L144">        this.xw = new FreeColXMLWriter(socket.getOutputStream(),</span>
+<span class="fc" id="L145">            FreeColXMLWriter.WriteScope.toSave(), false);</span>
+<span class="fc" id="L146">        this.connected = true;</span>
+<span class="fc" id="L147">    }</span>
+
+    /**
+     * Sets up a new socket with specified host and port and uses
+     * {@link #Connection(Socket, String)}.
+     *
+     * @param host The host to connect to.
+     * @param port The port to connect to.
+     * @param name The name for the connection.
+     * @exception IOException if the socket creation is problematic.
+     */
+    public Connection(String host, int port, String name) throws IOException {
+<span class="fc" id="L159">        this(createSocket(host, port), name);</span>
+<span class="fc" id="L160">    }</span>
+
+
+    /**
+     * Creates a socket to communication with a given host, port pair.
+     *
+     * @param host The host to connect to.
+     * @param port The port to connect to.
+     * @return A new socket.
+     * @exception IOException on failure to create/connect the socket.
+     */
+    private static Socket createSocket(String host, int port)
+        throws IOException {
+<span class="fc" id="L173">        Socket socket = new Socket();</span>
+<span class="fc" id="L174">        SocketAddress addr = new InetSocketAddress(host, port);</span>
+<span class="fc" id="L175">        socket.connect(addr, TIMEOUT);</span>
+<span class="fc" id="L176">        return socket;</span>
+    }
+
+    /**
+     * Start the recieving thread.
+     */
+    public void startReceiving() {
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (this.receivingThread != null) this.receivingThread.start();</span>
+<span class="fc" id="L184">    }</span>
+        
+    /**
+     * Get the socket.
+     *
+     * @return The current {@code Socket}.
+     */
+    public Socket getSocket() {
+<span class="fc" id="L192">        synchronized (this.socketLock) {</span>
+<span class="fc" id="L193">            return this.socket;</span>
+        }
+    }
+
+    /**
+     * Set the socket.
+     *
+     * @param socket The new {@code Socket}.
+     */
+    private void setSocket(Socket socket) {
+<span class="fc" id="L203">        synchronized (this.socketLock) {</span>
+<span class="fc" id="L204">            this.socket = socket;</span>
+<span class="fc" id="L205">        }</span>
+<span class="fc" id="L206">    }</span>
+
+    /**
+     * Close and clear the socket.
+     */
+    private void closeSocket() {
+<span class="fc" id="L212">        synchronized (this.socketLock) {</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">            if (this.socket != null) {</span>
+                try {
+<span class="fc" id="L215">                    this.socket.close();</span>
+<span class="nc" id="L216">                } catch (IOException ioe) {</span>
+<span class="nc" id="L217">                    logger.log(Level.WARNING, &quot;Error closing socket&quot;, ioe);</span>
+                } finally {
+<span class="fc" id="L219">                    this.socket = null;</span>
+                }
+            }
+<span class="fc" id="L222">        }</span>
+<span class="fc" id="L223">    }</span>
+
+    /**
+     * Close and clear the output stream.
+     */
+    private void closeOutputStream() {
+<span class="fc" id="L229">        synchronized (this.outputLock) {</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">            if (this.xw != null) {</span>
+<span class="fc" id="L231">                this.xw.close();</span>
+<span class="fc" id="L232">                this.xw = null;</span>
+            }
+<span class="fc" id="L234">        }</span>
+<span class="fc" id="L235">    }</span>
+
+    /**
+     * Close and clear the input stream.
+     */
+    private void closeInputStream() {
+<span class="fc" id="L241">        synchronized (this.inputLock) {</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">            if (this.br != null) {</span>
+                try {
+<span class="fc" id="L244">                    this.br.close();</span>
+<span class="nc" id="L245">                } catch (IOException ioe) {</span>
+<span class="nc" id="L246">                    logger.log(Level.WARNING, &quot;Error closing buffered input&quot;,</span>
+                        ioe);
+                } finally {
+<span class="fc" id="L249">                    this.br = null;</span>
+                }
+            }
+<span class="fc" id="L252">        }</span>
+<span class="fc" id="L253">    }</span>
+
+    /**
+     * Is this connection alive?
+     *
+     * @return True if the connection is alive.
+     */
+    public boolean isAlive() {
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">        return getSocket() != null;</span>
+    }
+
+    /**
+     * Get the host address of this connection.
+     *
+     * @return The host address, or an empty string on error.
+     */
+    public String getHostAddress() {
+<span class="nc" id="L270">        Socket socket = getSocket();</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">        return (socket == null) ? &quot;&quot;</span>
+<span class="nc" id="L272">            : socket.getInetAddress().getHostAddress();</span>
+    }
+
+    /**
+     * Get the port for this connection.
+     *
+     * @return The port number, or negative on error.
+     */
+    public int getPort() {
+<span class="nc" id="L281">        Socket socket = getSocket();</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">        return (socket == null) ? -1 : socket.getPort();</span>
+    }
+
+    /**
+     * Get the printable description of the socket.
+     *
+     * @return *host-address*:*port-number* or an empty string on error.
+     */
+    public String getSocketName() {
+<span class="nc bnc" id="L291" title="All 2 branches missed.">        return (isAlive()) ? getHostAddress() + &quot;:&quot; + getPort() : &quot;&quot;;</span>
+    }
+    
+    /**
+     * Gets the message handler for this connection.
+     *
+     * @return The {@code MessageHandler} for this Connection.
+     */
+    public synchronized MessageHandler getMessageHandler() {
+<span class="fc" id="L300">        return this.messageHandler;</span>
+    }
+
+    /**
+     * Sets the message handler for this connection.
+     *
+     * @param messageHandler The new {@code MessageHandler} for this
+     *     Connection.
+     * @return This {@code Connection}.
+     */
+    public synchronized Connection setMessageHandler(MessageHandler messageHandler) {
+<span class="fc" id="L311">        this.messageHandler = messageHandler;</span>
+<span class="fc" id="L312">        return this;</span>
+    }
+
+    /**
+     * Set the output write scope.
+     *
+     * @param ws The new write scope.
+     */
+    public void setWriteScope(FreeColXMLWriter.WriteScope ws) {
+<span class="fc" id="L321">        synchronized (this.outputLock) {</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">            if (this.xw != null) this.xw.setWriteScope(ws);</span>
+<span class="fc" id="L323">        }</span>
+<span class="fc" id="L324">    }</span>
+
+    /**
+     * Gets the connection name.
+     *
+     * @return The connection name.
+     */
+    public String getName() {
+<span class="nc" id="L332">        return this.name;</span>
+    }
+
+    /**
+     * Set the logging state of this connection.
+     *
+     * @param log If true, enable logging.
+     * @return This {@code Connection}.
+     */
+    public final Connection setCommsLogging(boolean log) {
+<span class="fc" id="L342">        FreeColXMLWriter lw = null;</span>
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">        if (log) {</span>
+            try {
+<span class="nc" id="L345">                lw = new FreeColXMLWriter(FreeColDirectories.getLogCommsWriter(),</span>
+<span class="nc" id="L346">                    FreeColXMLWriter.WriteScope.toSave(), true);</span>
+<span class="nc" id="L347">            } catch (FreeColException|IOException ex) {</span>
+<span class="nc" id="L348">                lw = null; // Just do not log</span>
+<span class="nc" id="L349">                logger.log(Level.WARNING, &quot;Comms logs disabled&quot;, ex);</span>
+<span class="nc" id="L350">            }</span>
+        }
+<span class="fc" id="L352">        this.lw = lw;</span>
+<span class="fc" id="L353">        return this;</span>
+    }
+
+    /**
+     * Signal that this connection is disconnecting.
+     */
+    public void sendDisconnect() {
+        try {
+<span class="fc" id="L361">            send(TrivialMessage.disconnectMessage);</span>
+<span class="nc" id="L362">        } catch (FreeColException|IOException|XMLStreamException ex) {</span>
+<span class="nc" id="L363">            logger.log(Level.WARNING, &quot;Failed to send disconnect&quot;, ex);</span>
+<span class="fc" id="L364">        }</span>
+<span class="fc" id="L365">    }</span>
+
+    /**
+     * Send a reconnect message.
+     */
+    public void sendReconnect() {
+        try {
+<span class="nc" id="L372">            send(TrivialMessage.reconnectMessage);</span>
+<span class="nc" id="L373">        } catch (FreeColException|IOException|XMLStreamException ex) {</span>
+<span class="nc" id="L374">            logger.log(Level.WARNING, &quot;Failed to send reconnect&quot;, ex);</span>
+<span class="nc" id="L375">        }</span>
+<span class="nc" id="L376">    }</span>
+
+    /**
+     * Disconnect this connection.
+     */
+    public void disconnect() {
+<span class="fc" id="L382">        this.connected = false;</span>
+<span class="fc" id="L383">        sendDisconnect();</span>
+<span class="fc" id="L384">        close();</span>
+<span class="fc" id="L385">    }</span>
+
+
+    // ReceivingThread input support, work in progress
+
+    public FreeColXMLReader getFreeColXMLReader() {
+<span class="fc" id="L391">        return this.xr;</span>
+    }
+
+    public String startListen() throws XMLStreamException {
+        String line;
+        try {
+<span class="fc" id="L397">            line = this.br.readLine();</span>
+<span class="fc" id="L398">        } catch (IOException ioe) {</span>
+<span class="fc" id="L399">            line = null;</span>
+<span class="fc" id="L400">        }</span>
+<span class="fc bfc" id="L401" title="All 2 branches covered.">        if (line == null) return DisconnectMessage.TAG;</span>
+        try {
+<span class="fc" id="L403">            this.xr = new FreeColXMLReader(new StringReader(line));</span>
+<span class="nc" id="L404">        } catch (Exception ex) {</span>
+<span class="nc" id="L405">            return DisconnectMessage.TAG;</span>
+<span class="fc" id="L406">        }</span>
+<span class="fc" id="L407">        this.xr.nextTag();</span>
+<span class="fc" id="L408">        return this.xr.getLocalName();</span>
+    }
+
+    public int getReplyId() {
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">        return (this.xr == null) ? -1</span>
+<span class="fc" id="L413">            : this.xr.getAttribute(NETWORK_REPLY_ID_TAG, -1);</span>
+    }
+
+    public void endListen() {
+<span class="fc" id="L417">        this.xr = null;</span>
+<span class="fc" id="L418">    }</span>
+
+
+    // Low level Message routines.  Overridden in DummyConnection
+    
+    /**
+     * Send a message, and return the response.  Log both.
+     *
+     * @param message The {@code Message} to send.
+     * @param timeout A timeout in milliseconds, after which a
+     *      {@code TimeoutException} gets thrown when waiting
+     *      for a reply.
+     * @return The response.
+     * @exception FreeColException on extreme confusion.
+     * @exception IOException on failure to send.
+     * @exception XMLStreamException on stream write error.
+     * @exception TimeoutException when the timeout is reached.
+     */
+    public Message askMessage(Message message, long timeout)
+        throws FreeColException, IOException, XMLStreamException, TimeoutException {
+<span class="pc bpc" id="L438" title="1 of 2 branches missed.">        if (message == null) return null;</span>
+<span class="fc" id="L439">        final String tag = message.getType();</span>
+<span class="pc bpc" id="L440" title="1 of 2 branches missed.">        if (Thread.currentThread() == this.receivingThread) {</span>
+<span class="nc" id="L441">            throw new IOException(&quot;wait(ReceivingThread) for: &quot; + tag);</span>
+        }
+
+        // Build the question message and establish an NRO for it.
+        // *Then* send the message.
+<span class="fc" id="L446">        final int replyId = this.receivingThread.getNextNetworkReplyId();</span>
+<span class="fc" id="L447">        QuestionMessage qm = new QuestionMessage(replyId, message);</span>
+<span class="fc" id="L448">        NetworkReplyObject nro</span>
+<span class="fc" id="L449">            = this.receivingThread.waitForNetworkReply(replyId);</span>
+<span class="fc" id="L450">        sendMessage(qm);</span>
+
+        // Block waiting for the reply to occur.  Expect a reply
+        // message, except on shutdown.
+<span class="fc" id="L454">        Object response = nro.getResponse(timeout);</span>
+<span class="pc bpc" id="L455" title="3 of 4 branches missed.">        if (response == null &amp;&amp; !this.connected) {</span>
+<span class="nc" id="L456">            return null;</span>
+<span class="pc bpc" id="L457" title="1 of 2 branches missed.">        } else if (!(response instanceof ReplyMessage)) {</span>
+<span class="nc" id="L458">            throw new FreeColException(&quot;Bad response to &quot; + replyId + &quot;/&quot; + tag</span>
+                + &quot;: &quot; + response);
+        }
+<span class="fc" id="L461">        ReplyMessage reply = (ReplyMessage)response;</span>
+<span class="fc" id="L462">        logMessage(reply, false);</span>
+<span class="fc" id="L463">        return reply.getMessage();</span>
+    }
+    
+    /**
+     * Send a message, do not consider a response.
+     *
+     * Public as this is called from ReceivingThread.
+     *
+     * @param message The {@code Message} to send.
+     * @exception FreeColException on extreme confusion.
+     * @exception IOException on failure to send.
+     * @exception XMLStreamException on stream problem.
+     */
+    public void sendMessage(Message message)
+        throws FreeColException, IOException, XMLStreamException {
+<span class="fc bfc" id="L478" title="All 2 branches covered.">        if (message == null) return;</span>
+<span class="fc" id="L479">        synchronized (this.outputLock) {</span>
+<span class="pc bpc" id="L480" title="1 of 2 branches missed.">            if (this.xw == null) return;</span>
+<span class="fc" id="L481">            message.toXML(this.xw);</span>
+<span class="fc" id="L482">            this.xw.writeCharacters(END_OF_STREAM_ARRAY, 0,</span>
+                                    END_OF_STREAM_ARRAY.length);
+<span class="fc" id="L484">            this.xw.flush();</span>
+<span class="fc" id="L485">        }</span>
+<span class="fc" id="L486">        logMessage(message, true);</span>
+<span class="fc" id="L487">    }</span>
+
+    /**
+     * Log a message.
+     *
+     * @param message The {@code Message} to log.
+     * @param send True if this is a send, false if a reply.
+     */
+    protected final void logMessage(Message message, boolean send) {
+<span class="pc bpc" id="L496" title="3 of 4 branches missed.">        if (this.lw == null || message == null) return;</span>
+        // Catch *all* failures.  Logging must not crash the game.
+        // Only XMLStreamException is visible, but other odd parse
+        // errors have been sighted.
+        try {
+<span class="nc" id="L501">            synchronized (this.lw) {</span>
+<span class="nc" id="L502">                this.lw.writeComment(this.name</span>
+<span class="nc bnc" id="L503" title="All 2 branches missed.">                    + ((send) ? SEND_SUFFIX : REPLY_SUFFIX));</span>
+<span class="nc" id="L504">                message.toXML(this.lw);</span>
+<span class="nc" id="L505">                this.lw.writeCharacters(END_OF_STREAM_ARRAY, 0,</span>
+                                        END_OF_STREAM_ARRAY.length);
+<span class="nc" id="L507">                this.lw.flush();</span>
+<span class="nc" id="L508">            }</span>
+<span class="nc" id="L509">        } catch (Exception ex) {}</span>
+<span class="nc" id="L510">    }</span>
+    
+
+    // Quasi-MessageHandler behaviour
+
+    /**
+     * Handle a message using the MessageHandler.
+     *
+     * @param message The {@code Message} to handle.
+     * @return The result of the handler.
+     * @exception FreeColException if the message is malformed.
+     */
+    public Message handle(Message message) throws FreeColException {
+<span class="pc bpc" id="L523" title="1 of 2 branches missed.">        if (message == null) return null;</span>
+<span class="fc" id="L524">        final MessageHandler mh = getMessageHandler();</span>
+<span class="pc bpc" id="L525" title="1 of 2 branches missed.">        return (mh == null) ? null : mh.handle(this, message);</span>
+    }
+
+    /**
+     * Read a message using the MessageHandler.
+     *
+     * @return The {@code Message} found, if any.
+     * @exception FreeColException there is a problem creating the message.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public Message reader()
+        throws FreeColException, XMLStreamException {
+<span class="pc bpc" id="L537" title="1 of 2 branches missed.">        if (this.xr == null) return null;</span>
+
+<span class="fc" id="L539">        MessageHandler mh = getMessageHandler();</span>
+<span class="pc bpc" id="L540" title="1 of 2 branches missed.">        if (mh == null) { // FIXME: Temporary fast fail</span>
+<span class="nc" id="L541">            throw new FreeColException(&quot;No handler at &quot; + xr.getLocalName())</span>
+<span class="nc" id="L542">                .preserveDebug();</span>
+        }
+<span class="fc" id="L544">        return mh.read(this);</span>
+    }
+
+
+    // Client entry points
+
+    /**
+     * Client request.
+     *
+     * @param message A {@code Message} to process.
+     * @exception FreeColException on handler failure.
+     * @exception IOException if there is a problem sending messages.
+     * @exception XMLStreamException if there is a message format problem.
+     */
+    public void request(Message message)
+        throws FreeColException, IOException, XMLStreamException {
+<span class="fc bfc" id="L560" title="All 2 branches covered.">        if (message == null) return;</span>
+        try {
+<span class="fc" id="L562">            Message response = askMessage(message, DEFAULT_REPLY_TIMEOUT);</span>
+<span class="fc bfc" id="L563" title="All 2 branches covered.">            if (response != null) {</span>
+<span class="fc" id="L564">                Message reply = handle(response);</span>
+<span class="pc bnc" id="L565" title="All 2 branches missed.">                assert reply == null;</span>
+            }
+<span class="nc" id="L567">        } catch (TimeoutException e) {</span>
+<span class="nc" id="L568">            throw new IOException(e);</span>
+<span class="fc" id="L569">        }</span>
+<span class="fc" id="L570">    }</span>
+        
+    /**
+     * Client send.
+     *
+     * @param message A {@code Message} to send.
+     * @exception FreeColException on extreme confusion.
+     * @exception IOException on write error.
+     * @exception XMLStreamException if there is a message format problem.
+     */
+    public void send(Message message)
+        throws FreeColException, IOException, XMLStreamException {
+<span class="pc bpc" id="L582" title="1 of 2 branches missed.">        if (message != null) sendMessage(message);</span>
+<span class="fc" id="L583">    }</span>
+    
+
+    // Implement Closeable
+
+    /**
+     * Close this connection.
+     */
+    public void close() {
+<span class="fc" id="L592">        synchronized (receivingThreadLock) {</span>
+<span class="pc bpc" id="L593" title="1 of 2 branches missed.">            if (this.receivingThread != null) {</span>
+<span class="fc" id="L594">                this.receivingThread.askToStop(&quot;connection closing&quot;);</span>
+<span class="fc" id="L595">                this.receivingThread.interrupt();</span>
+<span class="fc" id="L596">                this.receivingThread = null;</span>
+            }
+<span class="fc" id="L598">        }</span>
+
+        // Close the socket before the input stream.  Socket closure will
+        // terminate any existing I/O and release the locks.
+<span class="fc" id="L602">        closeSocket();</span>
+<span class="fc" id="L603">        closeInputStream();</span>
+<span class="fc" id="L604">        closeOutputStream();</span>
+        
+<span class="fc" id="L606">        logger.fine(&quot;Connection closed for &quot; + this.name);</span>
+<span class="fc" id="L607">    }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L617">        StringBuilder sb = new StringBuilder(32);</span>
+<span class="nc" id="L618">        sb.append(&quot;[Connection &quot;).append(this.name).append(&quot; (&quot;)</span>
+<span class="nc" id="L619">            .append(getSocketName()).append(&quot;)]&quot;);</span>
+<span class="nc" id="L620">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

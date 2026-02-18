@@ -1,0 +1,489 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GoalDeciders.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model.pathfinding</a> &gt; <span class="el_source">GoalDeciders.java</span></div><h1>GoalDeciders.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model.pathfinding;
+
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
+
+import net.sf.freecol.common.model.Ability;
+import static net.sf.freecol.common.model.Constants.*;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Map;
+import net.sf.freecol.common.model.PathNode;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+
+/**
+ * Handy library of GoalDeciders.
+ */
+<span class="nc" id="L44">public final class GoalDeciders {</span>
+
+    /**
+     * Gets a composite goal decider composed of two or more individual
+     * goal deciders.  The first one dominates the second etc.
+     *
+     * @param all If true, all deciders must succeed (and-semantics),
+     *     if false, any decide may succeed (or-semantics).
+     * @param gds A series (two minimum) of {@code GoalDecider}s
+     *     to compose.
+     * @return A new {@code GoalDecider} composed of the argument
+     *     goal deciders.
+     */
+    public static GoalDecider getComposedGoalDecider(final boolean all,
+        final GoalDecider... gds) {
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        if (gds.length &lt; 2) {</span>
+<span class="nc" id="L60">            throw new RuntimeException(&quot;Short GoalDecider list: &quot; + gds.length);</span>
+        }
+
+<span class="nc" id="L63">        return new GoalDecider() {</span>
+<span class="nc" id="L64">            private int winner = gds.length;</span>
+<span class="nc" id="L65">            private PathNode goal = null;</span>
+
+            @Override
+<span class="nc" id="L68">            public PathNode getGoal() { return goal; }</span>
+            @Override
+            public boolean hasSubGoals() {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">                for (int i = 0; i &lt; gds.length; i++) {</span>
+<span class="nc bnc" id="L72" title="All 4 branches missed.">                    if (!all &amp;&amp; i &gt; this.winner) break;</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">                    if (gds[i].hasSubGoals()) {</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">                        if (!all) return true;</span>
+                    } else {
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                        if (all) return false;</span>
+                    }
+                }
+<span class="nc bnc" id="L79" title="All 2 branches missed.">                return !all;</span>
+            }
+            @Override
+            public boolean check(Unit u, PathNode path) {
+<span class="nc bnc" id="L83" title="All 2 branches missed.">                for (int i = 0; i &lt; gds.length; i++) {</span>
+<span class="nc bnc" id="L84" title="All 4 branches missed.">                    if (!all &amp;&amp; i &gt; this.winner) break;</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">                    if (gds[i].check(u, path)) {</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">                        if (!all) {</span>
+<span class="nc" id="L87">                            this.winner = i;</span>
+<span class="nc" id="L88">                            this.goal = path;</span>
+<span class="nc" id="L89">                            return true;</span>
+                        }
+                    } else {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">                        if (all) {</span>
+<span class="nc" id="L93">                            return false;</span>
+                        }
+                    }
+                }
+<span class="nc bnc" id="L97" title="All 2 branches missed.">                if (all) {</span>
+<span class="nc" id="L98">                    this.winner = 0;</span>
+<span class="nc" id="L99">                    this.goal = path;</span>
+<span class="nc" id="L100">                    return true;</span>
+                }
+<span class="nc" id="L102">                return false;</span>
+            }
+        };
+    }
+
+    /**
+     * Gets a GoalDecider to find the `closest' settlement owned by the
+     * searching unit player, with connected ports weighted double.
+     *
+     * @return The closest settlement goal decider.
+     */
+    public static GoalDecider getOurClosestSettlementGoalDecider() {
+<span class="nc" id="L114">        return new GoalDecider() {</span>
+<span class="nc" id="L115">            private PathNode bestPath = null;</span>
+<span class="nc" id="L116">            private float bestValue = 0.0f;</span>
+
+            @Override
+<span class="nc" id="L119">            public PathNode getGoal() { return bestPath; }</span>
+            @Override
+<span class="nc" id="L121">            public boolean hasSubGoals() { return true; }</span>
+            @Override
+            public boolean check(Unit u, PathNode path) {
+<span class="nc" id="L124">                Location loc = path.getLastNode().getLocation();</span>
+<span class="nc" id="L125">                Settlement settlement = loc.getSettlement();</span>
+<span class="nc bnc" id="L126" title="All 4 branches missed.">                if (settlement != null &amp;&amp; settlement.getOwner().owns(u)) {</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                    float value = ((settlement.isConnectedPort()) ? 2.0f</span>
+<span class="nc" id="L128">                        : 1.0f) / (path.getTotalTurns() + 1);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">                    if (bestValue &lt; value) {</span>
+<span class="nc" id="L130">                        bestValue = value;</span>
+<span class="nc" id="L131">                        bestPath = path;</span>
+<span class="nc" id="L132">                        return true;</span>
+                    }
+                }
+<span class="nc" id="L135">                return false;</span>
+            }
+        };
+    }
+
+    /**
+     * Gets a GoalDecider to find the closest high seas tile to a target.
+     * Used when arriving on the map from Europe.
+     *
+     * @return The high seas goal decider.
+     */
+    public static GoalDecider getHighSeasGoalDecider() {
+<span class="fc" id="L147">        return new GoalDecider() {</span>
+<span class="fc" id="L148">            private PathNode best = null;</span>
+            
+            @Override
+<span class="fc" id="L151">            public PathNode getGoal() { return best; }</span>
+            @Override
+<span class="fc" id="L153">            public boolean hasSubGoals() { return false; }</span>
+            @Override
+            public boolean check(Unit u, PathNode path) {
+<span class="fc" id="L156">                Tile tile = path.getTile();</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">                if (tile != null</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">                    &amp;&amp; tile.isExploredBy(u.getOwner())</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">                    &amp;&amp; tile.isDirectlyHighSeasConnected()</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">                    &amp;&amp; (tile.getFirstUnit() == null</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">                        || u.getOwner().owns(tile.getFirstUnit()))) {</span>
+<span class="fc bfc" id="L162" title="All 4 branches covered.">                    if (best == null || path.getCost() &lt; best.getCost()) {</span>
+<span class="fc" id="L163">                        best = path;</span>
+<span class="fc" id="L164">                        return true;</span>
+                    }
+                }
+<span class="fc" id="L167">                return false;</span>
+            }
+        };
+    }
+
+    /**
+     * Build a simple goal decider to find the first high seas tile
+     * without using the unit parameter.
+     *
+     * @return A {@code GoalDecider} that finds the nearest high seas tile.
+     */
+    public static GoalDecider getSimpleHighSeasGoalDecider() {
+<span class="nc" id="L179">        return new GoalDecider() {</span>
+<span class="nc" id="L180">            private PathNode first = null;</span>
+
+            @Override
+<span class="nc" id="L183">            public PathNode getGoal() { return first; }</span>
+            @Override
+<span class="nc" id="L185">            public boolean hasSubGoals() { return false; }</span>
+            @Override
+            public boolean check(Unit u, PathNode path) {
+<span class="nc" id="L188">                Tile tile = path.getTile();</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">                if (tile != null</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">                    &amp;&amp; tile.isDirectlyHighSeasConnected()) {</span>
+<span class="nc" id="L191">                    first = path;</span>
+<span class="nc" id="L192">                    return true;</span>
+                }
+<span class="nc" id="L194">                return false;</span>
+            }
+        };
+    }
+
+    /**
+     * Builds a simple goal decider to find a single target location.
+     *
+     * @param target The target {@code Location}.
+     * @return A {@code GoalDecider} that only succeeds for the
+     *     target location.
+     */
+    public static GoalDecider getLocationGoalDecider(final Location target) {
+<span class="fc" id="L207">        return new GoalDecider() {</span>
+<span class="fc" id="L208">            private PathNode best = null;</span>
+<span class="fc" id="L209">            private int bestCost = INFINITY;</span>
+
+            @Override
+<span class="fc" id="L212">            public PathNode getGoal() { return best; }</span>
+            @Override
+<span class="fc" id="L214">            public boolean hasSubGoals() { return false; }</span>
+            @Override
+            public boolean check(Unit u, PathNode path) {
+                int cost;
+<span class="fc bfc" id="L218" title="All 2 branches covered.">                if (Map.isSameLocation(path.getLocation(), target)) {</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                    if ((cost = path.getCost()) &lt; bestCost) {</span>
+<span class="fc" id="L220">                        best = path;</span>
+<span class="fc" id="L221">                        bestCost = cost;</span>
+                    }
+<span class="fc" id="L223">                    return true;</span>
+                }
+<span class="fc" id="L225">                return false;</span>
+            }
+        };
+    }
+
+    /**
+     * Builds a goal decider to find an adjacent tile to a target location.
+     *
+     * @param target The target {@code Location}.
+     * @return A {@code GoalDecider} that only succeeds for tiles
+     *     adjacent to the target location.
+     */
+    public static GoalDecider getAdjacentLocationGoalDecider(Location target) {
+<span class="nc" id="L238">        final Tile tile = target.getTile();</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        if (tile == null) return null;</span>
+
+<span class="nc" id="L241">        return new GoalDecider() {</span>
+<span class="nc" id="L242">            private PathNode best = null;</span>
+
+            @Override
+<span class="nc" id="L245">            public PathNode getGoal() { return best; }</span>
+            @Override
+<span class="nc" id="L247">            public boolean hasSubGoals() { return false; }</span>
+            @Override
+            public boolean check(Unit u, PathNode path) {
+<span class="nc" id="L250">                Tile t = path.getTile();</span>
+<span class="nc bnc" id="L251" title="All 4 branches missed.">                if (t != null &amp;&amp; t.isAdjacent(tile)) {</span>
+<span class="nc" id="L252">                    best = path;</span>
+<span class="nc" id="L253">                    return true;</span>
+                }
+<span class="nc" id="L255">                return false;</span>
+            }
+        };
+    }
+
+    /**
+     * Get a goal decider that succeeds for settlements owned by one
+     * of a given list of enemies.
+     *
+     * @param enemies The list of enemy {@code Player}s.
+     * @return A suitable {@code GoalDecider}.
+     **/
+    public static GoalDecider getEnemySettlementGoalDecider(final Collection&lt;Player&gt; enemies) {
+<span class="nc" id="L268">        return new GoalDecider() {</span>
+<span class="nc" id="L269">            private PathNode best = null;</span>
+                        
+            @Override
+<span class="nc" id="L272">            public PathNode getGoal() { return best; }</span>
+            @Override
+<span class="nc" id="L274">            public boolean hasSubGoals() { return false; }</span>
+            @Override
+            public boolean check(Unit u, PathNode path) {
+<span class="nc" id="L277">                Tile t = path.getTile();</span>
+<span class="nc bnc" id="L278" title="All 4 branches missed.">                if (t == null || !t.isLand()) return false;</span>
+<span class="nc" id="L279">                Settlement s = t.getSettlement();</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">                if (s == null) return false;</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">                if (enemies.contains(s.getOwner())) {</span>
+<span class="nc" id="L282">                    best = path;</span>
+<span class="nc" id="L283">                    return true;</span>
+                }
+<span class="nc" id="L285">                return false;</span>
+            }
+        };
+    }
+
+    /**
+     * Goal decider to find the best land tile to disembark a unit that
+     * is planning to attack a given target.
+     *
+     * The result must be:
+     * - Unoccupied
+     * - Have at least one unoccupied high-seas-connected neighbour
+     * - Favour the best natural defence of the alternatives
+     * - Favour a short journey to the target
+     * - Prioritize not landing next to a hostile fort/fortress.
+     *
+     * @param target The target {@code Tile}.
+     * @return A suitable {@code GoalDecider}.
+     */
+    public static GoalDecider getDisembarkGoalDecider(final Tile target) {
+<span class="nc" id="L305">        final double NO_DANGER_BONUS = 1000.0;</span>
+        
+<span class="nc" id="L307">        return new GoalDecider() {</span>
+<span class="nc" id="L308">            private double bestScore = -1.0;</span>
+<span class="nc" id="L309">            private PathNode goal = null;</span>
+
+            @Override
+<span class="nc" id="L312">            public PathNode getGoal() { return goal; }</span>
+            @Override
+<span class="nc" id="L314">            public boolean hasSubGoals() { return true; }</span>
+            @Override
+            public boolean check(Unit u, PathNode pathNode) {
+<span class="nc" id="L317">                final Tile tile = pathNode.getTile();</span>
+<span class="nc bnc" id="L318" title="All 6 branches missed.">                if (tile == null || !tile.isLand() || !tile.isEmpty()</span>
+<span class="nc bnc" id="L319" title="All 2 branches missed.">                    || tile.hasSettlement()) return false;</span>
+
+<span class="nc" id="L321">                final Player owner = u.getOwner();</span>
+<span class="nc" id="L322">                final Map map = u.getGame().getMap();</span>
+<span class="nc" id="L323">                final Predicate&lt;Tile&gt; dockPred = t -&gt;</span>
+<span class="nc bnc" id="L324" title="All 4 branches missed.">                    t.isHighSeasConnected() &amp;&amp; !t.isLand();</span>
+<span class="nc" id="L325">                final Predicate&lt;Tile&gt; dangerPred = t -&gt; {</span>
+<span class="nc" id="L326">                    Settlement settlement = t.getSettlement();</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">                    return (settlement != null</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">                        &amp;&amp; !owner.owns(settlement)</span>
+<span class="nc bnc" id="L329" title="All 2 branches missed.">                        &amp;&amp; settlement.hasAbility(Ability.BOMBARD_SHIPS)</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">                        &amp;&amp; (owner.atWarWith(settlement.getOwner())</span>
+<span class="nc bnc" id="L331" title="All 2 branches missed.">                            || u.hasAbility(Ability.PIRACY)));</span>
+                };
+<span class="nc" id="L333">                final ToDoubleFunction&lt;Tile&gt; tileScorer = cacheDouble(t -&gt;</span>
+<span class="nc" id="L334">                    (t.getDefenceValue() / (1.0 + map.getDistance(target, t))</span>
+<span class="nc bnc" id="L335" title="All 2 branches missed.">                        + ((none(t.getSurroundingTiles(1, 1), dangerPred))</span>
+<span class="nc" id="L336">                            ? NO_DANGER_BONUS : 0.0)));</span>
+<span class="nc" id="L337">                Tile best = maximize(tile.getSurroundingTiles(1, 1), dockPred,</span>
+<span class="nc" id="L338">                                     Comparator.comparingDouble(tileScorer));</span>
+                double score;
+<span class="nc bnc" id="L340" title="All 2 branches missed.">                if (best != null</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">                    &amp;&amp; (score = tileScorer.applyAsDouble(best)) &gt; bestScore) {</span>
+<span class="nc" id="L342">                    bestScore = score;</span>
+<span class="nc" id="L343">                    goal = pathNode;</span>
+<span class="nc" id="L344">                    return true;</span>
+                }
+<span class="nc" id="L346">                return false;</span>
+            }
+        };
+    }
+        
+    /**
+     * Get a goal decider to find tiles that an enemy player can not see.
+     *
+     * @param enemy The enemy {@code Player} to avoid.
+     * @return A suitable {@code GoalDecider}.
+     */
+    public static GoalDecider getStealthyGoalDecider(final Player enemy) {
+<span class="nc" id="L358">        return new GoalDecider() {</span>
+<span class="nc" id="L359">            private PathNode goal = null;</span>
+
+            @Override
+<span class="nc" id="L362">            public PathNode getGoal() { return goal; }</span>
+            @Override
+<span class="nc" id="L364">            public boolean hasSubGoals() { return true; }</span>
+            @Override
+            public boolean check(Unit u, PathNode pathNode) {
+<span class="nc" id="L367">                Tile tile = pathNode.getTile();</span>
+<span class="nc bnc" id="L368" title="All 2 branches missed.">                if (enemy.canSee(tile)) return false;</span>
+<span class="nc" id="L369">                this.goal = pathNode;</span>
+<span class="nc" id="L370">                return true;</span>
+            }
+        };
+    }
+
+    /**
+     * Get a goal decider to find tiles with a settlement with a lower
+     * high seas count than a unit currently has.  Useful for tunnelling
+     * out of intermittantly blocked rivers.
+     *
+     * @param unit The {@code Unit} to get the goal decider for.
+     * @return A suitable {@code GoalDecider}.
+     */
+    public static GoalDecider getReduceHighSeasCountGoalDecider(final Unit unit) {
+<span class="nc" id="L384">        return new GoalDecider() {</span>
+<span class="nc" id="L385">            private PathNode goal = null;</span>
+<span class="nc" id="L386">            private int score = unit.getTile().getHighSeasCount();</span>
+
+            @Override
+<span class="nc" id="L389">            public PathNode getGoal() { return goal; }</span>
+            @Override
+<span class="nc" id="L391">            public boolean hasSubGoals() { return true; }</span>
+            @Override
+            public boolean check(Unit u, PathNode pathNode) {
+<span class="nc" id="L394">                Tile tile = pathNode.getTile();</span>
+<span class="nc bnc" id="L395" title="All 2 branches missed.">                if (tile.getHighSeasCount() &lt; score) {</span>
+<span class="nc" id="L396">                    Settlement s = tile.getSettlement();</span>
+<span class="nc bnc" id="L397" title="All 2 branches missed.">                    if (unit.getOwner().owns(s)) {</span>
+<span class="nc" id="L398">                        this.goal = pathNode;</span>
+<span class="nc" id="L399">                        this.score = tile.getHighSeasCount();</span>
+<span class="nc" id="L400">                        return true;</span>
+                    }
+                }
+<span class="nc" id="L403">                return false;</span>
+            }
+        };
+    }
+
+    /**
+     * Get a goal decider to find tiles on river corners, preferring ones
+     * closest to the high seas.  This is useful when a unit is stuck on
+     * a river.  By moving to a corner (i.e. where another unit can get
+     * past it) the chance that the blockage clears is enhanced.
+     *
+     * @return A suitable goal decider.
+     */
+    public static GoalDecider getCornerGoalDecider() {
+<span class="nc" id="L417">        return new GoalDecider() {</span>
+<span class="nc" id="L418">            private PathNode goal = null;</span>
+<span class="nc" id="L419">            private int score = Integer.MAX_VALUE;</span>
+
+            @Override
+<span class="nc" id="L422">            public PathNode getGoal() { return goal; }</span>
+            @Override
+<span class="nc" id="L424">            public boolean hasSubGoals() { return true; }</span>
+            @Override
+            public boolean check(Unit u, PathNode pathNode) {
+<span class="nc" id="L427">                Tile tile = pathNode.getTile();</span>
+<span class="nc bnc" id="L428" title="All 4 branches missed.">                if (tile.getHighSeasCount() &lt; score &amp;&amp; tile.isRiverCorner()) {</span>
+<span class="nc" id="L429">                    score = tile.getHighSeasCount();</span>
+<span class="nc" id="L430">                    goal = pathNode;</span>
+<span class="nc" id="L431">                    return true;</span>
+                }
+<span class="nc" id="L433">                return false;</span>
+            }
+        };
+    }
+
+    /**
+     * A class to wrap a goal decider that searches for paths to an
+     * adjacent tile to a set of locations, and the results of such a
+     * search.
+     */
+    public static class MultipleAdjacentDecider {
+
+        private final GoalDecider gd;
+
+<span class="nc" id="L447">        private final HashMap&lt;Location, PathNode&gt; results = new HashMap&lt;&gt;();</span>
+
+
+        /**
+         * Create a multiple decider.
+         *
+         * @param locs The list of {@code Location}s to search for
+         *     paths to an adjacent location for.
+         */
+<span class="nc" id="L456">        public MultipleAdjacentDecider(final List&lt;Location&gt; locs) {</span>
+<span class="nc" id="L457">            this.gd = new GoalDecider() {</span>
+
+                    @Override
+<span class="nc" id="L460">                    public PathNode getGoal() { return null; }</span>
+                    @Override
+<span class="nc" id="L462">                    public boolean hasSubGoals() { return true; }</span>
+                    @Override
+                    public boolean check(Unit u, PathNode path) {
+<span class="nc" id="L465">                        Tile tile = path.getTile();</span>
+<span class="nc bnc" id="L466" title="All 2 branches missed.">                        if (tile == null) return false;</span>
+<span class="nc bnc" id="L467" title="All 2 branches missed.">                        for (Location loc : transform(locs,</span>
+<span class="nc" id="L468">                                l -&gt; tile.isAdjacent(l.getTile()))) {</span>
+<span class="nc" id="L469">                            PathNode p = results.get(loc);</span>
+<span class="nc bnc" id="L470" title="All 2 branches missed.">                            if (p == null</span>
+<span class="nc bnc" id="L471" title="All 2 branches missed.">                                || p.getCost() &gt; path.getCost()) {</span>
+<span class="nc" id="L472">                                results.put(loc, path);</span>
+                            }
+<span class="nc" id="L474">                        }</span>
+<span class="nc" id="L475">                        return false;</span>
+                    }
+                };
+<span class="nc" id="L478">        }</span>
+
+        public GoalDecider getGoalDecider() {
+<span class="nc" id="L481">            return gd;</span>
+        }
+
+        public HashMap&lt;Location, PathNode&gt; getResults() {
+<span class="nc" id="L485">            return results;</span>
+        }
+    };
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

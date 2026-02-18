@@ -1,0 +1,823 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TileViewer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.mapviewer</a> &gt; <span class="el_source">TileViewer.java</span></div><h1>TileViewer.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.mapviewer;
+
+import static net.sf.freecol.common.util.StringUtils.getBreakingPoint;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.awt.image.RescaleOp;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.control.FreeColClientHolder;
+import net.sf.freecol.client.gui.GUI;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.common.debug.DebugUtils;
+import net.sf.freecol.common.debug.FreeColDebugger;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.ColonyTile;
+import net.sf.freecol.common.model.Direction;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.LostCityRumour;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Resource;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.TileImprovement;
+import net.sf.freecol.common.model.TileItem;
+import net.sf.freecol.common.model.TileType;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.util.ImageUtils;
+
+
+/**
+ * TileViewer is a private helper class of MapViewer and SwingGUI.
+ * 
+ * This class is responsible for drawing map tiles
+ * for MapViewer and some GUI-panels.
+ *
+ * It needs to be a FreeColClientHolder so it can check the client options.
+ *
+ * create*() routines return a newly created BufferedImage, drawn with
+ * a Graphics2D object that is created and disposed within.
+ * display*() routines use a Graphics2D object passed as a parameter to
+ * draw to, which is neither created or disposed by the routine, just used.
+ */
+public final class TileViewer extends FreeColClientHolder {
+
+<span class="nc" id="L78">    private static final Logger logger = Logger.getLogger(TileViewer.class.getName());</span>
+
+    /** Standard rescaling used in displayTile. */
+<span class="nc" id="L81">    private static final RescaleOp standardRescale</span>
+        = new RescaleOp(new float[] { 0.8f, 0.8f, 0.8f, 1f },
+                        new float[] { 0, 0, 0, 0 },
+                        null);
+
+    /** The offset to paint the occupation indicator (in pixels). */
+    public static final int STATE_OFFSET_X = 25, STATE_OFFSET_Y = 10;
+
+    /**
+     * The image library derived from the parent map viewer.
+     * Beware that while it is final, its scale can change and this
+     * should be handled by calling updateScaledVariables().
+     */
+    private final ImageLibrary lib;
+
+    /** Scaled road painter. */
+    private RoadPainter rp;
+
+    /** Helper variables for displaying tiles. */
+    private int tileHeight, tileWidth, halfHeight;
+
+    /** Font for tile text. */
+    private Font tinyFont;
+
+    /** Fonts for the colony population chip. */
+    private Font emphFont, normFont;
+
+
+    /**
+     * The constructor to use.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param lib The (appropriately scaled) {@code ImageLibrary} to use.
+     */
+    public TileViewer(FreeColClient freeColClient, ImageLibrary lib) {
+<span class="nc" id="L116">        super(freeColClient);</span>
+
+<span class="nc" id="L118">        this.lib = lib;</span>
+<span class="nc" id="L119">        updateScaledVariables();</span>
+<span class="nc" id="L120">    }</span>
+
+
+    // Public API
+    
+    /**
+     * Update all the variables dependent on the library scale factor.
+     */
+    public void updateScaledVariables() {
+        // ATTENTION: we assume that all base tiles have the same size
+<span class="nc" id="L130">        Dimension tileSize = this.lib.getTileSize();</span>
+<span class="nc" id="L131">        this.rp = new RoadPainter(tileSize);</span>
+<span class="nc" id="L132">        this.tileHeight = tileSize.height;</span>
+<span class="nc" id="L133">        this.tileWidth = tileSize.width;</span>
+<span class="nc" id="L134">        this.halfHeight = tileHeight/2;</span>
+        // Allow fonts to disappear if too small
+<span class="nc" id="L136">        this.tinyFont = this.lib.getScaledFont(&quot;normal-plain-tiny&quot;, null);</span>
+<span class="nc" id="L137">        this.emphFont = this.lib.getScaledFont(&quot;simple-bold+italic-smaller&quot;, null);</span>
+<span class="nc" id="L138">        this.normFont = this.lib.getScaledFont(&quot;simple-bold-tiny&quot;, null);</span>
+<span class="nc" id="L139">    }</span>
+        
+    /**
+     * Create a {@code BufferedImage} and draw a {@code Tile} on it.
+     * Draws the terrain and improvements.
+     *
+     * Public for {@link GUI#createTileImageWithBeachBorderAndItems}.
+     *
+     * @param tile The Tile to draw.
+     * @return The image.
+     */
+    public BufferedImage createTileImageWithBeachBorderAndItems(Tile tile) {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (!tile.isExplored()) {</span>
+<span class="nc" id="L152">            return this.lib.getScaledTerrainImage(null, tile.getX(), tile.getY());</span>
+        }
+<span class="nc" id="L154">        final TileType tileType = tile.getType();</span>
+<span class="nc" id="L155">        BufferedImage overlayImage = this.lib.getScaledOverlayImage(tile);</span>
+        final int compoundHeight
+<span class="nc bnc" id="L157" title="All 2 branches missed.">            = (overlayImage != null) ? overlayImage.getHeight()</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">            : (tileType.isForested()) ? this.lib.getForestedTileSize().height</span>
+<span class="nc" id="L159">            : this.tileHeight;</span>
+<span class="nc" id="L160">        BufferedImage image = ImageUtils.createBufferedImage(this.tileWidth, compoundHeight);</span>
+<span class="nc" id="L161">        Graphics2D g2d = image.createGraphics();</span>
+<span class="nc" id="L162">        g2d.translate(0, compoundHeight - this.tileHeight);</span>
+<span class="nc" id="L163">        displayAnimatedBaseTiles(g2d, tile, false);</span>
+<span class="nc" id="L164">        displayTileWithBeach(g2d, tile);</span>
+<span class="nc" id="L165">        displayTileItems(g2d, tile, null, overlayImage);</span>
+<span class="nc" id="L166">        g2d.dispose();</span>
+<span class="nc" id="L167">        return image;</span>
+    }
+
+    /**
+     * Create a {@code BufferedImage} and draw a {@code Tile} on it.
+     *
+     * Public for {@link GUI#createTileImage}.
+     *
+     * @param tile The {@code Tile} to draw.
+     * @param player The {@code Player} to draw for.
+     * @return The image.
+     */
+    public BufferedImage createTileImage(Tile tile, Player player) {
+<span class="nc" id="L180">        final TileType tileType = tile.getType();</span>
+<span class="nc" id="L181">        BufferedImage overlayImage = this.lib.getScaledOverlayImage(tile);</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        final int compoundHeight = (overlayImage != null)</span>
+<span class="nc" id="L183">            ? overlayImage.getHeight()</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">            : (tileType.isForested())</span>
+<span class="nc" id="L185">            ? this.lib.getForestedTileSize().height</span>
+<span class="nc" id="L186">            : this.tileHeight;</span>
+<span class="nc" id="L187">        BufferedImage image = ImageUtils.createBufferedImage(this.tileWidth, compoundHeight);</span>
+<span class="nc" id="L188">        Graphics2D g2d = image.createGraphics();</span>
+<span class="nc" id="L189">        g2d.translate(0, compoundHeight - this.tileHeight);</span>
+<span class="nc" id="L190">        displayTile(g2d, tile, player, overlayImage);</span>
+<span class="nc" id="L191">        g2d.dispose();</span>
+<span class="nc" id="L192">        return image;</span>
+    }
+
+    /**
+     * Create a {@code BufferedImage} and draw a {@code Tile} on it.
+     * The visualization of the {@code Tile} also includes information
+     * from the corresponding {@code ColonyTile} of the given
+     * {@code Colony}.
+     *
+     * Public for {@link GUI#createColonyTileImage}.
+     *
+     * @param tile The {@code Tile} to draw.
+     * @param colony The {@code Colony} to create the visualization
+     *      of the {@code Tile} for. This object is also used to
+     *      get the {@code ColonyTile} for the given {@code Tile}.
+     * @return The image.
+     */
+    public BufferedImage createColonyTileImage(Tile tile, Colony colony) {
+<span class="nc" id="L210">        final TileType tileType = tile.getType();</span>
+<span class="nc" id="L211">        BufferedImage overlayImage = this.lib.getScaledOverlayImage(tile);</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        final int compoundHeight = (overlayImage != null)</span>
+<span class="nc" id="L213">            ? overlayImage.getHeight()</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">            : ((tileType.isForested())</span>
+<span class="nc" id="L215">                ? this.lib.getForestedTileSize().height</span>
+<span class="nc" id="L216">                : this.tileHeight);</span>
+<span class="nc" id="L217">        BufferedImage image = ImageUtils.createBufferedImage(this.tileWidth, compoundHeight);</span>
+<span class="nc" id="L218">        Graphics2D g2d = image.createGraphics();</span>
+<span class="nc" id="L219">        g2d.translate(0, compoundHeight - this.tileHeight);</span>
+<span class="nc" id="L220">        displayColonyTile(g2d, tile, colony, overlayImage);</span>
+<span class="nc" id="L221">        g2d.dispose();</span>
+<span class="nc" id="L222">        return image;</span>
+    }
+
+    /**
+     * Displays the 3x3 tiles for the TilesPanel in ColonyPanel.
+     * 
+     * Public for {@link GUI#displayColonyTiles}.
+     *
+     * @param g2d The {@code Graphics2D} object on which to draw
+     *      the {@code Tile}.
+     * @param tiles The array containing the {@code Tile} objects to draw.
+     * @param colony The {@code Colony} to create the visualization
+     *      of the {@code Tile} objects for.
+     */
+    public void displayColonyTiles(Graphics2D g2d, Tile[][] tiles,
+                                   Colony colony) {
+<span class="nc bnc" id="L238" title="All 2 branches missed.">        for (int x = 0; x &lt; tiles.length; x++) {</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">            for (int y = 0; y &lt; tiles[x].length; y++) {</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">                if (tiles[x][y] != null) {</span>
+<span class="nc" id="L241">                    int xx = (((tiles.length-1 - x) + y) * this.tileWidth) / 2;</span>
+<span class="nc" id="L242">                    int yy = ((x + y) * this.tileHeight) / 2;</span>
+<span class="nc" id="L243">                    g2d.translate(xx, yy);</span>
+<span class="nc" id="L244">                    BufferedImage overlayImage</span>
+<span class="nc" id="L245">                        = this.lib.getScaledOverlayImage(tiles[x][y]);</span>
+<span class="nc" id="L246">                    displayColonyTile(g2d, tiles[x][y], colony, overlayImage);</span>
+<span class="nc" id="L247">                    g2d.translate(-xx, -yy);</span>
+                }
+            }
+        }
+<span class="nc" id="L251">    }</span>
+
+    /**
+     * Displays the given colony tile.
+     *
+     * The visualization of the {@code Tile} also includes information
+     * from the corresponding {@code ColonyTile} from the given
+     * {@code Colony}.
+     *
+     * @param g2d The {@code Graphics2D} on which to draw.
+     * @param tile The {@code Tile} to draw.
+     * @param colony The {@code Colony} to create the visualization
+     *      of the {@code Tile} for. This object is also used to
+     *      get the {@code ColonyTile} for the given {@code Tile}.
+     * @param overlayImage The BufferedImage of the tile overlay.
+     */
+    private void displayColonyTile(Graphics2D g2d, Tile tile, Colony colony,
+                                   BufferedImage overlayImage) {
+<span class="nc" id="L269">        displayTile(g2d, tile, colony.getOwner(), overlayImage);</span>
+
+<span class="nc" id="L271">        ColonyTile colonyTile = colony.getColonyTile(tile);</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        if (colonyTile == null) return;</span>
+
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        switch (colonyTile.getNoWorkReason()) {</span>
+        case NONE: case COLONY_CENTER: case CLAIM_REQUIRED:
+<span class="nc" id="L276">            break;</span>
+        default:
+<span class="nc" id="L278">            g2d.drawImage(this.lib.getScaledImage(ImageLibrary.TILE_TAKEN),</span>
+                          0, 0, null);
+        }
+<span class="nc" id="L281">        int price = colony.getOwner().getLandPrice(tile);</span>
+<span class="nc bnc" id="L282" title="All 4 branches missed.">        if (price &gt; 0 &amp;&amp; !tile.hasSettlement()) {</span>
+<span class="nc" id="L283">            displayCenteredImage(g2d,</span>
+<span class="nc" id="L284">                this.lib.getScaledImage(ImageLibrary.TILE_OWNED_BY_INDIANS));</span>
+        }
+
+<span class="nc" id="L287">        Unit unit = colonyTile.getOccupyingUnit();</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">        if (unit != null) {</span>
+<span class="nc" id="L289">            BufferedImage image = this.lib.getSmallerUnitImage(unit);</span>
+<span class="nc" id="L290">            g2d.drawImage(image,</span>
+<span class="nc" id="L291">                          this.tileWidth/4 - image.getWidth() / 2,</span>
+<span class="nc" id="L292">                          this.halfHeight - image.getHeight() / 2, null);</span>
+            // Draw an occupation and nation indicator.
+<span class="nc" id="L294">            Player owner = getMyPlayer();</span>
+<span class="nc" id="L295">            String text = Messages.message(unit.getOccupationLabel(owner, false));</span>
+<span class="nc" id="L296">            g2d.drawImage(this.lib.getOccupationIndicatorChip(g2d, unit, text),</span>
+<span class="nc" id="L297">                          this.lib.scaleInt(STATE_OFFSET_X), 0, null);</span>
+        }
+<span class="nc" id="L299">    }</span>
+
+    /**
+     * Displays the given {@code Tile}.
+     *
+     * @param g2d The {@code Graphics2D} on which to draw the tile.
+     * @param tile The {@code Tile} to draw.
+     * @param player The {@code Player} to draw for.
+     * @param overlayImage The BufferedImage for the tile overlay.
+     */
+    private void displayTile(Graphics2D g2d, Tile tile, Player player,
+                             BufferedImage overlayImage) {
+<span class="nc" id="L311">        displayAnimatedBaseTiles(g2d, tile, false);</span>
+<span class="nc" id="L312">        displayTileWithBeach(g2d, tile);</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">        if (!tile.isExplored()) return;</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">        if (!getClientOptions().isRiverAnimationEnabled()</span>
+<span class="nc bnc" id="L315" title="All 4 branches missed.">                || !tile.hasRiver() &amp;&amp; !hasRiverDelta(tile)) {</span>
+<span class="nc" id="L316">            drawBaseTileTransitions(g2d, tile);</span>
+        }
+        
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        RescaleOp rop = (player.canSee(tile)) ? null : standardRescale;</span>
+<span class="nc" id="L320">        displayTileItems(g2d, tile, rop, overlayImage);</span>
+<span class="nc" id="L321">        displaySettlementWithChipsOrPopulationNumber(g2d, tile, false, rop);</span>
+<span class="nc" id="L322">        displayOptionalTileText(g2d, tile);</span>
+<span class="nc" id="L323">    }</span>
+
+    /**
+     * Centers the given Image on the tile.
+     *
+     * @param g2d The {@code Graphics2D} on which to draw.
+     * @param image The {@code BufferedImage} to draw.
+     */
+    public void displayCenteredImage(Graphics2D g2d, BufferedImage image) {
+<span class="nc" id="L332">        displayCenteredImage(g2d, image, null);</span>
+<span class="nc" id="L333">    }</span>
+
+    /**
+     * Centers the given Image on the tile.
+     *
+     * @param g2d The {@code Graphics2D} on which to draw.
+     * @param image The {@code BufferedImage} to draw.
+     * @param rop An optional {@code RescaleOp} for fog of war.
+     */
+    public void displayCenteredImage(Graphics2D g2d, BufferedImage image,
+                                     RescaleOp rop) {
+<span class="nc" id="L344">        g2d.drawImage(image, rop,</span>
+<span class="nc" id="L345">                      (this.tileWidth - image.getWidth())/2,</span>
+<span class="nc" id="L346">                      (this.tileHeight - image.getHeight())/2);</span>
+<span class="nc" id="L347">    }</span>
+
+    /**
+     * Centers the given Image on the tile, ensuring it is not drawing
+     * over tiles south of it.
+     *
+     * @param g2d The {@code Graphics2D} on which to draw.
+     * @param image The {@code BufferedImage} to draw.
+     * @param rop An optional {@code RescaleOp} for fog of war.
+     */
+    private void displayLargeCenteredImage(Graphics2D g2d, BufferedImage image,
+                                           RescaleOp rop) {
+<span class="nc" id="L359">        int x = (this.tileWidth - image.getWidth())/2,</span>
+<span class="nc" id="L360">            y = this.tileHeight - image.getHeight();</span>
+<span class="nc bnc" id="L361" title="All 2 branches missed.">        if (y &gt; 0) y /= 2;</span>
+<span class="nc" id="L362">        g2d.drawImage(image, rop, x, y);</span>
+<span class="nc" id="L363">    }</span>
+
+    /**
+     * Draw animated ocean.
+     *
+     * @param g2d The {@code Graphics2D} object on which to draw the tile.
+     * @param tile The {@code Tile} to draw if it is ocean.
+     * @param freezeAnimation The animation is paused if set to {@code true}. 
+     */
+    public void displayAnimatedBaseTiles(Graphics2D g2d, Tile tile, boolean freezeAnimation) {
+<span class="nc" id="L373">        final TileType tileType = tile.getType();</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">        if (tileType == null) {</span>
+<span class="nc" id="L375">            return;</span>
+        }
+        
+        /* 
+         * TODO: Add a single shared clock for MapViewer and TileViewer.
+         *       For now, just support water with 125ms frames.
+         */
+        final long ticks;
+<span class="nc bnc" id="L383" title="All 4 branches missed.">        if (freezeAnimation || !getClientOptions().isTerrainAnimationsEnabled()) {</span>
+<span class="nc" id="L384">            ticks = 0;</span>
+        } else {
+<span class="nc" id="L386">            ticks = System.currentTimeMillis() / 125;</span>
+        }
+        
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        if (tileType.isWater()) { // TODO: And animation enabled</span>
+<span class="nc" id="L390">            final List&lt;Direction&gt; directionsWithLand = allDirectionsWithLand(tile);</span>
+<span class="nc bnc" id="L391" title="All 2 branches missed.">            if (directionsWithLand.isEmpty()) {</span>
+<span class="nc" id="L392">                g2d.drawImage(this.lib.getAnimatedScaledTerrainImage(tileType, ticks), 0, 0, null);</span>
+            } else {
+<span class="nc" id="L394">                g2d.drawImage(this.lib.getAnimatedScaledWaterAndBeachTerrainImage(tileType, directionsWithLand, ticks), 0, 0, null);</span>
+            }
+<span class="nc bnc" id="L396" title="All 4 branches missed.">            if (getClientOptions().isRiverAnimationEnabled() &amp;&amp; hasRiverDelta(tile)) {</span>
+<span class="nc" id="L397">                drawBaseTileTransitions(g2d, tile);</span>
+<span class="nc" id="L398">                drawRiverMouth(g2d, tile, ticks);</span>
+            }
+<span class="nc bnc" id="L400" title="All 4 branches missed.">        } else if (getClientOptions().isRiverAnimationEnabled() &amp;&amp; tile.hasRiver()) {</span>
+<span class="nc" id="L401">            g2d.drawImage(this.lib.getScaledTerrainImage(tileType, tile.getX(), tile.getY()), 0, 0, null);</span>
+<span class="nc" id="L402">            drawBaseTileTransitions(g2d, tile);</span>
+<span class="nc" id="L403">            final BufferedImage img = this.lib.getAnimatedScaledRiverTerrainImage(tile, ticks);</span>
+<span class="nc bnc" id="L404" title="All 2 branches missed.">            if (img != null) {</span>
+<span class="nc" id="L405">                g2d.drawImage(img, 0, 0, null);</span>
+            }
+        }
+<span class="nc" id="L408">    }</span>
+
+    private List&lt;Direction&gt; allDirectionsWithLand(Tile tile) {
+<span class="nc" id="L411">        final List&lt;Direction&gt; directionsWithLand = Arrays.asList(Direction.values()).stream().filter(d -&gt; {</span>
+<span class="nc" id="L412">            final Tile neighbour = tile.getNeighbourOrNull(d);</span>
+<span class="nc bnc" id="L413" title="All 4 branches missed.">            return neighbour != null &amp;&amp; neighbour.isLand();</span>
+<span class="nc" id="L414">        }).collect(Collectors.toList());</span>
+<span class="nc" id="L415">        return directionsWithLand;</span>
+    }
+    
+    /**
+     * Displays the given Tile onto the given Graphics2D object at the
+     * location specified by the coordinates. Only base terrain will be drawn.
+     *
+     * @param g2d The {@code Graphics2D} object on which to draw the tile.
+     * @param tile The {@code Tile} to draw.
+     */
+    public void displayTileWithBeach(Graphics2D g2d, Tile tile) {
+<span class="nc" id="L426">        final TileType tileType = tile.getType();</span>
+<span class="nc" id="L427">        final int x = tile.getX();</span>
+<span class="nc" id="L428">        final int y = tile.getY();</span>
+
+<span class="nc bnc" id="L430" title="All 8 branches missed.">        final boolean outForBaseTileAnimation = (tileType != null) &amp;&amp; (tileType.isWater() || getClientOptions().isRiverAnimationEnabled() &amp;&amp; tile.hasRiver());</span>
+<span class="nc bnc" id="L431" title="All 2 branches missed.">        if (!outForBaseTileAnimation) {</span>
+            // ATTENTION: we assume that all base tiles have the same size
+<span class="nc" id="L433">            g2d.drawImage(this.lib.getScaledTerrainImage(tileType, x, y), 0, 0, null);</span>
+        }
+
+<span class="nc bnc" id="L436" title="All 2 branches missed.">        if (!tile.isExplored()) return;</span>
+        
+        /* 
+         * This is the old beach style. We might want to keep this as an option for
+         * systems with low memory.
+         *
+        if (!tile.isLand() &amp;&amp; tile.getStyle() &gt; 0) {
+            int edgeStyle = tile.getStyle() &gt;&gt; 4;
+            if (edgeStyle &gt; 0) {
+                g2d.drawImage(this.lib.getBeachEdgeImage(edgeStyle, x, y),
+                              0, 0, null);
+            }
+            int cornerStyle = tile.getStyle() &amp; 15;
+            if (cornerStyle &gt; 0) {
+                g2d.drawImage(this.lib.getBeachCornerImage(cornerStyle, x, y),
+                              0, 0, null);
+            }
+        }
+        */
+<span class="nc" id="L455">    }</span>
+    
+    void drawBaseTileTransitions(Graphics2D g2d, Tile tile) {
+<span class="nc bnc" id="L458" title="All 2 branches missed.">        if (getClientOptions().getRange(ClientOptions.GRAPHICS_QUALITY) == ClientOptions.GRAPHICS_QUALITY_LOWEST) {</span>
+<span class="nc" id="L459">            return;</span>
+        }
+        
+        /*
+         * We are using masks for creating transitions between base tiles.
+         */
+        
+<span class="nc" id="L466">        drawBaseTileTransitionAtDirection(g2d, tile, Direction.NE);</span>
+<span class="nc" id="L467">        drawBaseTileTransitionAtDirection(g2d, tile, Direction.SW);</span>
+        
+<span class="nc" id="L469">        drawBaseTileTransitionAtDirection(g2d, tile, Direction.NW);</span>
+<span class="nc" id="L470">        drawBaseTileTransitionAtDirection(g2d, tile, Direction.SE);</span>
+        
+<span class="nc bnc" id="L472" title="All 2 branches missed.">        if (!getClientOptions().isRiverAnimationEnabled()) {</span>
+<span class="nc" id="L473">            drawRiverMouth(g2d, tile, 0);</span>
+        }
+<span class="nc" id="L475">    }</span>
+    
+    private void drawBaseTileTransitionAtDirection(Graphics2D g2d, Tile tile, Direction direction) {
+<span class="nc bnc" id="L478" title="All 2 branches missed.">        final boolean useNiceCorners = getClientOptions().getRange(ClientOptions.GRAPHICS_QUALITY) &gt;= ClientOptions.GRAPHICS_QUALITY_NORMAL;</span>
+<span class="nc bnc" id="L479" title="All 2 branches missed.">        final boolean useVariations = getClientOptions().getRange(ClientOptions.GRAPHICS_QUALITY) &gt;= ClientOptions.GRAPHICS_QUALITY_HIGH;</span>
+<span class="nc" id="L480">        final BufferedImage transitionImage = this.lib.getBaseTileTransitionImage(tile, direction, useNiceCorners, useVariations);</span>
+<span class="nc bnc" id="L481" title="All 2 branches missed.">        if (transitionImage != null) {</span>
+<span class="nc" id="L482">            g2d.drawImage(transitionImage, 0, 0, null);</span>
+        }
+<span class="nc" id="L484">    }</span>
+    
+    boolean hasRiverDelta(Tile tile) {
+<span class="nc bnc" id="L487" title="All 2 branches missed.">        for (Direction direction : Direction.longSides) {</span>
+<span class="nc" id="L488">            Tile borderingTile = tile.getNeighbourOrNull(direction);</span>
+<span class="nc bnc" id="L489" title="All 8 branches missed.">            if (borderingTile == null || tile.isLand() || !borderingTile.isLand() || !tile.isExplored()) {</span>
+<span class="nc" id="L490">                continue;</span>
+            }
+            
+<span class="nc" id="L493">            final TileImprovement river = borderingTile.getRiver();</span>
+<span class="nc bnc" id="L494" title="All 2 branches missed.">            if (river == null) {</span>
+<span class="nc" id="L495">                continue;</span>
+            }
+            
+<span class="nc" id="L498">            final Direction reverseDirection = direction.getReverseDirection();</span>
+<span class="nc" id="L499">            final int magnitude = river.getRiverConnection(reverseDirection);</span>
+<span class="nc bnc" id="L500" title="All 2 branches missed.">            if (magnitude &lt;= 0) {</span>
+<span class="nc" id="L501">                continue;</span>
+            }
+<span class="nc" id="L503">            return true;</span>
+        }
+<span class="nc" id="L505">        return false;</span>
+    }
+    
+    private void drawRiverMouth(Graphics2D g2d, Tile tile, long ticks) {
+<span class="nc bnc" id="L509" title="All 2 branches missed.">        for (Direction direction : Direction.longSides) {</span>
+<span class="nc" id="L510">            Tile borderingTile = tile.getNeighbourOrNull(direction);</span>
+<span class="nc bnc" id="L511" title="All 8 branches missed.">            if (borderingTile == null || tile.isLand() || !borderingTile.isLand() || !tile.isExplored()) {</span>
+<span class="nc" id="L512">                continue;</span>
+            }
+            
+<span class="nc" id="L515">            final TileImprovement river = borderingTile.getRiver();</span>
+<span class="nc bnc" id="L516" title="All 2 branches missed.">            if (river == null) {</span>
+<span class="nc" id="L517">                continue;</span>
+            }
+            
+<span class="nc" id="L520">            final Direction reverseDirection = direction.getReverseDirection();</span>
+<span class="nc" id="L521">            final int magnitude = river.getRiverConnection(reverseDirection);</span>
+<span class="nc bnc" id="L522" title="All 2 branches missed.">            if (magnitude &lt;= 0) {</span>
+<span class="nc" id="L523">                continue;</span>
+            }
+
+            /*
+            final BufferedImage ri = this.lib.getRiverMouthImage(direction, magnitude, tile.getX(), tile.getY());
+            g2d.drawImage(ri, 0, 0, null);
+            */
+
+<span class="nc" id="L531">            final BufferedImage riverDelta = lib.getAnimatedScaledRiverDeltaTerrainImage(direction, ticks);</span>
+<span class="nc" id="L532">            g2d.drawImage(riverDelta, 0, 0, null);</span>
+<span class="nc" id="L533">        }</span>
+<span class="nc" id="L534">    }</span>
+
+    public void displayUnknownTileBorder(Graphics2D g2d, Tile tile) {
+<span class="nc bnc" id="L537" title="All 2 branches missed.">        if (!tile.isExplored()) return;</span>
+        
+<span class="nc bnc" id="L539" title="All 2 branches missed.">        for (Direction direction : Direction.values()) {</span>
+<span class="nc" id="L540">            Tile borderingTile = tile.getNeighbourOrNull(direction);</span>
+<span class="nc bnc" id="L541" title="All 4 branches missed.">            if (borderingTile != null &amp;&amp; !borderingTile.isExplored()) {</span>
+<span class="nc" id="L542">                g2d.drawImage(this.lib.getBorderImage(null, direction,</span>
+<span class="nc" id="L543">                                                      tile.getX(), tile.getY()),</span>
+                              0, 0, null);
+            }
+        }
+<span class="nc" id="L547">    }</span>
+
+    /**
+     * Displays the Tile text for a Tile.
+     * Shows tile names, coordinates and colony values.
+     *
+     * @param g2d The {@code Graphics2D} object on which the text gets drawn.
+     * @param tile The {@code Tile} to draw the text on.
+     */
+    public void displayOptionalTileText(Graphics2D g2d, Tile tile) {
+        // Do not bother when the text gets very small
+<span class="nc bnc" id="L558" title="All 2 branches missed.">        if (this.tinyFont == null) return;</span>
+
+<span class="nc" id="L560">        String text = null;</span>
+<span class="nc" id="L561">        int op = getClientOptions().getInteger(ClientOptions.DISPLAY_TILE_TEXT);</span>
+<span class="nc bnc" id="L562" title="All 5 branches missed.">        switch (op) {</span>
+        case ClientOptions.DISPLAY_TILE_TEXT_NAMES:
+<span class="nc" id="L564">            text = Messages.getName(tile);</span>
+<span class="nc" id="L565">            break;</span>
+        case ClientOptions.DISPLAY_TILE_TEXT_OWNERS:
+<span class="nc bnc" id="L567" title="All 2 branches missed.">            if (tile.getOwner() != null) {</span>
+<span class="nc" id="L568">                text = Messages.message(tile.getOwner().getNationLabel());</span>
+            }
+            break;
+        case ClientOptions.DISPLAY_TILE_TEXT_REGIONS:
+<span class="nc bnc" id="L572" title="All 2 branches missed.">            if (tile.getRegion() != null) {</span>
+<span class="nc bnc" id="L573" title="All 2 branches missed.">                if (FreeColDebugger.isInDebugMode(FreeColDebugger.DebugMode.MENUS)</span>
+<span class="nc bnc" id="L574" title="All 2 branches missed.">                    &amp;&amp; tile.getRegion().getName() == null) {</span>
+<span class="nc" id="L575">                    text = tile.getRegion().getSuffix();</span>
+                } else {
+<span class="nc" id="L577">                    text = Messages.message(tile.getRegion().getLabel());</span>
+                }
+            }
+            break;
+        case ClientOptions.DISPLAY_TILE_TEXT_EMPTY:
+<span class="nc" id="L582">            break;</span>
+        default:
+<span class="nc" id="L584">            logger.warning(&quot;displayTileText option &quot; + op + &quot; out of range&quot;);</span>
+            break;
+        }
+
+<span class="nc" id="L588">        final FontMetrics fm = g2d.getFontMetrics();</span>
+<span class="nc" id="L589">        g2d.setColor(Color.BLACK);</span>
+<span class="nc" id="L590">        g2d.setFont(this.tinyFont);</span>
+<span class="nc bnc" id="L591" title="All 2 branches missed.">        if (text != null) {</span>
+<span class="nc" id="L592">            int b = getBreakingPoint(text);</span>
+<span class="nc bnc" id="L593" title="All 2 branches missed.">            if (b == -1) {</span>
+<span class="nc" id="L594">                g2d.drawString(text,</span>
+<span class="nc" id="L595">                    (this.tileWidth - fm.stringWidth(text)) / 2,</span>
+<span class="nc" id="L596">                    (this.tileHeight - fm.getAscent()) / 2);</span>
+            } else {
+<span class="nc" id="L598">                g2d.drawString(text.substring(0, b),</span>
+<span class="nc" id="L599">                    (this.tileWidth - fm.stringWidth(text.substring(0, b)))/2,</span>
+<span class="nc" id="L600">                    this.halfHeight - (fm.getAscent()*2)/3);</span>
+<span class="nc" id="L601">                g2d.drawString(text.substring(b+1),</span>
+<span class="nc" id="L602">                    (this.tileWidth - fm.stringWidth(text.substring(b+1)))/2,</span>
+<span class="nc" id="L603">                    this.halfHeight + (fm.getAscent()*2)/3);</span>
+            }
+        }
+
+<span class="nc bnc" id="L607" title="All 2 branches missed.">        if (FreeColDebugger.debugDisplayCoordinates()) {</span>
+<span class="nc" id="L608">            String posString = tile.getX() + &quot;, &quot; + tile.getY();</span>
+<span class="nc bnc" id="L609" title="All 2 branches missed.">            if (tile.getHighSeasCount() &gt;= 0) {</span>
+<span class="nc" id="L610">                posString += &quot;/&quot; + Integer.toString(tile.getHighSeasCount());</span>
+            }
+<span class="nc" id="L612">            g2d.drawString(posString,</span>
+<span class="nc" id="L613">                (this.tileWidth - fm.stringWidth(posString)) / 2,</span>
+<span class="nc" id="L614">                (this.tileHeight - fm.getAscent()) / 2);</span>
+        }
+<span class="nc" id="L616">        String value = DebugUtils.getColonyValue(tile);</span>
+<span class="nc bnc" id="L617" title="All 2 branches missed.">        if (value != null) {</span>
+<span class="nc" id="L618">            g2d.drawString(value,</span>
+<span class="nc" id="L619">                (this.tileWidth - fm.stringWidth(value)) / 2,</span>
+<span class="nc" id="L620">                (this.tileHeight - fm.getAscent()) / 2);</span>
+        }
+<span class="nc" id="L622">    }</span>
+
+    /**
+     * Displays the given Tile onto the given Graphics2D object at the
+     * location specified by the coordinates. Settlements and Lost
+     * City Rumours will be shown.
+     *
+     * @param g2d The Graphics2D object on which to draw the Tile.
+     * @param tile The Tile to draw.
+     * @param withNumber Whether to display the number of units present.
+     * @param rop An optional RescaleOp for fog of war.
+     */
+    public void displaySettlementWithChipsOrPopulationNumber(Graphics2D g2d,
+        Tile tile, boolean withNumber, RescaleOp rop) {
+<span class="nc" id="L636">        final Player player = getMyPlayer();</span>
+<span class="nc" id="L637">        final Settlement settlement = tile.getSettlement();</span>
+<span class="nc bnc" id="L638" title="All 2 branches missed.">        if (settlement == null) return;</span>
+        
+        // Draw image of settlement in center of the tile
+<span class="nc" id="L641">        BufferedImage sImage = this.lib.getScaledSettlementImage(settlement);</span>
+<span class="nc" id="L642">        displayLargeCenteredImage(g2d, sImage, rop);</span>
+
+<span class="nc bnc" id="L644" title="All 2 branches missed.">        if (settlement instanceof Colony) {</span>
+<span class="nc" id="L645">            final Colony colony = (Colony)settlement;</span>
+<span class="nc bnc" id="L646" title="All 2 branches missed.">            if (withNumber) {</span>
+<span class="nc bnc" id="L647" title="All 2 branches missed.">                Font font = (colony.getPreferredSizeChange() &gt; 0)</span>
+<span class="nc" id="L648">                    ? this.emphFont : this.normFont;</span>
+<span class="nc bnc" id="L649" title="All 2 branches missed.">                if (font != null) {</span>
+<span class="nc" id="L650">                    String populationString</span>
+<span class="nc" id="L651">                        = Integer.toString(colony.getApparentUnitCount());</span>
+<span class="nc" id="L652">                    String colorString = &quot;color.map.productionBonus.&quot;</span>
+<span class="nc" id="L653">                        + colony.getProductionBonus();</span>
+                    // If more units can be added, go larger and use italic
+<span class="nc" id="L655">                    BufferedImage stringImage</span>
+<span class="nc" id="L656">                        = this.lib.getStringImage(g2d, populationString,</span>
+<span class="nc" id="L657">                            ImageLibrary.getColor(colorString), font);</span>
+<span class="nc" id="L658">                    displayCenteredImage(g2d, stringImage, rop);</span>
+                }
+            }
+
+<span class="nc bnc" id="L662" title="All 2 branches missed.">        } else if (settlement instanceof IndianSettlement) {</span>
+<span class="nc" id="L663">            IndianSettlement is = (IndianSettlement)settlement;</span>
+            BufferedImage chip;
+<span class="nc" id="L665">            float xOffset = this.lib.scaleInt(STATE_OFFSET_X);</span>
+<span class="nc" id="L666">            float yOffset = this.lib.scaleInt(STATE_OFFSET_Y);</span>
+<span class="nc" id="L667">            final int colonyLabels = getClientOptions()</span>
+<span class="nc" id="L668">                .getInteger(ClientOptions.DISPLAY_COLONY_LABELS);</span>
+<span class="nc bnc" id="L669" title="All 2 branches missed.">            if (colonyLabels != ClientOptions.COLONY_LABELS_MODERN) {</span>
+                // Draw the settlement chip
+<span class="nc" id="L671">                chip = this.lib.getIndianSettlementChip(g2d, is);</span>
+<span class="nc" id="L672">                int cWidth = chip.getWidth();</span>
+<span class="nc" id="L673">                g2d.drawImage(chip, rop, (int)xOffset, (int)yOffset);</span>
+<span class="nc" id="L674">                xOffset += cWidth + 2;</span>
+
+                // Draw the mission chip if needed.
+<span class="nc" id="L677">                Unit missionary = is.getMissionary();</span>
+<span class="nc bnc" id="L678" title="All 2 branches missed.">                if (missionary != null) {</span>
+<span class="nc" id="L679">                    boolean expert</span>
+<span class="nc" id="L680">                        = missionary.hasAbility(Ability.EXPERT_MISSIONARY);</span>
+<span class="nc" id="L681">                    g2d.drawImage(this.lib.getMissionChip(g2d,</span>
+<span class="nc" id="L682">                            missionary.getOwner(), expert),</span>
+                        rop, (int)xOffset, (int)yOffset);
+<span class="nc" id="L684">                    xOffset += cWidth + 2;</span>
+                }
+            }
+
+            // Draw the alarm chip if needed.
+<span class="nc bnc" id="L689" title="All 2 branches missed.">            if ((chip = this.lib.getAlarmChip(g2d, is, player)) != null) {</span>
+<span class="nc" id="L690">                g2d.drawImage(chip, rop, (int)xOffset, (int)yOffset);</span>
+            }
+<span class="nc" id="L692">        } else {</span>
+<span class="nc" id="L693">            logger.warning(&quot;Bogus settlement: &quot; + settlement);</span>
+        }
+<span class="nc" id="L695">    }</span>
+
+    /**
+     * Displays the given tile's items onto the given Graphics2D object.
+     * Additions and improvements to Tile will be drawn.
+     * Only works for explored tiles.
+     *
+     * @param g2d The Graphics2D object on which to draw the Tile.
+     * @param tile The Tile to draw.
+     * @param rop An optional RescaleOp for fog of war.
+     * @param overlayImage The BufferedImage for the tile overlay.
+     */
+    public void displayTileItems(Graphics2D g2d, Tile tile, RescaleOp rop,
+                                 BufferedImage overlayImage) {
+        // ATTENTION: we assume that only overlays and forests
+        // might be taller than a tile.
+        
+         // layer additions and improvements according to zIndex
+<span class="nc" id="L713">        List&lt;TileItem&gt; tileItems = new ArrayList&lt;&gt;(tile.getCompleteItems());</span>
+<span class="nc" id="L714">        Collections.sort(tileItems, (a, b) -&gt; {</span>
+<span class="nc" id="L715">            return Integer.valueOf(a.getZIndex()).compareTo(b.getZIndex());</span>
+        });
+<span class="nc" id="L717">        int startIndex = 0;</span>
+<span class="nc bnc" id="L718" title="All 2 branches missed.">        for (int index = startIndex; index &lt; tileItems.size(); index++) {</span>
+<span class="nc bnc" id="L719" title="All 2 branches missed.">            if (tileItems.get(index).getZIndex() &lt; Tile.OVERLAY_ZINDEX) {</span>
+<span class="nc" id="L720">                displayTileItem(g2d, tile, rop, tileItems.get(index));</span>
+<span class="nc" id="L721">                startIndex = index + 1;</span>
+            } else {
+<span class="nc" id="L723">                startIndex = index;</span>
+<span class="nc" id="L724">                break;</span>
+            }
+        }
+        // Tile Overlays (eg. hills and mountains)
+<span class="nc bnc" id="L728" title="All 2 branches missed.">        if (overlayImage != null) {</span>
+<span class="nc" id="L729">            g2d.drawImage(overlayImage, rop,</span>
+<span class="nc" id="L730">                0, (this.tileHeight - overlayImage.getHeight()));</span>
+        }
+<span class="nc bnc" id="L732" title="All 2 branches missed.">        for (int index = startIndex; index &lt; tileItems.size(); index++) {</span>
+<span class="nc bnc" id="L733" title="All 2 branches missed.">            if (tileItems.get(index).getZIndex() &lt; Tile.FOREST_ZINDEX) {</span>
+<span class="nc" id="L734">                displayTileItem(g2d, tile, rop, tileItems.get(index));</span>
+<span class="nc" id="L735">                startIndex = index + 1;</span>
+            } else {
+<span class="nc" id="L737">                startIndex = index;</span>
+<span class="nc" id="L738">                break;</span>
+            }
+        }
+        // Forest
+<span class="nc bnc" id="L742" title="All 2 branches missed.">        if (tile.isForested()) {</span>
+<span class="nc" id="L743">            BufferedImage forestImage = this.lib.getScaledForestImage(tile.getType(),</span>
+<span class="nc" id="L744">                tile.getRiverStyle());</span>
+<span class="nc" id="L745">            g2d.drawImage(forestImage, rop, 0, (this.tileHeight - forestImage.getHeight()));</span>
+<span class="nc bnc" id="L746" title="All 2 branches missed.">        } else if (getClientOptions().getRange(ClientOptions.GRAPHICS_QUALITY) &gt;= ClientOptions.GRAPHICS_QUALITY_HIGH) {</span>
+<span class="nc" id="L747">            drawForestCornerImages(tile, g2d);</span>
+        }
+        
+        // draw all remaining items
+<span class="nc bnc" id="L751" title="All 2 branches missed.">        for (TileItem ti : tileItems.subList(startIndex, tileItems.size())) {</span>
+<span class="nc" id="L752">            displayTileItem(g2d, tile, rop, ti);</span>
+<span class="nc" id="L753">        }</span>
+<span class="nc" id="L754">    }</span>
+
+
+    private void drawForestCornerImages(Tile tile, Graphics2D g1) {
+<span class="nc" id="L758">        drawForestCornerImageFor(tile, g1, Direction.NW, Direction.NE, Direction.N);</span>
+<span class="nc" id="L759">        drawForestCornerImageFor(tile, g1, Direction.SW, Direction.SE, Direction.S);</span>
+<span class="nc" id="L760">        drawForestCornerImageFor(tile, g1, Direction.NE, Direction.SE, Direction.E);</span>
+<span class="nc" id="L761">        drawForestCornerImageFor(tile, g1, Direction.NW, Direction.SW, Direction.W);</span>
+<span class="nc" id="L762">    }</span>
+
+    private void drawForestCornerImageFor(Tile tile, Graphics2D g1, Direction d1, Direction d2, Direction d3) {
+<span class="nc bnc" id="L765" title="All 2 branches missed.">        if (tile.hasRiver()) {</span>
+<span class="nc" id="L766">            return;</span>
+        }
+<span class="nc" id="L768">        final Tile tile1 = tile.getNeighbourOrNull(d1);</span>
+<span class="nc bnc" id="L769" title="All 4 branches missed.">        if (tile1 == null || !tile1.isForested()) {</span>
+<span class="nc" id="L770">            return;</span>
+        }
+<span class="nc" id="L772">        final Tile tile2 = tile.getNeighbourOrNull(d2);</span>
+<span class="nc bnc" id="L773" title="All 2 branches missed.">        if (hasSameForestedTileType(tile1, tile2)) {</span>
+<span class="nc" id="L774">            final BufferedImage forestCornerImage = lib.getForestCornerImage(tile1.getType(), d3);</span>
+<span class="nc bnc" id="L775" title="All 2 branches missed.">            if (forestCornerImage != null) {</span>
+<span class="nc" id="L776">                g1.drawImage(forestCornerImage, 0, (this.tileHeight - forestCornerImage.getHeight()), null);</span>
+            }
+        }
+<span class="nc" id="L779">    }</span>
+    
+    private boolean hasSameForestedTileType(Tile t1, Tile t2) {
+<span class="nc bnc" id="L782" title="All 8 branches missed.">        return t1 != null &amp;&amp; t2 != null &amp;&amp; t1.isForested() &amp;&amp; t1.getType() == t2.getType();</span>
+    }
+
+    /**
+     * Draws the given TileItem on the given Tile.
+     *
+     * @param g2d The {@code Graphics} to draw to.
+     * @param tile The {@code Tile} to draw from.
+     * @param rop An optional RescaleOp for fog of war.
+     * @param item The {@code TileItem} to draw.
+     */
+    private void displayTileItem(Graphics2D g2d, Tile tile, RescaleOp rop, TileItem item) {
+<span class="nc bnc" id="L794" title="All 2 branches missed.">        if (item instanceof TileImprovement) {</span>
+<span class="nc" id="L795">            TileImprovement ti = (TileImprovement)item;</span>
+<span class="nc bnc" id="L796" title="All 2 branches missed.">            if (!ti.isComplete()) return;</span>
+<span class="nc bnc" id="L797" title="All 2 branches missed.">            if (ti.isRoad()) {</span>
+<span class="nc" id="L798">                this.rp.displayRoad(g2d, tile, rop);</span>
+<span class="nc bnc" id="L799" title="All 2 branches missed.">            } else if (ti.isRiver()) {</span>
+<span class="nc bnc" id="L800" title="All 2 branches missed.">                if (getClientOptions().isRiverAnimationEnabled()) {</span>
+                    // Painted elsewhere.
+<span class="nc" id="L802">                    return;</span>
+                }
+<span class="nc" id="L804">                final BufferedImage img = this.lib.getAnimatedScaledRiverTerrainImage(tile, 0);</span>
+<span class="nc bnc" id="L805" title="All 2 branches missed.">                if (img != null) {</span>
+<span class="nc" id="L806">                    g2d.drawImage(img, rop, 0, 0);</span>
+                }
+<span class="nc" id="L808">            } else {</span>
+<span class="nc" id="L809">                BufferedImage img = this.lib.getTileImprovementImage(ti.getType().getId());</span>
+<span class="nc bnc" id="L810" title="All 2 branches missed.">                if (img != null) g2d.drawImage(img, rop, 0, 0);</span>
+            }
+<span class="nc bnc" id="L812" title="All 2 branches missed.">        } else if (item instanceof LostCityRumour) {</span>
+<span class="nc" id="L813">            displayCenteredImage(g2d,</span>
+<span class="nc" id="L814">                this.lib.getScaledImage(ImageLibrary.LOST_CITY_RUMOUR),</span>
+                rop);
+<span class="nc bnc" id="L816" title="All 2 branches missed.">        } else if (item instanceof Resource) {</span>
+<span class="nc" id="L817">            displayCenteredImage(g2d,</span>
+<span class="nc" id="L818">                this.lib.getScaledResourceImage((Resource)item),</span>
+                rop);
+        }
+<span class="nc" id="L821">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

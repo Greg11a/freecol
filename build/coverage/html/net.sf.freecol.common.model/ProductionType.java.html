@@ -1,0 +1,587 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProductionType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">ProductionType.java</span></div><h1>ProductionType.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import net.sf.freecol.common.util.Utils;
+
+
+/**
+ * This class describes a possible production type of a tile or building.
+ */
+public class ProductionType extends FreeColSpecObject {
+
+    public static final String TAG = &quot;production&quot;;
+    
+<span class="fc" id="L45">    public static final List&lt;AbstractGoods&gt; EMPTY_LIST</span>
+<span class="fc" id="L46">        = Collections.&lt;AbstractGoods&gt;emptyList();</span>
+
+
+    /** Whether this production type applies only to colony center tiles. */
+    private boolean unattended;
+
+    /**
+     * The production level of this production type (usually a
+     * difficulty level key).
+     */
+    private String productionLevel;
+
+    /** The goods that are produced by this production type. */
+<span class="fc" id="L59">    private List&lt;AbstractGoods&gt; outputs = null;</span>
+
+    /** The goods that are consumed by this production type. */
+<span class="fc" id="L62">    private List&lt;AbstractGoods&gt; inputs = null;</span>
+
+
+    /**
+     * Simple constructor.
+     *
+     * @param specification The {@code Specification} to refer to.
+     */
+    public ProductionType(Specification specification) {
+<span class="fc" id="L71">        super(specification);</span>
+<span class="fc" id="L72">    }</span>
+
+    /**
+     * Creates a new production type that consumes no raw materials
+     * and produces the given output.
+     *
+     * @param outputs A list of the {@code AbstractGoods} produced.
+     */
+    private ProductionType(List&lt;AbstractGoods&gt; outputs) {
+<span class="nc" id="L81">        this((Specification)null);</span>
+
+<span class="nc" id="L83">        this.outputs = outputs;</span>
+<span class="nc" id="L84">    }</span>
+
+    /**
+     * Creates a new production type that consumes the given raw materials
+     * and produces the given output.
+     *
+     * @param inputs A list of the {@code AbstractGoods} consumed.
+     * @param outputs A list of the {@code AbstractGoods} produced.
+     */
+    public ProductionType(List&lt;AbstractGoods&gt; inputs,
+                          List&lt;AbstractGoods&gt; outputs) {
+<span class="nc" id="L95">        this(outputs);</span>
+
+<span class="nc" id="L97">        this.inputs = inputs;</span>
+<span class="nc" id="L98">    }</span>
+
+    /**
+     * Convenience constructor for a production type with a single output.
+     *
+     * @param output The {@code AbstractGoods} produced.
+     * @param unattended True if this is unattended production.
+     * @param level The difficulty level key.
+     */
+    public ProductionType(AbstractGoods output, boolean unattended,
+                          String level) {
+<span class="nc" id="L109">        this(new ArrayList&lt;AbstractGoods&gt;());</span>
+
+<span class="nc" id="L111">        this.outputs.add(output);</span>
+<span class="nc" id="L112">        this.unattended = unattended;</span>
+<span class="nc" id="L113">        this.productionLevel = level;</span>
+<span class="nc" id="L114">    }</span>
+
+    /**
+     * Convenience constructor for a new {@code ProductionType}
+     * instance with a single input and output.
+     *
+     * @param input The {@code GoodsType} consumed.
+     * @param output The {@code GoodsType} produced.
+     * @param amount The amount of goods both produced and consumed.
+     */
+    public ProductionType(GoodsType input, GoodsType output, int amount) {
+<span class="nc" id="L125">        this((Specification)null);</span>
+        
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (input != null) {</span>
+<span class="nc" id="L128">            this.inputs = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L129">            this.inputs.add(new AbstractGoods(input, amount));</span>
+        }
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (output != null) {</span>
+<span class="nc" id="L132">            this.outputs = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L133">            this.outputs.add(new AbstractGoods(output, amount));</span>
+        }
+<span class="nc" id="L135">    }</span>
+
+    /**
+     * Creates a new {@code ProductionType} instance.
+     *
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @param specification The {@code Specification} to refer to.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public ProductionType(FreeColXMLReader xr, Specification specification) throws XMLStreamException {
+<span class="fc" id="L145">        this(specification);</span>
+
+<span class="fc" id="L147">        readFromXML(xr);</span>
+<span class="fc" id="L148">    }</span>
+
+
+    /**
+     * Get the unattended production state.
+     *
+     * @return True if this is unattended production.
+     */
+    public final boolean getUnattended() {
+<span class="fc" id="L157">        return this.unattended;</span>
+    }
+
+    /**
+     * Set the unattended state of this production.
+     *
+     * @param unattended The new unattended production state.
+     */
+    public final void setUnattended(boolean unattended) {
+<span class="nc" id="L166">        this.unattended = unattended;</span>
+<span class="nc" id="L167">    }</span>
+
+    /**
+     * The production level of this type of production (used by
+     * difficulty levels).
+     *
+     * @return The production level key.
+     */
+    public final String getProductionLevel() {
+<span class="nc" id="L176">        return this.productionLevel;</span>
+    }
+
+    /**
+     * Does this production apply to a given difficulty level.
+     *
+     * @param level The difficulty level key to check.
+     * @return True if this production applies.
+     */
+    public boolean appliesTo(String level) {
+<span class="fc bfc" id="L186" title="All 4 branches covered.">        return level == null</span>
+            || this.productionLevel == null
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">            || level.equals(this.productionLevel);</span>
+    }
+
+    /**
+     * Does this production apply exactly to a given difficulty level,
+     * that is without using wildcard matches on null.
+     *
+     * @param level The difficulty level key to check.
+     * @return True if this production applies.
+     */
+    public boolean appliesExactly(String level) {
+<span class="pc bpc" id="L199" title="1 of 4 branches missed.">        return level != null &amp;&amp; level.equals(this.productionLevel);</span>
+    }
+
+    /**
+     * Get the input goods list.
+     *
+     * @return A list of the input {@code AbstractGoods}.
+     */
+    public final List&lt;AbstractGoods&gt; getInputList() {
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        return (this.inputs == null) ? EMPTY_LIST : this.inputs;</span>
+    }
+        
+    /**
+     * Get the input goods as a stream.
+     *
+     * @return A stream of the input {@code AbstractGoods}.
+     */
+    public final Stream&lt;AbstractGoods&gt; getInputs() {
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        return (this.inputs == null) ? Stream.&lt;AbstractGoods&gt;empty()</span>
+<span class="fc" id="L218">            : this.inputs.stream();</span>
+    }
+
+    /**
+     * Set the input goods.
+     *
+     * @param newInputs The new list of input {@code AbstractGoods}.
+     */
+    public final void setInputs(final List&lt;AbstractGoods&gt; newInputs) {
+<span class="nc" id="L227">        this.inputs = newInputs;</span>
+<span class="nc" id="L228">    }</span>
+
+    /**
+     * Add a new input.
+     *
+     * @param type The {@code GoodsType} to add.
+     * @param amount The amount of goods.
+     */
+    private void addInput(GoodsType type, int amount) {
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">        if (this.inputs == null) this.inputs = new ArrayList&lt;&gt;(1);</span>
+<span class="fc" id="L238">        this.inputs.add(new AbstractGoods(type, amount));</span>
+<span class="fc" id="L239">    }</span>
+
+    /**
+     * Get the output goods list.
+     *
+     * @return A list of the output {@code AbstractGoods}.
+     */
+    public final List&lt;AbstractGoods&gt; getOutputList() {
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        return (this.outputs == null) ? EMPTY_LIST : this.outputs;</span>
+    }
+        
+    /**
+     * Get the output goods as a stream.
+     *
+     * @return A stream of the output {@code AbstractGoods}.
+     */
+    public final Stream&lt;AbstractGoods&gt; getOutputs() {
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        return (this.outputs == null) ? Stream.&lt;AbstractGoods&gt;empty()</span>
+<span class="fc" id="L257">            : this.outputs.stream();</span>
+    }
+
+    /**
+     * Set the output goods.
+     *
+     * @param newOutputs The new list of output {@code AbstractGoods}.
+     */
+    public final void setOutputs(final List&lt;AbstractGoods&gt; newOutputs) {
+<span class="nc" id="L266">        this.outputs = newOutputs;</span>
+<span class="nc" id="L267">    }</span>
+
+    /**
+     * Add a new output.
+     *
+     * @param type The {@code GoodsType} to add.
+     * @param amount The amount of goods.
+     */
+    private void addOutput(GoodsType type, int amount) {
+<span class="fc bfc" id="L276" title="All 2 branches covered.">        if (this.outputs == null) this.outputs = new ArrayList&lt;&gt;(1);</span>
+<span class="fc" id="L277">        this.outputs.add(new AbstractGoods(type, amount));</span>
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * Add a new output.
+     *
+     * @param ag The {@code AbstractGoods} to add.
+     */
+    public void addOutput(AbstractGoods ag) {
+<span class="nc bnc" id="L286" title="All 2 branches missed.">        if (this.outputs == null) this.outputs = new ArrayList&lt;&gt;(1);</span>
+<span class="nc" id="L287">        this.outputs.add(ag);</span>
+<span class="nc" id="L288">    }</span>
+
+    /**
+     * Get the goods of the given goods type in this production type.
+     *
+     * @param goodsType The {@code GoodsType} to check.
+     * @return The {@code AbstractGoods} output if any, otherwise
+     *     null.
+     */
+    public AbstractGoods getOutput(GoodsType goodsType) {
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">        return (this.outputs == null) ? null</span>
+<span class="fc" id="L299">            : find(this.outputs, AbstractGoods.matches(goodsType));</span>
+    }
+
+    /**
+     * Get the type of the most productive output.
+     *
+     * @return The {@code GoodsType} of the most productive output.
+     */
+    public GoodsType getBestOutputType() {
+        AbstractGoods goods;
+<span class="nc bnc" id="L309" title="All 2 branches missed.">        return (this.outputs == null</span>
+<span class="nc bnc" id="L310" title="All 2 branches missed.">            || (goods = maximize(this.outputs,</span>
+                    AbstractGoods.ascendingAmountComparator)) == null)
+<span class="nc" id="L312">            ? null</span>
+<span class="nc" id="L313">            : goods.getType();</span>
+    }
+
+    /**
+     * Convenience function to check if there is an output for a given
+     * goods type in a collection of production types.
+     *
+     * @param goodsType The {@code GoodsType} to use.
+     * @param types A list of {@code ProductionType}s to consider.
+     * @return The most productive output that produces the goods type,
+     *     or null if none found.
+     */
+    public static boolean canProduce(final GoodsType goodsType,
+                                     Collection&lt;ProductionType&gt; types) {
+<span class="fc" id="L327">        return any(flatten(types, ProductionType::getOutputs),</span>
+<span class="fc bfc" id="L328" title="All 4 branches covered.">            ag -&gt; goodsType == ag.getType() &amp;&amp; ag.getAmount() &gt; 0);</span>
+    }
+
+    /**
+     * Get the production type with the greatest total output of an
+     * optional goods type from a collection of production types
+     *
+     * @param goodsType An optional {@code GoodsType} to restrict the
+     *     choice of outputs with.
+     * @param types A collection of {@code ProductionType}s to consider.
+     * @return The most productive {@code ProductionType}.
+     */
+    public static ProductionType getBestProductionType(GoodsType goodsType,
+        Collection&lt;ProductionType&gt; types) {
+<span class="fc" id="L342">        final Comparator&lt;ProductionType&gt; comp = cachingIntComparator(pt -&gt; {</span>
+<span class="fc" id="L343">                AbstractGoods best = pt.getBestOutputFor(goodsType);</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">                return (best == null) ? Integer.MIN_VALUE : best.getAmount();</span>
+            });
+<span class="fc" id="L346">        return maximize(types, comp);</span>
+    }
+
+    /**
+     * Get the output the maximizes production for an optional goods type.
+     *
+     * @param goodsType The optional {@code GoodsType} to check.
+     * @return The best production.
+     */
+    private AbstractGoods getBestOutputFor(GoodsType goodsType) {
+<span class="fc" id="L356">        final Predicate&lt;AbstractGoods&gt; typePred = ag -&gt;</span>
+<span class="fc bfc" id="L357" title="All 4 branches covered.">            goodsType == null || ag.getType() == goodsType;</span>
+<span class="fc" id="L358">        return maximize(getOutputs(), typePred,</span>
+                        AbstractGoods.ascendingAmountComparator);
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L370">        ProductionType o = copyInCast(other, ProductionType.class);</span>
+<span class="nc bnc" id="L371" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L372">        this.unattended = o.getUnattended();</span>
+<span class="nc" id="L373">        this.productionLevel = o.getProductionLevel();</span>
+<span class="nc" id="L374">        this.setOutputs(o.getOutputList());</span>
+<span class="nc" id="L375">        this.setInputs(o.getInputList());</span>
+<span class="nc" id="L376">        return true;</span>
+    }
+
+
+    // Serialization
+
+    private static final String UNATTENDED_TAG = &quot;unattended&quot;;
+    private static final String GOODS_TYPE_TAG = &quot;goods-type&quot;;
+    private static final String INPUT_TAG = &quot;input&quot;;
+    private static final String OUTPUT_TAG = &quot;output&quot;;
+    private static final String PRODUCTION_LEVEL_TAG = &quot;production-level&quot;;
+    // @compat 0.11.3
+    private static final String OLD_PRODUCTION_LEVEL_TAG = &quot;productionLevel&quot;;
+    // end @compat 0.11.3
+
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+        // ProductionType does not need an id.
+        // No need for: super.writeAttributes(out);
+
+<span class="fc bfc" id="L400" title="All 2 branches covered.">        if (unattended) {</span>
+<span class="fc" id="L401">            xw.writeAttribute(UNATTENDED_TAG, unattended);</span>
+        }
+
+<span class="fc bfc" id="L404" title="All 2 branches covered.">        if (productionLevel != null) {</span>
+<span class="fc" id="L405">            xw.writeAttribute(PRODUCTION_LEVEL_TAG, productionLevel);</span>
+        }
+<span class="fc" id="L407">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeChildren(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L414">        super.writeChildren(xw);</span>
+
+<span class="fc bfc" id="L416" title="All 2 branches covered.">        if (inputs != null) {</span>
+<span class="fc bfc" id="L417" title="All 2 branches covered.">            for (AbstractGoods input : inputs) {</span>
+<span class="fc" id="L418">                xw.writeStartElement(INPUT_TAG);</span>
+
+<span class="fc" id="L420">                xw.writeAttribute(GOODS_TYPE_TAG, input.getType());</span>
+
+<span class="fc" id="L422">                xw.writeAttribute(VALUE_TAG, input.getAmount());</span>
+
+<span class="fc" id="L424">                xw.writeEndElement();</span>
+<span class="fc" id="L425">            }</span>
+        }
+
+<span class="pc bpc" id="L428" title="1 of 2 branches missed.">        if (outputs != null) {</span>
+<span class="fc bfc" id="L429" title="All 2 branches covered.">            for (AbstractGoods output : outputs) {</span>
+<span class="fc" id="L430">                xw.writeStartElement(OUTPUT_TAG);</span>
+
+<span class="fc" id="L432">                xw.writeAttribute(GOODS_TYPE_TAG, output.getType());</span>
+
+<span class="fc" id="L434">                xw.writeAttribute(VALUE_TAG, output.getAmount());</span>
+
+<span class="fc" id="L436">                xw.writeEndElement();</span>
+<span class="fc" id="L437">            }</span>
+        }
+<span class="fc" id="L439">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+        // ProductionType does not need an id.
+        // No need for: super.readAttributes(in);
+        // FIXME: as soon as we allow the user to select a production type,
+        // we will need an id
+
+<span class="fc" id="L451">        unattended = xr.getAttribute(UNATTENDED_TAG, false);</span>
+
+<span class="fc" id="L453">        productionLevel = xr.getAttribute(PRODUCTION_LEVEL_TAG, (String)null);</span>
+        // @compat 0.11.3
+<span class="fc bfc" id="L455" title="All 2 branches covered.">        if (productionLevel == null) {</span>
+<span class="fc" id="L456">            productionLevel = xr.getAttribute(OLD_PRODUCTION_LEVEL_TAG, (String)null);</span>
+        }
+        // end @compat 0.11.3
+<span class="fc" id="L459">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void readChildren(FreeColXMLReader xr) throws XMLStreamException {
+        // Clear containers.
+<span class="pc bpc" id="L467" title="1 of 2 branches missed.">        if (inputs != null) inputs.clear();</span>
+<span class="pc bpc" id="L468" title="1 of 2 branches missed.">        if (outputs != null) outputs.clear();</span>
+
+<span class="fc" id="L470">        super.readChildren(xr);</span>
+<span class="fc" id="L471">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void readChild(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L478">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L479">        final String tag = xr.getLocalName();</span>
+
+<span class="fc bfc" id="L481" title="All 2 branches covered.">        if (INPUT_TAG.equals(tag)) {</span>
+<span class="fc" id="L482">            GoodsType type = xr.getType(spec, GOODS_TYPE_TAG,</span>
+                                        GoodsType.class, (GoodsType)null);
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">            if (type == null) {</span>
+<span class="nc" id="L485">                logger.warning(&quot;Skipping input with null type: &quot;</span>
+<span class="nc" id="L486">                    + xr.getAttribute(GOODS_TYPE_TAG, (String)null));</span>
+            } else {
+<span class="fc" id="L488">                addInput(type, xr.getAttribute(VALUE_TAG, -1));</span>
+            }
+<span class="fc" id="L490">            xr.closeTag(INPUT_TAG);</span>
+
+<span class="pc bpc" id="L492" title="1 of 2 branches missed.">        } else if (OUTPUT_TAG.equals(tag)) {</span>
+<span class="fc" id="L493">            GoodsType type = xr.getType(spec, GOODS_TYPE_TAG,</span>
+                                        GoodsType.class, (GoodsType)null);
+<span class="pc bpc" id="L495" title="1 of 2 branches missed.">            if (type == null) {</span>
+<span class="nc" id="L496">                logger.warning(&quot;Skipping output with null type: &quot;</span>
+<span class="nc" id="L497">                    + xr.getAttribute(GOODS_TYPE_TAG, (String)null));</span>
+            } else {
+<span class="fc" id="L499">                addOutput(type, xr.getAttribute(VALUE_TAG, -1));</span>
+            }
+<span class="fc" id="L501">            xr.closeTag(OUTPUT_TAG);</span>
+
+<span class="fc" id="L503">        } else {</span>
+<span class="nc" id="L504">            super.readChild(xr);</span>
+        }
+<span class="fc" id="L506">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L511">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="fc bfc" id="L521" title="All 2 branches covered.">        if (this == o) return true;</span>
+<span class="fc bfc" id="L522" title="All 2 branches covered.">        if (o instanceof ProductionType) {</span>
+<span class="fc" id="L523">            ProductionType other = (ProductionType)o;</span>
+<span class="fc bfc" id="L524" title="All 2 branches covered.">            return this.unattended == other.unattended</span>
+<span class="fc bfc" id="L525" title="All 2 branches covered.">                &amp;&amp; listEquals(this.outputs, other.outputs)</span>
+<span class="pc bpc" id="L526" title="1 of 2 branches missed.">                &amp;&amp; listEquals(this.inputs, other.inputs)</span>
+<span class="pc bpc" id="L527" title="1 of 2 branches missed.">                &amp;&amp; Utils.equals(this.productionLevel, other.productionLevel)</span>
+<span class="pc bpc" id="L528" title="1 of 2 branches missed.">                &amp;&amp; super.equals(other);</span>
+        }
+<span class="fc" id="L530">        return false;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L538">        int hash = super.hashCode();</span>
+<span class="pc bpc" id="L539" title="1 of 2 branches missed.">        hash = 31 * hash + ((this.unattended) ? 1 : 0);</span>
+<span class="fc" id="L540">        hash = 31 * hash + Utils.hashCode(this.productionLevel);</span>
+<span class="pc bpc" id="L541" title="1 of 2 branches missed.">        if (this.outputs != null) {</span>
+<span class="fc bfc" id="L542" title="All 2 branches covered.">            for (AbstractGoods ag : this.outputs) {</span>
+<span class="fc" id="L543">                hash = 31 * hash + Utils.hashCode(ag);</span>
+<span class="fc" id="L544">            }</span>
+        }
+<span class="pc bpc" id="L546" title="1 of 2 branches missed.">        if (this.inputs != null) {</span>
+<span class="nc bnc" id="L547" title="All 2 branches missed.">            for (AbstractGoods ag : this.inputs) {</span>
+<span class="nc" id="L548">                hash = 31 * hash + Utils.hashCode(ag);</span>
+<span class="nc" id="L549">            }</span>
+        }
+<span class="fc" id="L551">        return hash;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L559">        StringBuilder result = new StringBuilder(64);</span>
+<span class="fc" id="L560">        result.append('[').append(getId()).append(':');</span>
+<span class="pc bpc" id="L561" title="1 of 2 branches missed.">        if (productionLevel != null) {</span>
+<span class="nc" id="L562">            result.append(' ').append(productionLevel);</span>
+        }
+<span class="fc bfc" id="L564" title="All 2 branches covered.">        if (unattended) {</span>
+<span class="fc" id="L565">            result.append(&quot; unattended&quot;);</span>
+        }
+<span class="pc bpc" id="L567" title="1 of 4 branches missed.">        if (!(inputs == null || inputs.isEmpty())) {</span>
+<span class="fc" id="L568">            result.append(&quot; [inputs: &quot;);</span>
+<span class="fc bfc" id="L569" title="All 2 branches covered.">            for (AbstractGoods input : inputs) {</span>
+<span class="fc" id="L570">                result.append(input).append(&quot;, &quot;);</span>
+<span class="fc" id="L571">            }</span>
+<span class="fc" id="L572">            int length = result.length();</span>
+<span class="fc" id="L573">            result.replace(length - 2, length, &quot;]&quot;);</span>
+        }
+<span class="pc bpc" id="L575" title="2 of 4 branches missed.">        if (!(outputs == null || outputs.isEmpty())) {</span>
+<span class="fc" id="L576">            result.append(&quot; [outputs: &quot;);</span>
+<span class="fc bfc" id="L577" title="All 2 branches covered.">            for (AbstractGoods output : outputs) {</span>
+<span class="fc" id="L578">                result.append(output).append(&quot;, &quot;);</span>
+<span class="fc" id="L579">            }</span>
+<span class="fc" id="L580">            int length = result.length();</span>
+<span class="fc" id="L581">            result.replace(length - 2, length, &quot;]&quot;);</span>
+        }
+<span class="fc" id="L583">        result.append(']');</span>
+<span class="fc" id="L584">        return result.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

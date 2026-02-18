@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InciteMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">InciteMessage.java</span></div><h1>InciteMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.Unit.MoveType;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+import net.sf.freecol.server.model.ServerUnit;
+
+
+/**
+ * The message sent when inciting a native settlement.
+ */
+public class InciteMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;incite&quot;;
+    private static final String ENEMY_TAG = &quot;enemy&quot;;
+    private static final String GOLD_TAG = &quot;gold&quot;;
+    private static final String SETTLEMENT_TAG = &quot;settlement&quot;;
+    private static final String UNIT_TAG = &quot;unit&quot;;
+
+
+    /**
+     * Create a new {@code InciteMessage} with the
+     * supplied name.
+     *
+     * @param unit The inciting {@code Unit}.
+     * @param is The {@code IndianSettlement} to incite.
+     * @param enemy The enemy {@code Player}.
+     * @param gold The amount of gold in the bribe (negative for the
+     *             initial inquiry).
+     */
+    public InciteMessage(Unit unit, IndianSettlement is, Player enemy,
+                         int gold) {
+<span class="nc" id="L60">        super(TAG, UNIT_TAG, unit.getId(), SETTLEMENT_TAG, is.getId(),</span>
+<span class="nc" id="L61">              ENEMY_TAG, enemy.getId(), GOLD_TAG, String.valueOf(gold));</span>
+<span class="nc" id="L62">    }</span>
+
+    /**
+     * Create a new {@code InciteMessage} from a stream.
+     *
+     * @param game The {@code Game} to read within.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public InciteMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L73">        super(TAG, xr, UNIT_TAG, SETTLEMENT_TAG, ENEMY_TAG, GOLD_TAG);</span>
+<span class="nc" id="L74">    }</span>
+        
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean currentPlayerMessage() {
+<span class="nc" id="L82">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L90">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L98">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L99">        final Player player = freeColClient.getMyPlayer();</span>
+<span class="nc" id="L100">        final Unit unit = getUnit(player);</span>
+<span class="nc" id="L101">        final IndianSettlement is = getSettlement(unit);</span>
+<span class="nc" id="L102">        final Player enemy = getEnemy(game);</span>
+<span class="nc" id="L103">        final int gold = getGold();</span>
+        
+<span class="nc" id="L105">        igc(freeColClient).inciteHandler(unit, is, enemy, gold);</span>
+<span class="nc" id="L106">        clientGeneric(freeColClient);</span>
+<span class="nc" id="L107">    }</span>
+    
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc" id="L115">        final Game game = freeColServer.getGame();</span>
+        
+        ServerUnit unit;
+        try {
+<span class="nc" id="L119">            unit = (ServerUnit)getUnit(serverPlayer);</span>
+<span class="nc" id="L120">        } catch (Exception e) {</span>
+<span class="nc" id="L121">            return serverPlayer.clientError(e.getMessage());</span>
+<span class="nc" id="L122">        }</span>
+
+        IndianSettlement is;
+        try {
+<span class="nc" id="L126">            is = getSettlement(unit);</span>
+<span class="nc" id="L127">        } catch (Exception e) {</span>
+<span class="nc" id="L128">            return serverPlayer.clientError(e.getMessage());</span>
+<span class="nc" id="L129">        }</span>
+
+        MoveType type;
+<span class="nc" id="L132">        Player enemy = getEnemy(game);</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        if (enemy == null) {</span>
+<span class="nc" id="L134">            return serverPlayer.clientError(&quot;Not a player: &quot;</span>
+<span class="nc" id="L135">                + getStringAttribute(ENEMY_TAG));</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        } else if (enemy == (Player)serverPlayer) {</span>
+<span class="nc" id="L137">            return serverPlayer.clientError(&quot;Inciting against oneself!&quot;);</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        } else if (!enemy.isEuropean()) {</span>
+<span class="nc" id="L139">            return serverPlayer.clientError(&quot;Inciting against non-European!&quot;);</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        } else if ((type = unit.getMoveType(is.getTile()))</span>
+            != MoveType.ENTER_INDIAN_SETTLEMENT_WITH_MISSIONARY) {
+<span class="nc" id="L142">            return serverPlayer.clientError(&quot;Unable to enter &quot;</span>
+<span class="nc" id="L143">                + is.getName() + &quot;: &quot; + type.whyIllegal());</span>
+        }
+
+<span class="nc" id="L146">        final int gold = getGold(); // Negative gold is the initial query</span>
+
+        // Valid, proceed to incite.
+<span class="nc" id="L149">        return igc(freeColServer)</span>
+<span class="nc" id="L150">            .incite(serverPlayer, unit, is, enemy, gold);</span>
+    }
+
+
+    // Public interface
+
+    public Unit getUnit(Player player) {
+<span class="nc" id="L157">        return player.getOurFreeColGameObject(getStringAttribute(UNIT_TAG), Unit.class);</span>
+    }
+
+    public IndianSettlement getSettlement(Unit unit) {
+<span class="nc" id="L161">        return unit.getAdjacentSettlement(getStringAttribute(SETTLEMENT_TAG),</span>
+                                          IndianSettlement.class);
+    }
+
+    public Player getEnemy(Game game) {
+<span class="nc" id="L166">        return game.getFreeColGameObject(getStringAttribute(ENEMY_TAG), Player.class);</span>
+    }
+
+    public int getGold() {
+<span class="nc" id="L170">        return getIntegerAttribute(GOLD_TAG, -1);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

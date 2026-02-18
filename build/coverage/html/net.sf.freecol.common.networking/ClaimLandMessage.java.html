@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClaimLandMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">ClaimLandMessage.java</span></div><h1>ClaimLandMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.FreeColObject;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Player.NoClaimReason;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent when the client requests claiming land.
+ */
+public class ClaimLandMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;claimLand&quot;;
+    private static final String CLAIMANT_TAG = &quot;claimant&quot;;
+    private static final String PRICE_TAG = &quot;price&quot;;
+    private static final String TILE_TAG = &quot;tile&quot;;
+
+    
+    /**
+     * Create a new {@code ClaimLandMessage}.
+     *
+     * @param tile The {@code Tile} to claim.
+     * @param claimant The {@code Unit} or {@code Settlement}
+     *     claiming the tile.
+     * @param price The price to pay for the tile, negative if stealing.
+     */
+    public ClaimLandMessage(Tile tile, FreeColGameObject claimant, int price) {
+<span class="nc" id="L58">        super(TAG, TILE_TAG, tile.getId(), CLAIMANT_TAG, claimant.getId(),</span>
+<span class="nc" id="L59">              PRICE_TAG, String.valueOf(price));</span>
+<span class="nc" id="L60">    }</span>
+
+    /**
+     * Create a new {@code ClaimLandMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public ClaimLandMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L71">        super(TAG, xr, TILE_TAG, CLAIMANT_TAG, PRICE_TAG);</span>
+<span class="nc" id="L72">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean currentPlayerMessage() {
+<span class="nc" id="L80">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L88">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc" id="L97">        final Game game = freeColServer.getGame();</span>
+<span class="nc" id="L98">        final String tileId = getStringAttribute(TILE_TAG);</span>
+<span class="nc" id="L99">        final String claimantId = getStringAttribute(CLAIMANT_TAG);</span>
+<span class="nc" id="L100">        final String priceString = getStringAttribute(PRICE_TAG);</span>
+
+<span class="nc" id="L102">        Tile tile = game.getFreeColGameObject(tileId, Tile.class);</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (tile == null) {</span>
+<span class="nc" id="L104">            return serverPlayer.clientError(&quot;Not a file: &quot; + tileId);</span>
+        }
+
+<span class="nc" id="L107">        Class&lt;? extends FreeColObject&gt; c = FreeColObject</span>
+<span class="nc" id="L108">            .getFreeColObjectClassByName(FreeColObject.getIdTypeByName(claimantId));</span>
+<span class="nc" id="L109">        Unit unit = null;</span>
+<span class="nc" id="L110">        Settlement settlement = null;</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (Unit.class.isAssignableFrom(c)) {</span>
+<span class="nc" id="L112">            unit = serverPlayer.getOurFreeColGameObject(claimantId, Unit.class);</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">            if (unit.getTile() != tile) {</span>
+<span class="nc" id="L114">                return serverPlayer.clientError(&quot;Unit not at tile: &quot; + tileId);</span>
+            }
+            // Implicit claim by nearby settlement
+<span class="nc bnc" id="L117" title="All 2 branches missed.">            if (tile.getOwningSettlement() == null) {</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">                for (Tile t : tile.getSurroundingTiles(1)) {</span>
+<span class="nc" id="L119">                    Colony colony = t.getColony();</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                    if (serverPlayer.owns(colony)) {</span>
+<span class="nc" id="L121">                        settlement = colony;</span>
+<span class="nc" id="L122">                        break;</span>
+                    }
+<span class="nc" id="L124">                }</span>
+            }
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        } else if (Settlement.class.isAssignableFrom(c)) {</span>
+<span class="nc" id="L127">            settlement = serverPlayer.getOurFreeColGameObject(claimantId,</span>
+                                                        Settlement.class);
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            if (settlement.getOwner().isEuropean()</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">                &amp;&amp; !settlement.getTile().isAdjacent(tile)) {</span>
+<span class="nc" id="L131">                return serverPlayer.clientError(&quot;Settlement can not claim tile: &quot;</span>
+                    + tileId);
+            }
+        } else { // ...but not both of them.
+<span class="nc" id="L135">            return serverPlayer.clientError(&quot;Not a unit or settlement: &quot;</span>
+                + claimantId);
+        }
+
+        int price;
+        try {
+<span class="nc" id="L141">            price = Integer.parseInt(priceString);</span>
+<span class="nc" id="L142">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L143">            return serverPlayer.clientError(&quot;Bad price: &quot; + priceString);</span>
+<span class="nc" id="L144">        }</span>
+
+        // Request is well formed, but there are more possibilities...
+<span class="nc" id="L147">        int value = serverPlayer.getLandPrice(tile);</span>
+<span class="nc" id="L148">        Player owner = tile.getOwner();</span>
+<span class="nc" id="L149">        Settlement ownerSettlement = tile.getOwningSettlement();</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">        if (owner == null) { // unclaimed, always free</span>
+<span class="nc" id="L151">            price = 0;</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        } else if (owner == serverPlayer) { // capture vacant colony tiles only</span>
+<span class="nc bnc" id="L153" title="All 4 branches missed.">            if (settlement != null &amp;&amp; ownerSettlement != null</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                &amp;&amp; tile.isInUse()) {</span>
+<span class="nc" id="L155">                return serverPlayer.clientError(&quot;Can not claim tile &quot;</span>
+<span class="nc" id="L156">                    + tile.getId() + &quot;: already owned.&quot;);</span>
+            }
+<span class="nc" id="L158">            price = 0;</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        } else if (owner.isEuropean()) {</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            if (tile.getOwningSettlement() == null  // its not &quot;nailed down&quot;</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">                || tile.getOwningSettlement() == settlement) { // pre-attached</span>
+<span class="nc" id="L162">                price = 0;</span>
+            } else { // must fail
+<span class="nc" id="L164">                return serverPlayer.clientError(&quot;Can not claim tile &quot; </span>
+<span class="nc" id="L165">                    + tile.getId() + &quot;: European owners will not sell.&quot;);</span>
+            }
+        } else { // natives
+<span class="nc" id="L168">            NoClaimReason why = serverPlayer.canClaimForSettlementReason(tile);</span>
+<span class="nc bnc" id="L169" title="All 3 branches missed.">            switch (why) {</span>
+            case NONE:
+<span class="nc" id="L171">                break; // Succeed.</span>
+            case NATIVES:
+<span class="nc bnc" id="L173" title="All 2 branches missed.">                if (price &gt;= 0) {</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                    if (price &lt; value) {</span>
+<span class="nc" id="L175">                        return serverPlayer.clientError(&quot;Can not claim tile &quot;</span>
+<span class="nc" id="L176">                            + tile.getId() + &quot;: insufficient offer.&quot;);</span>
+                    }
+<span class="nc bnc" id="L178" title="All 2 branches missed.">                    if (!serverPlayer.checkGold(price)) {</span>
+<span class="nc" id="L179">                        return serverPlayer.clientError(&quot;Can not pay for tile: &quot;</span>
+<span class="nc" id="L180">                            + tile.getId() + &quot;: insufficient funds.&quot;);</span>
+                    }
+                    // Succeed, sufficient offer
+                } // else succeed, stealing
+                break;
+            default: // Fail
+<span class="nc" id="L186">                return serverPlayer.clientError(&quot;Can not claim tile &quot;</span>
+<span class="nc" id="L187">                    + tile.getId() + &quot;: &quot; + why);</span>
+            }
+        }
+
+        // Proceed to claim.  Note, does not require unit, it is only
+        // required for permission checking above.  Settlement is required
+        // to set owning settlement.
+<span class="nc" id="L194">        return igc(freeColServer)</span>
+<span class="nc" id="L195">            .claimLand(serverPlayer, tile, settlement, price);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

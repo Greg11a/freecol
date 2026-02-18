@@ -1,0 +1,1057 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClientOptions.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client</a> &gt; <span class="el_source">ClientOptions.java</span></div><h1>ClientOptions.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client;
+
+import static net.sf.freecol.common.util.CollectionUtils.makeUnmodifiableList;
+import static net.sf.freecol.common.util.CollectionUtils.makeUnmodifiableMap;
+import static net.sf.freecol.common.util.CollectionUtils.toListNoNulls;
+import static net.sf.freecol.common.util.CollectionUtils.transform;
+
+import java.awt.Dimension;
+import java.awt.Point;
+import java.io.File;
+import java.io.IOException;
+import java.text.Collator;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.FreeCol;
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.io.FreeColDirectories;
+import net.sf.freecol.common.io.FreeColModFile;
+import net.sf.freecol.common.io.FreeColSavegameFile;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.ModelMessage;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.option.BooleanOption;
+import net.sf.freecol.common.option.FullscreenDisplayModeOption;
+import net.sf.freecol.common.option.IntegerOption;
+import net.sf.freecol.common.option.Option;
+import net.sf.freecol.common.option.OptionGroup;
+import net.sf.freecol.common.option.PercentageOption;
+import net.sf.freecol.common.option.RangeOption;
+import net.sf.freecol.common.option.TextOption;
+import net.sf.freecol.common.util.LogBuilder;
+
+
+/**
+ * Defines how available client options are displayed on the Setting
+ * dialog from File/Preferences Also contains several Comparators used
+ * for display purposes.
+ *
+ * Most available client options and their default values are defined
+ * in the file {@code base/client-options.xml} in the FreeCol
+ * data directory. They are overridden by the player's personal
+ * settings in the file {@code options.xml} in the user
+ * directory. Note that some options are generated and added dynamically.
+ *
+ * Each option should be given an unique identifier (defined as a
+ * constant in this class). In general, the options are called
+ * something like &quot;model.option.UNIQUENAME&quot;. Since the options must
+ * also be represented by the GUI, they following two keys must be
+ * added to the file {@code FreeColMessages.properties}:
+ *
+ * &lt;ul&gt;&lt;li&gt;model.option.UNIQUENAME.name&lt;/li&gt;
+ * &lt;li&gt;model.option.UNIQUENAME.shortDescription&lt;/li&gt;&lt;/ul&gt;
+ */
+public class ClientOptions extends OptionGroup {
+
+<span class="fc" id="L89">    private static final Logger logger = Logger.getLogger(ClientOptions.class.getName());</span>
+
+    public static final String TAG = &quot;clientOptions&quot;;
+
+    //
+    // Constants for each client option.
+    // Keep these in sync with data/base/client-options.xml.
+    //
+
+    // clientOptions.personal
+
+    private static final String PERSONAL_GROUP
+        = &quot;clientOptions.personal&quot;;
+   
+    /** Option for the player's preferred name. */
+    public static final String NAME
+        = &quot;model.option.playerName&quot;;
+
+    /** Special option for setting the language. */
+    public static final String LANGUAGE
+        = &quot;model.option.languageOption&quot;;
+    /** Value for automatic language selection. */
+    public static final String AUTOMATIC
+        = &quot;clientOptions.gui.languageOption.autoDetectLanguage&quot;;
+
+
+    // clientOptions.gui is an old heading, the constant is still used
+    // in fixClientOptions below.  Several &quot;value&quot; constants still
+    // have clientOptions.gui.* names.
+    private static final String GUI_GROUP
+        = &quot;clientOptions.gui&quot;;
+    
+
+    // clientOptions.display
+
+    private static final String DISPLAY_GROUP
+        = &quot;clientOptions.display&quot;;
+    
+    /**
+     * Option to control the display mode in fullscreen
+     */
+    public static final String DISPLAY_MODE_FULLSCREEN
+        = &quot;model.option.fullscreenDisplayMode&quot;;
+
+    /**
+     * Option to control the display scale factor.
+     */
+    public static final String DISPLAY_SCALING
+        = &quot;model.option.displayScaling&quot;;
+
+    /**
+     * Enable manual override of main font size.
+     */
+    public static final String MANUAL_MAIN_FONT_SIZE
+        = &quot;model.option.manualMainFontSize&quot;;
+
+    /**
+     * Value to use to override the main font size, if enabled by the above.
+     */
+    public static final String MAIN_FONT_SIZE
+        = &quot;model.option.mainFontSize&quot;;
+    
+    /** Pixmap setting to work around Java 2D graphics bug. */
+    public static final String USE_PIXMAPS
+        = &quot;model.option.usePixmaps&quot;;
+
+    /** Enable use of openGL pipeline. */
+    public static final String USE_OPENGL
+        = &quot;model.option.useOpenGL&quot;;
+
+    /** Enable use of XRender pipeline (unix specific). */
+    public static final String USE_XRENDER
+        = &quot;model.option.useXRender&quot;;
+    
+    public static final String USE_TERRAIN_ANIMATIONS
+        = &quot;model.option.useTerrainAnimations&quot;;
+
+    /** Allows the user to determine the tradeoff between quality and rendering speed. */
+    public static final String GRAPHICS_QUALITY
+        = &quot;model.option.graphicsQuality&quot;;
+    
+    public static final int GRAPHICS_QUALITY_LOWEST = 0;
+    public static final int GRAPHICS_QUALITY_LOW = 10;
+    public static final int GRAPHICS_QUALITY_NORMAL = 20;
+    public static final int GRAPHICS_QUALITY_HIGH = 30;
+    public static final int GRAPHICS_QUALITY_HIGHEST = 40;
+    
+    /** Animation speed for our units. */
+    public static final String MOVE_ANIMATION_SPEED
+        = &quot;model.option.moveAnimationSpeed&quot;;
+
+    /** Animation speed for enemy units. */
+    public static final String ENEMY_MOVE_ANIMATION_SPEED
+        = &quot;model.option.enemyMoveAnimationSpeed&quot;;
+
+    /** Animation speed for friendly units. */
+    public static final String FRIENDLY_MOVE_ANIMATION_SPEED
+        = &quot;model.option.friendlyMoveAnimationSpeed&quot;;
+
+
+    // clientOptions.interface
+
+    private static final String INTERFACE_GROUP
+        = &quot;clientOptions.interface&quot;;
+
+    // clientOptions.interface.mapView
+
+    private static final String MAPVIEW_GROUP
+        = &quot;clientOptions.interface.mapView&quot;;
+    
+    /** Default zoom level of the minimap. */
+    public static final String DEFAULT_ZOOM_LEVEL
+        = &quot;model.option.defaultZoomLevel&quot;;
+    
+    /**
+     * Selected tiles always gets centered if this option is enabled (even if
+     * the tile is on screen.
+     */
+    public static final String ALWAYS_CENTER
+        = &quot;model.option.alwaysCenter&quot;;
+
+    /**
+     * If this option is enabled, the display will recenter in order
+     * to display the active unit if it is not on screen.
+     */
+    public static final String JUMP_TO_ACTIVE_UNIT
+        = &quot;model.option.jumpToActiveUnit&quot;;
+
+    /** Option to scroll when dragging units on the mapboard. */
+    public static final String MAP_SCROLL_ON_DRAG
+        = &quot;model.option.mapScrollOnDrag&quot;;
+
+    /** Option to auto-scroll on mouse movement. */
+    public static final String AUTO_SCROLL
+        = &quot;model.option.autoScroll&quot;;
+
+    /** Whether to display the grid by default or not. */
+    public static final String DISPLAY_GRID
+        = &quot;model.option.displayGrid&quot;;
+
+    /** Whether to display borders by default or not. */
+    public static final String DISPLAY_BORDERS
+        = &quot;model.option.displayBorders&quot;;
+    
+    /** Whether to draw the fog of war on the actual map or not. */
+    public static final String DISPLAY_FOG_OF_WAR
+        = &quot;model.option.displayFogOfWar&quot;;
+
+    /** Whether to delay on a unit's last move or not. */
+    public static final String UNIT_LAST_MOVE_DELAY
+        = &quot;model.option.unitLastMoveDelay&quot;;
+
+    /** What text to display in the tiles. */
+    public static final String DISPLAY_TILE_TEXT
+        = &quot;model.option.displayTileText&quot;;
+    public static final int DISPLAY_TILE_TEXT_EMPTY = 0,
+        DISPLAY_TILE_TEXT_NAMES = 1,
+        DISPLAY_TILE_TEXT_OWNERS = 2,
+        DISPLAY_TILE_TEXT_REGIONS = 3;
+
+    /** Style of colony labels. */
+    public static final String DISPLAY_COLONY_LABELS
+        = &quot;model.option.displayColonyLabels&quot;;
+    public static final int COLONY_LABELS_NONE = 0;
+    public static final int COLONY_LABELS_CLASSIC = 1;
+    public static final int COLONY_LABELS_MODERN = 2;
+
+    // clientOptions.interface.mapControls
+
+    private static final String MAPCONTROLS_GROUP
+        = &quot;clientOptions.interface.mapControls&quot;;
+    
+    /** Whether to display a compass rose or not. */
+    public static final String DISPLAY_COMPASS_ROSE
+        = &quot;model.option.displayCompassRose&quot;;
+
+    /** Whether to display the map controls or not. */
+    public static final String DISPLAY_MAP_CONTROLS
+        = &quot;model.option.displayMapControls&quot;;
+
+    /** The type of map controls, corner or classic. */
+    public static final String MAP_CONTROLS
+        = &quot;model.option.mapControls&quot;;
+    /** Styles of map controls. */
+    public static final String MAP_CONTROLS_CORNERS
+        = &quot;clientOptions.gui.mapControls.CornerMapControls&quot;;
+    public static final String MAP_CONTROLS_CLASSIC
+        = &quot;clientOptions.gui.mapControls.ClassicMapControls&quot;;
+
+    /** Whether to draw the fog of war on the minimap. */
+    public static final String MINIMAP_TOGGLE_FOG_OF_WAR
+        = &quot;model.option.miniMapToggleFogOfWar&quot;;
+
+    /** Whether to draw the borders on the minimap. */
+    public static final String MINIMAP_TOGGLE_BORDERS
+        = &quot;model.option.miniMapToggleBorders&quot;;
+
+    /**
+     * The color to fill in around the actual map on the
+     * minimap.  Typically only visible when the minimap is at full
+     * zoom-out, but at the default 'black' you can't differentiate
+     * between the background and the (unexplored) map.  Actually:
+     * clientOptions.minimap.color.background
+     */
+    public static final String MINIMAP_BACKGROUND_COLOR
+        = &quot;model.option.color.background&quot;;
+
+    // clientOptions.interface.messages
+
+    private static final String MESSAGES_GROUP
+        = &quot;clientOptions.messages&quot;; // should be .interface.warehouse
+    
+    /**
+     * Used by GUI, this defines the grouping of ModelMessages.
+     * Possible values include nothing, type and source.
+     *
+     * @see net.sf.freecol.client.gui.mapviewer.MapViewer
+     * @see net.sf.freecol.common.model.ModelMessage
+     */
+    public static final String MESSAGES_GROUP_BY
+        = &quot;model.option.guiMessagesGroupBy&quot;;
+    public static final int MESSAGES_GROUP_BY_NOTHING = 0,
+        MESSAGES_GROUP_BY_TYPE = 1,
+        MESSAGES_GROUP_BY_SOURCE = 2;
+
+    /** Show goods movement messages.  Used by followTradeRoute. */
+    public static final String SHOW_GOODS_MOVEMENT
+        = &quot;model.option.guiShowGoodsMovement&quot;;
+
+    /** Show warnings about colony sites. */
+    public static final String SHOW_COLONY_WARNINGS
+        = &quot;model.option.guiShowColonyWarnings&quot;;
+
+    /** Show the pre-combat dialog? */
+    public static final String SHOW_PRECOMBAT
+        = &quot;model.option.guiShowPreCombat&quot;;
+
+    /** Show warnings about suboptimal colony tile choice. */
+    public static final String SHOW_NOT_BEST_TILE
+        = &quot;model.option.guiShowNotBestTile&quot;;
+
+    public static final String SHOW_REGION_NAMING
+        = &quot;model.option.guiShowRegionNaming&quot;;
+
+    /** Option for selecting the compact colony report. */
+    public static final String COLONY_REPORT
+        = &quot;model.option.colonyReport&quot;;
+    public static final int COLONY_REPORT_CLASSIC = 0;
+    public static final int COLONY_REPORT_COMPACT = 1;
+
+    /** The type of labour report to display. */
+    public static final String LABOUR_REPORT
+        = &quot;model.option.labourReport&quot;;
+    public static final int LABOUR_REPORT_CLASSIC = 0;
+    public static final int LABOUR_REPORT_COMPACT = 1;
+
+    // clientOptions.interface.warehouse
+
+    private static final String WAREHOUSE_GROUP
+        = &quot;clientOptions.warehouse&quot;; // should be .interface.warehouse
+
+    /** The amount of stock the custom house should keep when selling goods. */
+    public static final String CUSTOM_STOCK
+        = &quot;model.option.customStock&quot;;
+
+    /** Generate warning of stock drops below this percentage of capacity. */
+    public static final String LOW_LEVEL
+        = &quot;model.option.lowLevel&quot;;
+
+    /** Generate warning of stock exceeds this percentage of capacity. */
+    public static final String HIGH_LEVEL
+        = &quot;model.option.highLevel&quot;;
+
+    /**
+     * Should trade route units check production to determine goods levels at
+     * stops along its route?
+     */
+    public static final String STOCK_ACCOUNTS_FOR_PRODUCTION
+        = &quot;model.option.stockAccountsForProduction&quot;;
+
+    // clientOptions.other
+
+    private static final String OTHER_GROUP
+        = &quot;clientOptions.other&quot;; // should be .interface.other
+
+    /** Whether to remember the positions of various dialogs and panels. */
+    public static final String REMEMBER_PANEL_POSITIONS
+        = &quot;model.option.rememberPanelPositions&quot;;
+
+    /** Whether to remember the sizes of various dialogs and panels. */
+    public static final String REMEMBER_PANEL_SIZES
+        = &quot;model.option.rememberPanelSizes&quot;;
+
+    /** Whether to display end turn grey background or not. */
+    public static final String DISABLE_GRAY_LAYER
+        = &quot;model.option.disableGrayLayer&quot;;
+
+    /** Option to autoload emigrants on sailing to america. */
+    public static final String AUTOLOAD_EMIGRANTS
+        = &quot;model.option.autoloadEmigrants&quot;;
+
+    /** Option to autoload sentried units. */
+    public static final String AUTOLOAD_SENTRIES
+        = &quot;model.option.autoloadSentries&quot;;
+
+    /** Automatically end the turn when no units can be * made active. */
+    public static final String AUTO_END_TURN
+        = &quot;model.option.autoEndTurn&quot;;
+
+    /** Show the end turn dialog. */
+    public static final String SHOW_END_TURN_DIALOG
+        = &quot;model.option.showEndTurnDialog&quot;;
+
+    /** Set the default native demand action. */
+    public static final String INDIAN_DEMAND_RESPONSE
+        = &quot;model.option.indianDemandResponse&quot;;
+    public static final int INDIAN_DEMAND_RESPONSE_ASK = 0;
+    public static final int INDIAN_DEMAND_RESPONSE_ACCEPT = 1;
+    public static final int INDIAN_DEMAND_RESPONSE_REJECT = 2;
+
+    /** Set the default warehouse overflow on unload action. */
+    public static final String UNLOAD_OVERFLOW_RESPONSE
+        = &quot;model.option.unloadOverflowResponse&quot;;
+    public static final int UNLOAD_OVERFLOW_RESPONSE_ASK = 0;
+    public static final int UNLOAD_OVERFLOW_RESPONSE_NEVER = 1;
+    public static final int UNLOAD_OVERFLOW_RESPONSE_ALWAYS = 2;
+
+    /**
+     * Used by GUI, the number will be displayed when a group of goods are
+     * higher than this number.
+     *
+     * @see net.sf.freecol.client.gui.mapviewer.MapViewer
+     */
+    public static final String MIN_NUMBER_FOR_DISPLAYING_GOODS_COUNT
+        = &quot;model.option.guiMinNumberToDisplayGoodsCount&quot;;
+
+    /**
+     * Used by GUI, this is the most repetitions drawn of a goods image for a
+     * single goods grouping.
+     *
+     * @see net.sf.freecol.client.gui.mapviewer.MapViewer
+     */
+    public static final String MAX_NUMBER_OF_GOODS_IMAGES
+        = &quot;model.option.guiMaxNumberOfGoodsImages&quot;;
+
+    /**
+     * Used by GUI, this is the minimum number of goods a colony must
+     * possess for the goods to show up at the bottom of the colony
+     * panel.
+     *
+     * @see net.sf.freecol.client.gui.GUI
+     */
+    public static final String MIN_NUMBER_FOR_DISPLAYING_GOODS
+        = &quot;model.option.guiMinNumberToDisplayGoods&quot;;
+
+    /** Used by GUI to sort colonies. */
+    public static final String COLONY_COMPARATOR
+        = &quot;model.option.colonyComparator&quot;;
+    public static final int COLONY_COMPARATOR_NAME = 0,
+        COLONY_COMPARATOR_AGE = 1,
+        COLONY_COMPARATOR_POSITION = 2,
+        COLONY_COMPARATOR_SIZE = 3,
+        COLONY_COMPARATOR_SOL = 4;
+
+
+    // clientOptions.savegames
+
+    private static final String SAVEGAMES_GROUP
+        = &quot;clientOptions.savegames&quot;;
+
+    /** Use default values for savegames instead of displaying a dialog. */
+    public static final String SHOW_SAVEGAME_SETTINGS
+        = &quot;model.option.showSavegameSettings&quot;;
+    public static final int SHOW_SAVEGAME_SETTINGS_NEVER = 0,
+        SHOW_SAVEGAME_SETTINGS_MULTIPLAYER = 1,
+        SHOW_SAVEGAME_SETTINGS_ALWAYS = 2;
+
+    /**
+     * Option for setting the period of autosaves. The value 0 signals that
+     * autosaving is disabled.
+     */
+    public static final String AUTOSAVE_PERIOD
+        = &quot;model.option.autosavePeriod&quot;;
+
+    /**
+     * Option for setting the number of days autosaves are keep (valid
+     * time).  If set to 0, valid time is not checked.
+     */
+    public static final String AUTOSAVE_VALIDITY
+        = &quot;model.option.autosaveValidity&quot;;
+
+    /**
+     * Option for deleting autosaves when a new game is started.  If set to
+     * true, old autosaves will be deleted if a new game is started.
+     */
+    public static final String AUTOSAVE_DELETE
+        = &quot;model.option.autosaveDelete&quot;;
+
+    /**
+     * Whether to display confirmation for the overwrite of existing
+     * save files.
+     */
+    public static final String CONFIRM_SAVE_OVERWRITE
+        = &quot;model.option.confirmSaveOverwrite&quot;;
+
+    /** Prefix for the auto-save file. */
+    public static final String AUTO_SAVE_PREFIX
+        = &quot;model.option.autoSavePrefix&quot;;
+
+    /** Stem of the last-turn save file name. */
+    public static final String LAST_TURN_NAME
+        = &quot;model.option.lastTurnName&quot;;
+
+    /** Stem of the before-last-turn save file name. */
+    public static final String BEFORE_LAST_TURN_NAME
+        = &quot;model.option.beforeLastTurnName&quot;;
+
+
+    // clientOptions.audio
+
+    private static final String AUDIO_GROUP
+        = &quot;clientOptions.audio&quot;;
+
+    /** Choose the default mixer. */
+    public static final String AUDIO_MIXER
+        = &quot;model.option.audioMixer&quot;;
+
+    /** The volume level to set. */
+    public static final String AUDIO_VOLUME
+        = &quot;model.option.audioVolume&quot;;
+    
+    /** The volume level to set for the music. */
+    public static final String MUSIC_VOLUME
+        = &quot;model.option.musicVolume&quot;;
+    
+    /** The volume level to set. */
+    public static final String SOUND_EFFECTS_VOLUME
+        = &quot;model.option.soundEffectsVolume&quot;;
+
+    /** Play an alert sound on message arrival. */
+    public static final String AUDIO_ALERTS
+        = &quot;model.option.audioAlerts&quot;;
+
+
+    // clientOptions.mods
+
+    /** The mods. */
+    public static final String USER_MODS
+        = &quot;clientOptions.mods.userMods&quot;;
+
+
+    // clientOptions.etc
+
+    /** The dynamic placement options. */
+    public static final String ETC
+        = &quot;clientOptions.etc&quot;;
+
+
+    // The special keys that are read early.
+<span class="fc" id="L548">    private static final List&lt;String&gt; specialKeys</span>
+<span class="fc" id="L549">        = makeUnmodifiableList(LANGUAGE, USE_OPENGL, USE_PIXMAPS, USE_XRENDER);</span>
+
+    // Comparators for sorting colonies.
+    /** Compare by ascending age. */
+<span class="fc" id="L553">    private static final Comparator&lt;Colony&gt; colonyAgeComparator</span>
+<span class="pc" id="L554">        = Comparator.comparingInt(c -&gt; c.getEstablished().getNumber());</span>
+	
+    /** Compare by name, initialized at run time. */
+<span class="fc" id="L557">    private static AtomicReference&lt;Comparator&lt;Colony&gt;&gt; colonyNameComparator</span>
+        = new AtomicReference&lt;Comparator&lt;Colony&gt;&gt;(null);
+    
+    /** Compare by descending size then liberty. */
+<span class="fc" id="L561">    private static final Comparator&lt;Colony&gt; colonySizeComparator</span>
+<span class="fc" id="L562">        = Comparator.comparingInt(Colony::getUnitCount)</span>
+<span class="fc" id="L563">            .thenComparingInt(Colony::getSonsOfLiberty)</span>
+<span class="fc" id="L564">            .reversed();</span>
+
+    /** Compare by descending liberty then size. */
+<span class="fc" id="L567">    private static final Comparator&lt;Colony&gt; colonySoLComparator</span>
+<span class="fc" id="L568">        = Comparator.comparingInt(Colony::getSonsOfLiberty)</span>
+<span class="fc" id="L569">            .thenComparingInt(Colony::getUnitCount)</span>
+<span class="fc" id="L570">            .reversed();</span>
+
+    /** Compare by position on the map. */
+<span class="fc" id="L573">    private static final Comparator&lt;Colony&gt; colonyPositionComparator</span>
+<span class="pc" id="L574">        = Comparator.comparingInt(c -&gt; Location.rankOf(c));</span>
+
+    /** Friendly move animation speed option values. */
+<span class="fc" id="L577">    private static final Map&lt;Integer, String&gt; friendlyMoveAnimationSpeeds</span>
+<span class="fc" id="L578">        = makeUnmodifiableMap(new Integer[] { 0, 1, 2, 3 },</span>
+            new String[] {
+                &quot;clientOptions.gui.friendlyMoveAnimationSpeed.off&quot;,
+                &quot;clientOptions.gui.friendlyMoveAnimationSpeed.slow&quot;,
+                &quot;clientOptions.gui.friendlyMoveAnimationSpeed.normal&quot;,
+                &quot;clientOptions.gui.friendlyMoveAnimationSpeed.fast&quot;
+            });
+    
+<span class="fc" id="L586">    private static final Map&lt;Integer, String&gt; graphicsQualityChoices</span>
+<span class="fc" id="L587">        = makeUnmodifiableMap(new Integer[] {</span>
+<span class="fc" id="L588">                GRAPHICS_QUALITY_LOWEST,</span>
+<span class="fc" id="L589">                GRAPHICS_QUALITY_LOW,</span>
+<span class="fc" id="L590">                GRAPHICS_QUALITY_NORMAL,</span>
+<span class="fc" id="L591">                GRAPHICS_QUALITY_HIGH,</span>
+<span class="fc" id="L592">                GRAPHICS_QUALITY_HIGHEST</span>
+            },
+            new String[] {
+                &quot;clientOptions.gui.graphicsQuality.lowest&quot;,
+                &quot;clientOptions.gui.graphicsQuality.low&quot;,
+                &quot;clientOptions.gui.graphicsQuality.normal&quot;,
+                &quot;clientOptions.gui.graphicsQuality.high&quot;,
+                &quot;clientOptions.gui.graphicsQuality.highest&quot;
+            });
+        
+    
+    /**
+     * Creates a new {@code ClientOptions}.
+     *
+     * Unlike other OptionGroup classes, ClientOptions can not supply a
+     * specification as it is needed before the specification is available.
+     */
+    public ClientOptions() {
+<span class="fc" id="L610">        super(TAG);</span>
+<span class="fc" id="L611">    }</span>
+
+
+    /**
+     * Loads the options from the given save game.
+     *
+     * @param save The {@code FreeColSaveGame} to read the options from.
+     * @return True if the options were loaded without error.
+     */
+    private boolean load(FreeColSavegameFile save) {
+<span class="nc bnc" id="L621" title="All 2 branches missed.">        if (save == null) return false;</span>
+<span class="nc" id="L622">        boolean ret = false;</span>
+        try (
+<span class="nc" id="L624">            FreeColXMLReader xr = save.getClientOptionsFreeColXMLReader();</span>
+        ) {
+<span class="nc" id="L626">            ret = load(xr);</span>
+<span class="nc" id="L627">        } catch (IOException|XMLStreamException ex) {</span>
+<span class="nc" id="L628">            logger.log(Level.WARNING, &quot;Load OptionGroup(&quot; + getId()</span>
+<span class="nc" id="L629">                + &quot;) from file &quot; + save.getPath() + &quot; crashed&quot;, ex);</span>
+<span class="nc" id="L630">            return false;</span>
+<span class="nc" id="L631">        }</span>
+<span class="nc" id="L632">        logger.info(&quot;Load OptionGroup(&quot; + getId() + &quot;) from &quot; + save.getPath()</span>
+<span class="nc bnc" id="L633" title="All 2 branches missed.">            + ((ret) ? &quot; succeeded&quot; : &quot; failed&quot;));</span>
+<span class="nc" id="L634">        return ret;</span>
+    }
+
+    /**
+     * Merge the options from the given file game.
+     *
+     * @param file The {@code File} to merge the options from.
+     * @return True if the options were merge without error.
+     */
+    public boolean merge(File file) {
+<span class="nc" id="L644">        ClientOptions clop = new ClientOptions();</span>
+<span class="nc bnc" id="L645" title="All 2 branches missed.">        if (!clop.load(file)) return false;</span>
+<span class="nc" id="L646">        LogBuilder lb = new LogBuilder(64);</span>
+<span class="nc" id="L647">        boolean ret = this.merge(clop, lb);</span>
+<span class="nc" id="L648">        lb.shrink(&quot;\n&quot;); lb.log(logger, Level.FINEST);</span>
+<span class="nc" id="L649">        return ret;</span>
+    }
+
+    /**
+     * Merge the options from the given save game.
+     *
+     * @param save The {@code FreeColSaveGame} to merge from.
+     * @return True if the options were merged without error.
+     */
+    public boolean merge(FreeColSavegameFile save) {
+<span class="nc" id="L659">        ClientOptions clop = new ClientOptions();</span>
+<span class="nc bnc" id="L660" title="All 2 branches missed.">        if (!clop.load(save)) return false;</span>
+<span class="nc" id="L661">        LogBuilder lb = new LogBuilder(64);</span>
+        
+        /** Only the mods should be loaded from the savegame: */
+<span class="nc" id="L664">        boolean ret = this.merge(clop.getOption(USER_MODS), lb);</span>
+        
+<span class="nc" id="L666">        lb.shrink(&quot;\n&quot;); lb.log(logger, Level.FINEST);</span>
+<span class="nc" id="L667">        return ret;</span>
+    }
+
+    /**
+     * Gets a list of active mods in this ClientOptions.
+     *
+     * @return A list of active mods.
+     */
+    public List&lt;FreeColModFile&gt; getActiveMods() {
+<span class="fc" id="L676">        final Predicate&lt;FreeColModFile&gt; validModPred = m -&gt;</span>
+<span class="nc bnc" id="L677" title="All 4 branches missed.">            m != null &amp;&amp; m.getId() != null;</span>
+<span class="fc" id="L678">        final Function&lt;FreeColModFile, FreeColModFile&gt; modFileMapper = m -&gt;</span>
+<span class="nc" id="L679">            FreeColModFile.getFreeColModFile(m.getId());</span>
+<span class="fc" id="L680">        return transform(getModList(ClientOptions.USER_MODS), validModPred,</span>
+<span class="fc" id="L681">                         modFileMapper, toListNoNulls());</span>
+    }
+
+    /**
+     * Get the client's preferred tile text type.
+     *
+     * @return A {@code DISPLAY_TILE_TEXT_} value
+     */
+    public int getDisplayTileText() {
+<span class="nc" id="L690">        return getInteger(DISPLAY_TILE_TEXT);</span>
+    }
+
+    /**
+     * Get the client's preferred comparator for colonies.
+     *
+     * @return The current colony {@code Comparator}.
+     */
+    public Comparator&lt;Colony&gt; getColonyComparator() {
+<span class="nc" id="L699">        return getColonyComparatorInternal(getInteger(COLONY_COMPARATOR));</span>
+    }
+
+    /**
+     * Get the colony comparator identified by type.
+     *
+     * @param type The colony comparator option integer value.
+     * @return The corresponding colony {@code Comparator}.
+     */
+    private static Comparator&lt;Colony&gt; getColonyComparatorInternal(int type) {
+<span class="nc bnc" id="L709" title="All 6 branches missed.">        switch (type) {</span>
+        case COLONY_COMPARATOR_AGE:
+<span class="nc" id="L711">            return colonyAgeComparator;</span>
+        case COLONY_COMPARATOR_POSITION:
+<span class="nc" id="L713">            return colonyPositionComparator;</span>
+        case COLONY_COMPARATOR_SIZE:
+<span class="nc" id="L715">            return colonySizeComparator;</span>
+        case COLONY_COMPARATOR_SOL:
+<span class="nc" id="L717">            return colonySoLComparator;</span>
+        case COLONY_COMPARATOR_NAME:
+<span class="nc" id="L719">            Comparator&lt;Colony&gt; cnc = colonyNameComparator.get();</span>
+<span class="nc bnc" id="L720" title="All 2 branches missed.">            if (cnc == null) {</span>
+                // Can not be done statically, must wait for CLI parsing
+<span class="nc" id="L722">                cnc = Comparator.comparing(Colony::getName,</span>
+<span class="nc" id="L723">                    Collator.getInstance(FreeCol.getLocale()));</span>
+<span class="nc" id="L724">                colonyNameComparator.set(cnc);</span>
+            }
+<span class="nc" id="L726">            return cnc;</span>
+        default:
+<span class="nc" id="L728">            throw new RuntimeException(&quot;Unknown comparator: &quot; + type);</span>
+        }
+    }
+
+    /**
+     * Return the client's preferred comparator for ModelMessages.
+     *
+     * @param game The {@code Game} to extract a comparator for.
+     * @return The preferred {@code Comparator}.
+     */
+    public Comparator&lt;ModelMessage&gt; getModelMessageComparator(Game game) {
+<span class="nc bnc" id="L739" title="All 3 branches missed.">        switch (getInteger(MESSAGES_GROUP_BY)) {</span>
+        case MESSAGES_GROUP_BY_SOURCE:
+<span class="nc" id="L741">            Map&lt;String, Comparator&lt;?&gt;&gt; specialized</span>
+                = new HashMap&lt;&gt;();
+<span class="nc" id="L743">            specialized.put(&quot;Colony&quot;, getColonyComparator());</span>
+<span class="nc" id="L744">            return ModelMessage.getSourceComparator(game, specialized);</span>
+        case MESSAGES_GROUP_BY_TYPE:
+<span class="nc" id="L746">            return ModelMessage.messageTypeComparator;</span>
+        default:
+<span class="nc" id="L748">            return null;</span>
+        }
+    }
+    
+    public boolean isRiverAnimationEnabled() {
+<span class="nc bnc" id="L753" title="All 4 branches missed.">        return isTerrainAnimationsEnabled() &amp;&amp; getRange(ClientOptions.GRAPHICS_QUALITY) &gt;= ClientOptions.GRAPHICS_QUALITY_NORMAL;</span>
+    }
+    
+    public boolean isTerrainAnimationsEnabled() {
+<span class="nc bnc" id="L757" title="All 4 branches missed.">        return getBoolean(ClientOptions.USE_TERRAIN_ANIMATIONS) &amp;&amp; getRange(ClientOptions.GRAPHICS_QUALITY) &gt;= ClientOptions.GRAPHICS_QUALITY_LOW;</span>
+    }
+
+    /**
+     * Perform backward compatibility fixups on new client options as
+     * they are introduced.  Annotate with introduction version so we
+     * can clean these up as they become standard.
+     */
+    public void fixClientOptions() {
+        // @compat 0.11.0
+<span class="fc" id="L767">        addBooleanOption(MINIMAP_TOGGLE_BORDERS,</span>
+                         GUI_GROUP, true);
+<span class="fc" id="L769">        addBooleanOption(MINIMAP_TOGGLE_FOG_OF_WAR,</span>
+                         GUI_GROUP, true);
+<span class="fc" id="L771">        addTextOption(AUTO_SAVE_PREFIX,</span>
+                      SAVEGAMES_GROUP, &quot;Autosave&quot;);
+<span class="fc" id="L773">        addTextOption(LAST_TURN_NAME,</span>
+                      SAVEGAMES_GROUP, &quot;last-turn&quot;);
+<span class="fc" id="L775">        addTextOption(BEFORE_LAST_TURN_NAME,</span>
+                      SAVEGAMES_GROUP, &quot;before-last-turn&quot;);
+        // end @compat 0.11.0
+
+        // @compat 0.11.1
+<span class="fc" id="L780">        addBooleanOption(STOCK_ACCOUNTS_FOR_PRODUCTION,</span>
+                         WAREHOUSE_GROUP, false);
+        // end @compat 0.11.1
+
+        // @compat 0.11.3
+<span class="fc" id="L785">        addBooleanOption(AUTOLOAD_SENTRIES,</span>
+                         OTHER_GROUP, false);
+        try { // Zoom range was increased
+<span class="fc" id="L788">            RangeOption ro = getOption(DEFAULT_ZOOM_LEVEL, RangeOption.class);</span>
+<span class="pc bpc" id="L789" title="1 of 2 branches missed.">            if (ro.getItemValues().size() != 6) {</span>
+<span class="nc" id="L790">                Integer value = ro.getValue();</span>
+<span class="nc" id="L791">                ro.clearItemValues();</span>
+<span class="nc" id="L792">                ro.addItemValue(1, &quot;1&quot;);</span>
+<span class="nc" id="L793">                ro.addItemValue(2, &quot;2&quot;);</span>
+<span class="nc" id="L794">                ro.addItemValue(3, &quot;3&quot;);</span>
+<span class="nc" id="L795">                ro.addItemValue(4, &quot;4&quot;);</span>
+<span class="nc" id="L796">                ro.addItemValue(5, &quot;5&quot;);</span>
+<span class="nc" id="L797">                ro.addItemValue(6, &quot;6&quot;);</span>
+<span class="nc" id="L798">                ro.setValue(value); // Make sure the value is valid</span>
+            }
+<span class="nc" id="L800">        } catch (Exception e) {</span>
+<span class="nc" id="L801">            logger.log(Level.WARNING, &quot;Failed to fix &quot; + DEFAULT_ZOOM_LEVEL</span>
+                + &quot; option&quot;, e);
+<span class="fc" id="L803">        }</span>
+        // end @compat 0.11.3
+
+        // @compat 0.11.6
+<span class="fc" id="L807">        addBooleanOption(SHOW_REGION_NAMING,</span>
+                         MESSAGES_GROUP, true);
+
+        // These have computed keys in ModelMessage.MessageType
+<span class="fc" id="L811">        addBooleanOption(&quot;model.option.guiShowCombatResult&quot;,</span>
+                         MESSAGES_GROUP, true);
+<span class="fc" id="L813">        addBooleanOption(&quot;model.option.guiShowUnitRepaired&quot;,</span>
+                         MESSAGES_GROUP, true);
+<span class="fc" id="L815">        addBooleanOption(&quot;model.option.guiShowUnitArrived&quot;,</span>
+                         MESSAGES_GROUP, true);
+<span class="fc" id="L817">        addBooleanOption(&quot;model.option.guiShowDisasters&quot;,</span>
+                         MESSAGES_GROUP, true);
+<span class="fc" id="L819">        addBooleanOption(USE_OPENGL,</span>
+                         GUI_GROUP, true);
+<span class="fc" id="L821">        addBooleanOption(USE_XRENDER,</span>
+                         GUI_GROUP, true);
+<span class="fc" id="L823">        addRangeOption(FRIENDLY_MOVE_ANIMATION_SPEED,</span>
+                       GUI_GROUP, 3, friendlyMoveAnimationSpeeds);
+
+        // Reorg ~early 2022
+        // - model.option.smoothRendering is no longer used
+        // - ClientOptions.GUI was split into DISPLAY_GROUP and INTERFACE_GROUP
+        // - LANGUAGE is now in the PERSONAL group
+<span class="fc" id="L830">        regroup(LANGUAGE, PERSONAL_GROUP);</span>
+        // - DISPLAY_SCALING added to DISPLAY_GROUP
+        // - font overrides added to DISPLAY_GROUP
+        // - USE_* booleans and animation speed move to DISPLAY_GROUP
+<span class="fc" id="L834">        addOptionGroup(DISPLAY_GROUP, TAG);</span>
+<span class="fc" id="L835">        addIntegerOption(DISPLAY_SCALING,</span>
+                         DISPLAY_GROUP, 0);
+<span class="fc" id="L837">        addBooleanOption(MANUAL_MAIN_FONT_SIZE,</span>
+                         DISPLAY_GROUP, false);
+<span class="fc" id="L839">        addIntegerOption(MAIN_FONT_SIZE,</span>
+                         DISPLAY_GROUP, 12);
+<span class="fc bfc" id="L841" title="All 2 branches covered.">        for (String n: new String[] {</span>
+                USE_PIXMAPS, USE_OPENGL, USE_XRENDER,
+                MOVE_ANIMATION_SPEED, ENEMY_MOVE_ANIMATION_SPEED,
+                FRIENDLY_MOVE_ANIMATION_SPEED }) {
+<span class="fc" id="L845">            regroup(n, DISPLAY_GROUP);</span>
+        }
+        // Most of the remaining options move to the MAPVIEW_GROUP...
+<span class="fc" id="L848">        addOptionGroup(INTERFACE_GROUP, TAG);</span>
+<span class="fc" id="L849">        addOptionGroup(MAPVIEW_GROUP, INTERFACE_GROUP);</span>
+<span class="fc bfc" id="L850" title="All 2 branches covered.">        for (String n: new String[] {</span>
+                DEFAULT_ZOOM_LEVEL, ALWAYS_CENTER, JUMP_TO_ACTIVE_UNIT,
+                MAP_SCROLL_ON_DRAG, AUTO_SCROLL,
+                DISPLAY_GRID, DISPLAY_BORDERS, UNIT_LAST_MOVE_DELAY,
+                DISPLAY_TILE_TEXT, DISPLAY_COLONY_LABELS }) {
+<span class="fc" id="L855">            regroup(n, MAPVIEW_GROUP);</span>
+        }
+        // ...except the minimap controls which are in MAPCONTROLS_GROUP
+<span class="fc" id="L858">        addOptionGroup(MAPCONTROLS_GROUP, INTERFACE_GROUP);</span>
+<span class="fc bfc" id="L859" title="All 2 branches covered.">        for (String n: new String[] {</span>
+                DISPLAY_COMPASS_ROSE, DISPLAY_MAP_CONTROLS,
+                MINIMAP_TOGGLE_FOG_OF_WAR, MINIMAP_TOGGLE_BORDERS,
+                //MINIMAP_SMOOTH_RENDERING,
+                MINIMAP_BACKGROUND_COLOR }) {
+<span class="fc" id="L864">            regroup(n, MAPCONTROLS_GROUP);</span>
+        }
+        // MESSAGES,WAREHOUSE,OTHER_GROUP move to INTERFACE_GROUP
+<span class="fc" id="L867">        regroup(MESSAGES_GROUP, INTERFACE_GROUP);</span>
+<span class="fc" id="L868">        regroup(WAREHOUSE_GROUP, INTERFACE_GROUP);</span>
+<span class="fc" id="L869">        regroup(OTHER_GROUP, INTERFACE_GROUP);</span>
+<span class="fc" id="L870">        addBooleanOption(DISPLAY_FOG_OF_WAR, MAPCONTROLS_GROUP, false);</span>
+        // end @compat 0.11.6
+        // @compat 0.12.0
+        /* Gone after 0.13.0:
+        final PercentageOption volumeOption = getOption(AUDIO_VOLUME, PercentageOption.class);
+        volumeOption.setPreviewEnabled(true);
+        */
+<span class="fc" id="L877">        addRangeOption(GRAPHICS_QUALITY, DISPLAY_GROUP, 20, graphicsQualityChoices);</span>
+<span class="fc" id="L878">        addBooleanOption(USE_TERRAIN_ANIMATIONS, DISPLAY_GROUP, true);</span>
+        // end @compat 0.12.0
+        // @compat 0.13.0
+<span class="fc" id="L881">        addPercentageOption(MUSIC_VOLUME, AUDIO_GROUP, 100);</span>
+<span class="fc" id="L882">        addPercentageOption(SOUND_EFFECTS_VOLUME, AUDIO_GROUP, 100);</span>
+        // end @compat 0.13.0
+        // @compat 1.1.0
+<span class="fc" id="L885">        remove(&quot;model.option.mapControls&quot;);</span>
+<span class="fc" id="L886">        final RangeOption op = getOption(DISPLAY_SCALING, RangeOption.class);</span>
+<span class="pc bpc" id="L887" title="1 of 2 branches missed.">        if (!op.getItemValues().containsKey(75)) {</span>
+<span class="nc" id="L888">            op.setItemValueAtIndex(1, 75, &quot;model.option.displayScaling.75&quot;);</span>
+        }
+        // end @compat 1.1.0
+        // @compat 1.1.0
+<span class="pc bpc" id="L892" title="1 of 2 branches missed.">        if (!hasOption(DISPLAY_MODE_FULLSCREEN, FullscreenDisplayModeOption.class)) {</span>
+<span class="nc" id="L893">            final FullscreenDisplayModeOption dmf = new FullscreenDisplayModeOption(null);</span>
+<span class="nc" id="L894">            dmf.setGroup(DISPLAY_GROUP);</span>
+<span class="nc" id="L895">            dmf.setValue(null);</span>
+<span class="nc" id="L896">            add(op);</span>
+        }
+        // end @compat 1.1.0
+<span class="fc" id="L899">    }</span>
+    
+    private void addPercentageOption(String id, String gr, int val) {
+<span class="pc bpc" id="L902" title="1 of 2 branches missed.">        if (!hasOption(id, PercentageOption.class)) {</span>
+<span class="nc" id="L903">            PercentageOption op = new PercentageOption(id, null);</span>
+<span class="nc" id="L904">            op.setGroup(gr);</span>
+<span class="nc" id="L905">            op.setValue(val);</span>
+<span class="nc" id="L906">            add(op);</span>
+        }
+<span class="fc" id="L908">    }</span>
+
+    private void addBooleanOption(String id, String gr, boolean val) {
+<span class="pc bpc" id="L911" title="1 of 2 branches missed.">        if (!hasOption(id, BooleanOption.class)) {</span>
+<span class="nc" id="L912">            BooleanOption op = new BooleanOption(id, null);</span>
+<span class="nc" id="L913">            op.setGroup(gr);</span>
+<span class="nc" id="L914">            op.setValue(val);</span>
+<span class="nc" id="L915">            add(op);</span>
+        }
+<span class="fc" id="L917">    }</span>
+
+    private void addIntegerOption(String id, String gr, int val) {
+<span class="pc bpc" id="L920" title="1 of 2 branches missed.">        if (!hasOption(id, IntegerOption.class)) {</span>
+<span class="nc" id="L921">            IntegerOption op = new IntegerOption(id, null);</span>
+<span class="nc" id="L922">            op.setGroup(gr);</span>
+<span class="nc" id="L923">            op.setValue(val);</span>
+<span class="nc" id="L924">            add(op);</span>
+        }
+<span class="fc" id="L926">    }</span>
+
+    private void addOptionGroup(String id, String gr) {
+<span class="pc bpc" id="L929" title="1 of 2 branches missed.">        if (!hasOption(id, OptionGroup.class)) {</span>
+<span class="nc" id="L930">            OptionGroup og = new OptionGroup(id);</span>
+<span class="nc" id="L931">            og.setGroup(gr);</span>
+<span class="nc" id="L932">            add(og);</span>
+        }
+<span class="fc" id="L934">    }</span>
+
+    /**
+     * Add a new range option.
+     *
+     * @param id The option identifier.
+     * @param gr The group identifier.
+     * @param rank The option rank.
+     * @param entries The options in the range.
+     */
+    private void addRangeOption(String id, String gr, int rank,
+                                Map&lt;Integer, String&gt; entries) {
+<span class="pc bpc" id="L946" title="1 of 2 branches missed.">        if (!hasOption(id, RangeOption.class)) {</span>
+<span class="nc" id="L947">            RangeOption op = new RangeOption(id, (Specification)null);</span>
+<span class="nc" id="L948">            op.setGroup(gr);</span>
+<span class="nc" id="L949">            op.clearItemValues();</span>
+<span class="nc bnc" id="L950" title="All 2 branches missed.">            for (Entry&lt;Integer, String&gt; e : entries.entrySet()) {</span>
+<span class="nc" id="L951">                op.addItemValue(e.getKey(), e.getValue());</span>
+<span class="nc" id="L952">            }</span>
+<span class="nc" id="L953">            op.setValueRank(rank);</span>
+<span class="nc" id="L954">            add(op);</span>
+        }
+<span class="fc" id="L956">    }</span>
+
+    /**
+     * Add a new text option.
+     *
+     * @param id The option identifier.
+     * @param gr The group identifier.
+     * @param val The the text value.
+     */
+    private void addTextOption(String id, String gr, String val) {
+<span class="pc bpc" id="L966" title="1 of 2 branches missed.">        if (!hasOption(id, TextOption.class)) {</span>
+<span class="nc" id="L967">            TextOption op = new TextOption(id, null);</span>
+<span class="nc" id="L968">            op.setGroup(gr);</span>
+<span class="nc" id="L969">            op.setValue(val);</span>
+<span class="nc" id="L970">            add(op);</span>
+        }
+<span class="fc" id="L972">    }</span>
+
+    /**
+     * Move an option to a different group.
+     *
+     * @param id The identifier for the option to move.
+     * @param gr The identifier for the option group to move to.
+     */
+    private void regroup(String id, String gr) {
+<span class="fc" id="L981">        final Option&lt;?&gt; op = getOption(id);</span>
+<span class="pc bpc" id="L982" title="1 of 2 branches missed.">        if (op != null) {</span>
+<span class="fc" id="L983">            op.setGroup(gr);</span>
+        }
+<span class="fc" id="L985">    }</span>
+
+    /**
+     * Extract the panel position options for a given panel class name
+     * as a point.
+     *
+     * @param className The panel class name.
+     * @return A {@code Point} for the position if found, else null.
+     */
+    public Point getPanelPosition(String className) {
+<span class="nc" id="L995">        OptionGroup etc = getOptionGroup(ETC);</span>
+        try {
+<span class="nc bnc" id="L997" title="All 2 branches missed.">            return (etc == null) ? null</span>
+<span class="nc" id="L998">                : new Point(etc.getInteger(className + &quot;.x&quot;),</span>
+<span class="nc" id="L999">                    etc.getInteger(className + &quot;.y&quot;));</span>
+<span class="nc" id="L1000">        } catch (Exception ex) {</span>
+<span class="nc" id="L1001">            logger.finest(&quot;Missing position option for &quot; + className);</span>
+<span class="nc" id="L1002">            return null;</span>
+        }
+    }
+
+    /**
+     * Extract the panel size options for a given panel class name as
+     * a dimension.
+     *
+     * @param className The panel class name.
+     * @return A {@code Dimension} for the size if found, else null.
+     */
+    public Dimension getPanelSize(String className) {
+<span class="nc" id="L1014">        OptionGroup etc = getOptionGroup(ETC);</span>
+        try {
+<span class="nc bnc" id="L1016" title="All 2 branches missed.">            return (etc == null) ? null</span>
+<span class="nc" id="L1017">                : new Dimension(etc.getInteger(className + &quot;.w&quot;),</span>
+<span class="nc" id="L1018">                                etc.getInteger(className + &quot;.h&quot;));</span>
+<span class="nc" id="L1019">        } catch (Exception ex) {</span>
+<span class="nc" id="L1020">            logger.finest(&quot;Missing size option for &quot; + className);</span>
+<span class="nc" id="L1021">            return null;</span>
+        }
+    }
+
+    /**
+     * Extracts the special options from the client options file.
+     *
+     * Note: called early, the logger is not yet reliably available.
+     *
+     * @return A map of the special options and the values found for them.
+     * @exception FreeColException if there is a problem reading the stream.
+     */
+    public static Map&lt;String,String&gt; getSpecialOptions()
+        throws FreeColException {
+        // Initialize the map
+<span class="nc" id="L1036">        Map&lt;String, String&gt; ret = new HashMap&lt;&gt;(specialKeys.size());</span>
+<span class="nc bnc" id="L1037" title="All 2 branches missed.">        for (String key : specialKeys) ret.put(key, null);</span>
+
+        // Extract the values and return
+<span class="nc" id="L1040">        final File optionsFile = FreeColDirectories.getClientOptionsFile();</span>
+<span class="nc" id="L1041">        try (FreeColXMLReader xr = new FreeColXMLReader(optionsFile)) {</span>
+<span class="nc" id="L1042">            xr.readAttributeValues(ret, &quot;value&quot;);</span>
+<span class="nc" id="L1043">        } catch (IOException|XMLStreamException xe) {</span>
+<span class="nc" id="L1044">            throw new FreeColException(xe);</span>
+<span class="nc" id="L1045">        }</span>
+<span class="nc" id="L1046">        return ret;</span>
+    }
+
+
+    // Serialization
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="nc" id="L1055">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

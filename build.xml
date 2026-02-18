@@ -3,7 +3,7 @@
 <!-- This file includes targets for building FreeCol,
      the metaserver, distribution packages, running tests
      and creating documentation. -->
-<project name="FreeCol" default="package">
+<project name="FreeCol" default="package" xmlns:jacoco="antlib:org.jacoco.ant">
     <description>
         This file includes targets for building FreeCol,
         the metaserver, distribution packages, running tests
@@ -1075,5 +1075,58 @@
         <cobertura-report srcdir="${freecol.src.dir}"
                           destdir="cobertura/report"/>
     </target>
+    <taskdef uri="antlib:org.jacoco.ant"
+             resource="org/jacoco/ant/antlib.xml">
+        <classpath>
+            <fileset dir="tools/jacoco">
+                <include name="org.jacoco.ant-*.jar"/>
+                <include name="org.jacoco.core-*.jar"/>
+                <include name="org.jacoco.report-*.jar"/>
+                <include name="org.jacoco.agent-*.jar"/>
+                <include name="asm-*.jar"/>
+                <include name="asm-tree-*.jar"/>
+                <include name="asm-commons-*.jar"/>
+
+            </fileset>
+        </classpath>    </taskdef>
+    <target name="coverage" depends="build-unit-tests"
+            description="Runs unit tests with JaCoCo and generates HTML/XML reports">
+        <mkdir dir="build/coverage"/>
+
+        <jacoco:coverage destfile="build/coverage/jacoco.exec">
+            <junit printsummary="on" fork="yes" haltonfailure="false" maxmemory="256M">
+                <!-- Inject JaCoCo agent in a version-compatible way -->
+<!--                <jvmarg value="-javaagent:tools/jacoco/org.jacoco.agent-0.8.14.202510111229.jar=destfile=build/coverage/jacoco.exec,append=true"/>-->
+
+                <classpath refid="test.run.classpath"/>
+                <test name="net.sf.freecol.AllTests"/>
+            </junit>
+        </jacoco:coverage>
+
+        <jacoco:report>
+            <executiondata>
+                <file file="build/coverage/jacoco.exec"/>
+            </executiondata>
+
+            <structure name="FreeCol">
+                <classfiles>
+                    <fileset dir="${freecol.build.dir}">
+                        <include name="**/*.class"/>
+                        <exclude name="**/*Test*.class"/>
+                        <exclude name="**/AllTests*.class"/>
+                    </fileset>
+                </classfiles>
+                <sourcefiles encoding="UTF-8">
+                    <fileset dir="${freecol.src.dir}"/>
+                </sourcefiles>
+            </structure>
+
+            <html destdir="build/coverage/html"/>
+            <xml destfile="build/coverage/jacoco.xml"/>
+        </jacoco:report>
+
+        <echo message="JaCoCo HTML report: build/coverage/html/index.html"/>
+    </target>
+
 
 </project>

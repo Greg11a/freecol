@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EquipForRoleMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">EquipForRoleMessage.java</span></div><h1>EquipForRoleMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.Role;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent to equip a unit for a particular role.
+ */
+public class EquipForRoleMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;equipForRole&quot;;
+    private static final String COUNT_TAG = &quot;count&quot;;
+    private static final String ROLE_TAG = &quot;role&quot;;
+    private static final String UNIT_TAG = &quot;unit&quot;;
+
+
+    /**
+     * Create a new {@code EquipForRoleMessage} for the supplied
+     * Unit and Role.
+     *
+     * @param unit The {@code Unit} to equip.
+     * @param role The {@code Role} to equip for.
+     * @param roleCount The role count.
+     */
+    public EquipForRoleMessage(Unit unit, Role role, int roleCount) {
+<span class="fc" id="L51">        super(TAG, UNIT_TAG, unit.getId(), ROLE_TAG, role.getId(),</span>
+<span class="fc" id="L52">              COUNT_TAG, String.valueOf(roleCount));</span>
+<span class="fc" id="L53">    }</span>
+
+    /**
+     * Create a new {@code EquipForRoleMessage} from a stream.
+     *
+     * @param game The {@code Game} to read within.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public EquipForRoleMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L64">        super(TAG, xr, UNIT_TAG, ROLE_TAG, COUNT_TAG);</span>
+<span class="nc" id="L65">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean currentPlayerMessage() {
+<span class="fc" id="L73">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L81">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="fc" id="L90">        final Game game = freeColServer.getGame();</span>
+<span class="fc" id="L91">        final String unitId = getStringAttribute(UNIT_TAG);</span>
+<span class="fc" id="L92">        final String roleId = getStringAttribute(ROLE_TAG);</span>
+<span class="fc" id="L93">        final String countString = getStringAttribute(COUNT_TAG);</span>
+
+        Unit unit;
+        try {
+<span class="fc" id="L97">            unit = serverPlayer.getOurFreeColGameObject(unitId, Unit.class);</span>
+<span class="nc" id="L98">        } catch (Exception e) {</span>
+<span class="nc" id="L99">            return serverPlayer.clientError(e.getMessage());</span>
+<span class="fc" id="L100">        }</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (unit.isInEurope()) {</span>
+            ; // Always OK
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        } else if (!unit.hasTile()) {</span>
+<span class="nc" id="L104">            return serverPlayer.clientError(&quot;Unit is not on the map: &quot;</span>
+                + unitId);
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        } else if (unit.getSettlement() == null) {</span>
+<span class="nc" id="L107">            return serverPlayer.clientError(&quot;Unit is not in a settlement: &quot;</span>
+                + unitId);
+        }
+
+<span class="fc" id="L111">        Role role = game.getSpecification().getRole(roleId);</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        if (role == null) {</span>
+<span class="nc" id="L113">            return serverPlayer.clientError(&quot;Not a role: &quot; + roleId);</span>
+        }
+        int count;
+        try {
+<span class="fc" id="L117">            count = Integer.parseInt(countString);</span>
+<span class="nc" id="L118">        } catch (NumberFormatException nfe) {</span>
+<span class="nc" id="L119">            return serverPlayer.clientError(&quot;Role count is not an integer: &quot;</span>
+                + countString);
+<span class="fc" id="L121">        }</span>
+<span class="pc bpc" id="L122" title="2 of 4 branches missed.">        if (count &lt; 0 || count &gt; role.getMaximumCount()) {</span>
+<span class="nc" id="L123">            return serverPlayer.clientError(&quot;Invalid role count: &quot;</span>
+                + countString);
+        }
+
+        // Proceed to equip.
+<span class="fc" id="L128">        return igc(freeColServer)</span>
+<span class="fc" id="L129">            .equipForRole(serverPlayer, unit, role, count);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

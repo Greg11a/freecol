@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReceivingThread.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">ReceivingThread.java</span></div><h1>ReceivingThread.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.xml.stream.XMLStreamException;
+
+import org.xml.sax.SAXException;
+
+import net.sf.freecol.common.FreeColException;
+
+
+/**
+ * The thread that checks for incoming messages.
+ */
+final class ReceivingThread extends Thread {
+
+<span class="fc" id="L42">    private static final Logger logger = Logger.getLogger(ReceivingThread.class.getName());</span>
+
+    /** A class to handle questions. */
+    private static class QuestionThread extends Thread {
+
+        /** The connection to communicate with. */
+        private final Connection conn;
+
+        /** The message to handle. */
+        private final Message query;
+
+        /** The reply identifier to use when sending a reply. */
+        private final int replyId;
+
+
+        /**
+         * Build a new thread to respond to a question message.
+         *
+         * @param name The thread name.
+         * @param conn The {@code Connection} to use for I/O.
+         * @param query The {@code Message} to handle.
+         * @param replyId The network reply identifier 
+         */
+        public QuestionThread(String name, Connection conn, Message query,
+            int replyId) {
+<span class="fc" id="L67">            super(name);</span>
+
+<span class="fc" id="L69">            this.conn = conn;</span>
+<span class="fc" id="L70">            this.query = query;</span>
+<span class="fc" id="L71">            this.replyId = replyId;</span>
+<span class="fc" id="L72">        }</span>
+            
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void run() {
+            Message reply;
+            try {
+<span class="fc" id="L81">                reply = this.conn.handle(this.query);</span>
+<span class="nc" id="L82">            } catch (FreeColException fce) {</span>
+<span class="nc" id="L83">                logger.log(Level.WARNING, getName() + &quot;: handler fail&quot;, fce);</span>
+<span class="nc" id="L84">                return;</span>
+<span class="fc" id="L85">            }</span>
+
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            final String replyTag = (reply == null) ? &quot;null&quot;</span>
+<span class="fc" id="L88">                : reply.getType();</span>
+            try {
+<span class="fc" id="L90">                this.conn.sendMessage(new ReplyMessage(this.replyId, reply));</span>
+<span class="fc" id="L91">                logger.log(Level.FINEST, getName() + &quot; -&gt; &quot; + replyTag);</span>
+<span class="nc" id="L92">            } catch (FreeColException|IOException|XMLStreamException ex) {</span>
+<span class="nc" id="L93">                logger.log(Level.WARNING, getName() + &quot; -&gt; &quot; + replyTag</span>
+                    + &quot; failed&quot;, ex);
+<span class="fc" id="L95">            }                </span>
+<span class="fc" id="L96">        }</span>
+    };
+
+    private static class UpdateThread extends Thread {
+
+        /** The connection to use for I/O. */
+        private final Connection conn;
+
+        /** The message to handle. */
+        private final Message message;
+
+
+        /**
+         * Build a new thread to handle an update.
+         *
+         * @param name The thread name.
+         * @param conn The {@code Connection} to use to send messsages.
+         * @param message The {@code Message} to handle.
+         */
+        public UpdateThread(String name, Connection conn, Message message) {
+<span class="fc" id="L116">            super(name);</span>
+
+<span class="fc" id="L118">            this.conn = conn;</span>
+<span class="fc" id="L119">            this.message = message;</span>
+<span class="fc" id="L120">        }</span>
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void run() {
+            Message reply;
+            try {
+<span class="fc" id="L129">                reply = this.conn.handle(this.message);</span>
+<span class="nc" id="L130">            } catch (FreeColException fce) {</span>
+<span class="nc" id="L131">                logger.log(Level.WARNING, getName() + &quot;: handler fail&quot;, fce);</span>
+<span class="nc" id="L132">                return;</span>
+<span class="fc" id="L133">            }</span>
+
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            final String outTag = (reply == null) ? &quot;null&quot; : reply.getType();</span>
+            try {
+<span class="fc" id="L137">                this.conn.sendMessage(reply);</span>
+<span class="fc" id="L138">                logger.log(Level.FINEST, getName() + &quot; -&gt; &quot; + outTag);</span>
+<span class="nc" id="L139">            } catch (FreeColException|IOException|XMLStreamException ex) {</span>
+<span class="nc" id="L140">                logger.log(Level.WARNING, getName() + &quot; -&gt; &quot; + outTag</span>
+                    + &quot; failed&quot;, ex);
+<span class="fc" id="L142">            }                </span>
+<span class="fc" id="L143">        }</span>
+    };
+
+    /** Maximum number of retries before closing the connection. */
+    private static final int MAXIMUM_RETRIES = 5;
+
+    /** A map of network ids to the corresponding waiting thread. */
+<span class="fc" id="L150">    private final Map&lt;Integer, NetworkReplyObject&gt; waitingThreads</span>
+<span class="fc" id="L151">        = Collections.synchronizedMap(new HashMap&lt;Integer, NetworkReplyObject&gt;());</span>
+
+    /** The connection to receive on. */
+    private final Connection connection;
+
+    /** Whether the thread should run. */
+    private boolean shouldRun;
+
+    /** A counter for reply ids. */
+    private int nextNetworkReplyId;
+
+
+    /**
+     * The constructor to use.
+     * 
+     * @param connection The {@code Connection} this
+     *     {@code ReceivingThread} belongs to.
+     * @param threadName The base name for the thread.
+     */
+    public ReceivingThread(Connection connection, String threadName) {
+<span class="fc" id="L171">        super(&quot;ReceivingThread-&quot; + threadName);</span>
+
+<span class="fc" id="L173">        this.connection = connection;</span>
+<span class="fc" id="L174">        this.shouldRun = true;</span>
+<span class="fc" id="L175">        this.nextNetworkReplyId = 1;</span>
+<span class="fc" id="L176">    }</span>
+
+    /**
+     * Gets the next network reply identifier that will be used when
+     * identifing a network message.
+     * 
+     * @return The next available network reply identifier.
+     */
+    public synchronized int getNextNetworkReplyId() {
+<span class="fc" id="L185">        return nextNetworkReplyId++;</span>
+    }
+
+    /**
+     * Creates and registers a new {@code NetworkReplyObject} with the
+     * specified object identifier.
+     * 
+     * @param networkReplyId The identifier of the message the calling
+     *     thread should wait for.
+     * @return The {@code NetworkReplyObject} containing the network
+     *     message.
+     */
+    public NetworkReplyObject waitForNetworkReply(int networkReplyId) {
+<span class="fc" id="L198">        NetworkReplyObject nro = new NetworkReplyObject(networkReplyId);</span>
+<span class="fc" id="L199">        this.waitingThreads.put(networkReplyId, nro);</span>
+<span class="fc" id="L200">        return nro;</span>
+    }
+
+    /**
+     * Checks if this thread should run.
+     *
+     * @return True if the thread should run.
+     */
+    private synchronized boolean shouldRun() {
+<span class="fc" id="L209">        return this.shouldRun;</span>
+    }
+
+    /**
+     * Set the shouldRun state to false.
+     *
+     * @return The old value of shouldRun.
+     */
+    private synchronized boolean stopRun() {
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        if (!this.shouldRun) return false;</span>
+<span class="fc" id="L219">        this.shouldRun = false;</span>
+<span class="fc" id="L220">        return true;</span>
+    }
+        
+    /**
+     * Stop this thread.
+     *
+     * @return True if the thread was previously running and is now stopped.
+     */
+    private boolean stopThread() {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        if (!stopRun()) return false;</span>
+        // Explicit extraction from waitingThreads before iterating
+        Collection&lt;NetworkReplyObject&gt; nros;
+<span class="fc" id="L232">        synchronized (this.waitingThreads) {</span>
+<span class="fc" id="L233">            nros = this.waitingThreads.values();</span>
+<span class="fc" id="L234">        }</span>
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">        for (NetworkReplyObject o : nros) o.interrupt();</span>
+<span class="fc" id="L236">        return true;</span>
+    }
+        
+    /**
+     * Ask this thread to stop work.
+     *
+     * @param reason A brief description of why the thread should stop.
+     */
+    public void askToStop(String reason) {
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        if (stopThread()) {</span>
+<span class="fc" id="L246">            logger.info(getName() + &quot;: stopped receiving thread: &quot; + reason);</span>
+        }
+<span class="fc" id="L248">    }</span>
+
+    /**
+     * Disconnects this thread.
+     */
+    private void disconnect() {
+<span class="nc" id="L254">        askToStop(&quot;disconnect&quot;);</span>
+<span class="nc" id="L255">        this.connection.sendDisconnect();</span>
+<span class="nc" id="L256">    }</span>
+
+    /**
+     * Create a thread to handle an incoming question message.
+     *
+     * @param qm The {@code QuestionMessage} to handle.
+     * @param replyId The network reply.
+     * @return A new {@code Thread} to do the work, or null if none required.
+     */
+    private Thread messageQuestion(final QuestionMessage qm,
+                                   final int replyId) {
+<span class="fc" id="L267">        final Message query = qm.getMessage();</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">        return (query == null) ? null</span>
+<span class="fc" id="L269">            : new QuestionThread(getName() + &quot;-question-&quot; + replyId + &quot;-&quot;</span>
+<span class="fc" id="L270">                                     + query.getType(),</span>
+                                 this.connection, query, replyId);
+    }
+
+    /**
+     * Create a thread to handle an incoming ordinary message.
+     *
+     * @param message The {@code Message} to handle.
+     * @return A new {@code Thread} to do the work, or null if none required.
+     */
+    private Thread messageUpdate(final Message message) {
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">        if (message == null) return null;</span>
+<span class="fc" id="L282">        final String inTag = message.getType();</span>
+
+<span class="fc" id="L284">        return new UpdateThread(getName() + &quot;-update-&quot; + inTag,</span>
+                                this.connection, message);
+    }
+
+    /**
+     * Listens to the InputStream and calls the message handler for
+     * each message received.
+     * 
+     * @exception IOException on low level IO problems.
+     * @exception SAXException if a problem occured during parsing.
+     * @exception XMLStreamException if a problem occured during parsing.
+     */
+    private void listen() throws IOException, SAXException, XMLStreamException {
+        String tag;
+<span class="fc" id="L298">        int replyId = -1;</span>
+        try {
+<span class="fc" id="L300">            tag = this.connection.startListen();</span>
+<span class="nc" id="L301">        } catch (XMLStreamException xse) {</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">            if (!shouldRun()) return; // Connection shutdown, fail expected</span>
+<span class="nc" id="L303">            logger.log(Level.WARNING, getName() + &quot;: listen fail&quot;, xse);</span>
+<span class="nc" id="L304">            tag = DisconnectMessage.TAG;</span>
+<span class="fc" id="L305">        }</span>
+
+        // Read the message, optionally create a thread to handle it
+<span class="fc" id="L308">        Thread t = null;</span>
+<span class="fc bfc" id="L309" title="All 4 branches covered.">        switch (tag) {</span>
+        case DisconnectMessage.TAG:
+            // Do not actually read the message, it might be a fake one
+            // due to end-of-stream.
+<span class="fc" id="L313">            askToStop(&quot;listen-disconnect&quot;);</span>
+<span class="fc" id="L314">            t = messageUpdate(TrivialMessage.disconnectMessage);</span>
+<span class="fc" id="L315">            break;</span>
+
+        case Connection.REPLY_TAG:
+            // A reply.  Always respond, even when failing, so as to
+            // unblock the waiting thread.
+
+<span class="fc" id="L321">            replyId = this.connection.getReplyId();</span>
+            Message rm;
+            try {
+<span class="fc" id="L324">                rm = this.connection.reader();</span>
+<span class="nc" id="L325">            } catch (Exception ex) {</span>
+<span class="nc" id="L326">                rm = null;</span>
+<span class="nc" id="L327">                logger.log(Level.WARNING, getName() + &quot;: reply fail&quot;, ex);</span>
+<span class="fc" id="L328">            }</span>
+<span class="fc" id="L329">            NetworkReplyObject nro = this.waitingThreads.remove(replyId);</span>
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">            if (nro == null) {</span>
+<span class="nc" id="L331">                logger.warning(getName() + &quot;: did not find reply &quot; + replyId);</span>
+            } else {
+<span class="fc" id="L333">                nro.setResponse(rm);</span>
+            }
+<span class="fc" id="L335">            break;</span>
+
+        case Connection.QUESTION_TAG:
+            // A question.  Build a thread to handle it and send a reply.
+
+<span class="fc" id="L340">            replyId = this.connection.getReplyId();</span>
+<span class="fc" id="L341">            Message m = null;</span>
+            try {
+<span class="fc" id="L343">                m = this.connection.reader();</span>
+<span class="pc bnc" id="L344" title="All 2 branches missed.">                assert m instanceof QuestionMessage;</span>
+<span class="fc" id="L345">                t = messageQuestion((QuestionMessage)m, replyId);</span>
+<span class="nc" id="L346">            } catch (FreeColException fce) {</span>
+<span class="nc" id="L347">                logger.log(Level.WARNING, &quot;No reader for &quot; + replyId, fce);</span>
+<span class="nc" id="L348">                t = null;</span>
+<span class="fc" id="L349">            }                </span>
+<span class="nc" id="L350">            break;</span>
+            
+        default:
+            // An ordinary update message.
+            // Build a thread to handle it and possibly respond.
+
+            try {
+<span class="fc" id="L357">                t = messageUpdate(this.connection.reader());</span>
+<span class="nc" id="L358">            } catch (Exception ex) {</span>
+<span class="nc" id="L359">                logger.log(Level.FINEST, getName() + &quot;: fail&quot;, ex);</span>
+<span class="nc" id="L360">                askToStop(&quot;listen-update-fail&quot;);</span>
+<span class="fc" id="L361">            }</span>
+            break;
+        }
+
+        // Start the thread
+<span class="fc bfc" id="L366" title="All 2 branches covered.">        if (t != null) t.start();</span>
+
+<span class="fc" id="L368">        this.connection.endListen(); // Clean up</span>
+<span class="fc" id="L369">    }</span>
+
+
+    // Override Thread
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void run() {
+        // Receive messages from the network in a loop. This method is
+        // invoked when the thread starts and the thread will stop when
+        // this method returns.
+<span class="fc" id="L382">        int timesFailed = 0;</span>
+        try {
+<span class="fc bfc" id="L384" title="All 2 branches covered.">            while (shouldRun()) {</span>
+                try {
+<span class="fc" id="L386">                    listen();</span>
+<span class="fc" id="L387">                    timesFailed = 0;</span>
+<span class="nc" id="L388">                } catch (SAXException|XMLStreamException ex) {</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">                    if (!shouldRun()) break;</span>
+<span class="nc" id="L390">                    logger.log(Level.WARNING, getName() + &quot;: XML fail&quot;, ex);</span>
+<span class="nc bnc" id="L391" title="All 2 branches missed.">                    if (++timesFailed &gt; MAXIMUM_RETRIES) {</span>
+<span class="nc" id="L392">                        disconnect();</span>
+                    }
+<span class="nc" id="L394">                } catch (IOException ioe) {</span>
+<span class="nc bnc" id="L395" title="All 2 branches missed.">                    if (!shouldRun()) break;</span>
+<span class="nc" id="L396">                    logger.log(Level.WARNING, getName() + &quot;: IO fail&quot;, ioe);</span>
+<span class="nc" id="L397">                    disconnect();</span>
+<span class="pc" id="L398">                }</span>
+            }
+        } finally {
+<span class="fc" id="L401">            askToStop(&quot;run complete&quot;);</span>
+        }
+<span class="fc" id="L403">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

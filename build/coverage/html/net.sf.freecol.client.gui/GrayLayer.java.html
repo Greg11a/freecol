@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrayLayer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui</a> &gt; <span class="el_source">GrayLayer.java</span></div><h1>GrayLayer.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Rectangle;
+
+import javax.swing.ImageIcon;
+import javax.swing.JComponent;
+
+import net.sf.freecol.client.ClientOptions;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.panel.InfoPanel;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Player;
+
+
+/**
+ * Custom component to paint turn progress.
+ * &lt;p&gt;
+ * Currently the component darken out background using alpha channel and
+ * then paints the player's icon and wait message.
+ */
+public class GrayLayer extends JComponent {
+
+    /** Color for graying out background component */
+<span class="nc" id="L48">    private static final Color MASK_COLOR = new Color(0f, 0f, 0f, .6f);</span>
+    /** Default font size for message text */
+    private static final int DEFAULT_FONT_SIZE = 18;
+    /** Font size decrement for message text to reduce length */
+    private static final int FONT_SIZE_DECREMENT = 2;
+    /**
+     * Maximum text width to show.  This is additional constraint to
+     * the component's bounds
+     */
+    private static final int MAX_TEXT_WIDTH = 640;
+
+    /** The client for this FreeCol game */
+    private final FreeColClient freeColClient;
+    
+    /** Player object or {@code null} */
+    private Player player;
+
+
+    /**
+     * Create a gray layer.
+     *
+     * @param freeColClient The client for the game.
+     */
+<span class="nc" id="L71">    public GrayLayer(FreeColClient freeColClient) {</span>
+<span class="nc" id="L72">        this.freeColClient = freeColClient;</span>
+<span class="nc" id="L73">        setOpaque(false);</span>
+<span class="nc" id="L74">    }</span>
+
+
+    /**
+     * Executes painting.  The method shadows the background image, and
+     * paints the message with icon (if available) and text.
+     *
+     * @param g The {@code Graphics} to paint on.
+     */
+    @Override
+    public void paintComponent(Graphics g) {
+<span class="nc" id="L85">        Rectangle clipArea = g.getClipBounds();</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (clipArea == null) {</span>
+<span class="nc" id="L87">            clipArea = getBounds();</span>
+<span class="nc" id="L88">            clipArea.x = clipArea.y = 0;</span>
+        }
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        if (clipArea.isEmpty()) {</span>
+            // we are done - the picture is OK
+<span class="nc" id="L92">            return;</span>
+        }
+        
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (!freeColClient.getClientOptions().getBoolean(ClientOptions.DISABLE_GRAY_LAYER)) {</span>
+<span class="nc" id="L96">            g.setColor(MASK_COLOR);</span>
+<span class="nc" id="L97">            g.fillRect(clipArea.x, clipArea.y, clipArea.width, clipArea.height);</span>
+        }
+
+<span class="nc" id="L100">        ImageIcon coatOfArmsIcon = null;</span>
+<span class="nc" id="L101">        String message = null;</span>
+<span class="nc" id="L102">        Color colour = null;</span>
+
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (player == null) {</span>
+<span class="nc" id="L105">            message = Messages.message(freeColClient.getGame().getTurn()</span>
+<span class="nc" id="L106">                .getLabel());</span>
+<span class="nc" id="L107">            colour = Color.WHITE;</span>
+
+        } else {
+<span class="nc" id="L110">            ImageLibrary lib = this.freeColClient.getGUI()</span>
+<span class="nc" id="L111">                .getFixedImageLibrary();</span>
+<span class="nc" id="L112">            coatOfArmsIcon</span>
+<span class="nc" id="L113">                = new ImageIcon(lib.getNationImage(player.getNation(), 1f));</span>
+<span class="nc" id="L114">            message = Messages.message(player.getWaitingLabel());</span>
+<span class="nc" id="L115">            colour = player.getNationColor();</span>
+        }
+
+<span class="nc" id="L118">        Font nameFont = getFont();</span>
+        Rectangle textBounds;
+<span class="nc" id="L120">        int fontSize = DEFAULT_FONT_SIZE;</span>
+<span class="nc" id="L121">        int maxWidth = Math.min(MAX_TEXT_WIDTH, getSize().width);</span>
+        do {
+<span class="nc" id="L123">            nameFont = nameFont.deriveFont(Font.BOLD, fontSize);</span>
+<span class="nc" id="L124">            FontMetrics nameFontMetrics = getFontMetrics(nameFont);</span>
+<span class="nc" id="L125">            textBounds = nameFontMetrics.getStringBounds(message, g)</span>
+<span class="nc" id="L126">                    .getBounds();</span>
+<span class="nc" id="L127">            fontSize -= FONT_SIZE_DECREMENT;</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        } while (textBounds.width &gt; maxWidth);</span>
+
+<span class="nc" id="L130">        Dimension size = getSize();</span>
+<span class="nc" id="L131">        textBounds.x = (size.width - textBounds.width) / 2;</span>
+<span class="nc" id="L132">        textBounds.y = size.height - (int)InfoPanel.PREFERRED_SIZE.getHeight()</span>
+            - 2 * textBounds.height;
+
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        if (textBounds.intersects(clipArea)) {</span>
+            // show message
+<span class="nc" id="L137">            g.setFont(nameFont);</span>
+<span class="nc" id="L138">            g.setColor(colour);</span>
+<span class="nc" id="L139">            g.drawString(message, textBounds.x, textBounds.y</span>
+                    + textBounds.height);
+        }
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (coatOfArmsIcon != null) {</span>
+<span class="nc" id="L143">            Rectangle iconBounds = new Rectangle();</span>
+<span class="nc" id="L144">            iconBounds.width = coatOfArmsIcon.getIconWidth();</span>
+<span class="nc" id="L145">            iconBounds.height = coatOfArmsIcon.getIconHeight();</span>
+<span class="nc" id="L146">            iconBounds.x = (size.width - iconBounds.width) / 2;</span>
+<span class="nc" id="L147">            iconBounds.y = textBounds.y + 3 * textBounds.height / 2;</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            if (iconBounds.intersects(clipArea)) {</span>
+                // show icon
+<span class="nc" id="L150">                coatOfArmsIcon.paintIcon(this, g, iconBounds.x, iconBounds.y);</span>
+            }
+        }
+<span class="nc" id="L153">    }</span>
+
+    /**
+     * Set the player for which we paint.  If the player is already
+     * set, then nothing happens, otherwise a repaint event is sent.
+     *
+     * @param player The {@code Player} for status information.
+     */
+    public void setPlayer(Player player) {
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        if (this.player == player) return;</span>
+<span class="nc" id="L163">        this.player = player;</span>
+<span class="nc" id="L164">        repaint();</span>
+<span class="nc" id="L165">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

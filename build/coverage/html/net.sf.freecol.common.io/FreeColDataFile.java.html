@@ -1,0 +1,457 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FreeColDataFile.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.io</a> &gt; <span class="el_source">FreeColDataFile.java</span></div><h1>FreeColDataFile.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.io;
+
+import static net.sf.freecol.common.util.StringUtils.join;
+
+import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URLConnection;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import javax.swing.filechooser.FileFilter;
+import javax.swing.filechooser.FileNameExtensionFilter;
+
+import net.sf.freecol.common.MemoryManager;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.resources.ImageResource;
+import net.sf.freecol.common.resources.Resource;
+import net.sf.freecol.common.resources.ResourceFactory;
+import net.sf.freecol.common.resources.ResourceMapping;
+import net.sf.freecol.common.util.LogBuilder;
+
+
+/**
+ * Support for reading a FreeCol data file. The data file
+ * is either a ZIP-file or a directory containing certain files.
+ */
+public class FreeColDataFile {
+
+<span class="fc" id="L68">    private static final Logger logger = Logger.getLogger(FreeColDataFile.class.getName());</span>
+
+    protected static final String ZIP_FILE_EXTENSION = &quot;zip&quot;;
+
+    /** A fake URI scheme for resources delegating to other resources. */
+    private static final String resourceScheme = &quot;resource:&quot;;
+
+    /** The file this object represents. */
+    private final File file;
+
+    /**
+     * A prefix string for the jar-entries (only if {@link #file} is
+     * a ZIP-file).
+     */
+    private final String jarDirectory;
+
+
+    /**
+     * Opens the given file for reading.
+     *
+     * @param file The file to be read.
+     * @exception IOException if the file does not exist.
+     */
+<span class="fc" id="L91">    public FreeColDataFile(File file) throws IOException {</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (!file.exists()) {</span>
+<span class="nc" id="L93">            throw new IOException(&quot;File &quot; + file.getName() + &quot; does not exist&quot;);</span>
+        }
+<span class="fc" id="L95">        this.file = file;</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        this.jarDirectory = (file.isDirectory()) ? null</span>
+<span class="fc" id="L97">            : findJarDirectory(file);</span>
+<span class="fc" id="L98">    }</span>
+
+    /**
+     * Finds the directory within the zip-file in case the data file
+     * has been renamed.
+     *
+     * @param file The zip-file.
+     * @return The name of the base directory in the zip-file or null on error.
+     */
+    private static String findJarDirectory(File file) {
+        try (
+<span class="fc" id="L109">            JarFile jf = new JarFile(file);</span>
+        ) {
+<span class="fc" id="L111">            final JarEntry entry = jf.entries().nextElement();</span>
+<span class="fc" id="L112">            final String en = entry.getName();</span>
+<span class="fc" id="L113">            final int index = en.lastIndexOf('/');</span>
+<span class="fc" id="L114">            String name = &quot;&quot;;</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">            if (index &gt; 0) {</span>
+<span class="nc" id="L116">                name = en.substring(0, index + 1);</span>
+            }
+<span class="fc" id="L118">            return name;</span>
+<span class="nc" id="L119">        } catch (IOException ioe) {</span>
+<span class="nc" id="L120">            logger.warning(&quot;Failed to create jar file: &quot; + file.getName());</span>
+        }
+<span class="nc" id="L122">        return null;</span>
+    }
+
+    /**
+     * Get a URI to access a resource through.
+     *
+     * @param name A name with special prefixes to convert to the URI.
+     * @return A {@code URI}, or null if none found.
+     */
+    protected URI getURI(String name) {
+        try {
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            if (name.startsWith(&quot;urn:&quot;)) {</span>
+                try {
+<span class="fc" id="L135">                    return new URI(name);</span>
+<span class="nc" id="L136">                } catch (URISyntaxException e) {</span>
+<span class="nc" id="L137">                    logger.log(Level.WARNING, &quot;Resource creation failure with: &quot;</span>
+                        + name, e);
+<span class="nc" id="L139">                    return null;</span>
+                }
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            } else if (file.isDirectory()) {</span>
+<span class="fc" id="L142">                return new File(file, name).toURI();</span>
+            } else {
+<span class="fc" id="L144">                return new URI(&quot;jar:file&quot;, file + &quot;!/&quot; + jarDirectory + name,</span>
+                               null);
+            }
+<span class="nc" id="L147">        } catch (URISyntaxException e) {</span>
+<span class="nc" id="L148">            logger.log(Level.WARNING, &quot;Failed to lookup: &quot; + file + &quot;/&quot; + name,</span>
+                       e);
+<span class="nc" id="L150">            return null;</span>
+        }
+    }
+
+    /**
+     * Gets an input stream for the specified resource.
+     *
+     * @param filename The filename of a resource within this
+     *     collection of data.  If this object represents a directory
+     *     then the provided filename should be relative towards the
+     *     path of the directory.  In case of a compressed archive it
+     *     should be the path within the archive.
+     * @return An {@code InputStream} to read the resource with.
+     * @exception IOException if an error occurs
+     */
+    public BufferedInputStream getInputStream(String filename) throws IOException {
+<span class="fc" id="L166">        final URLConnection connection = getURI(filename).toURL()</span>
+<span class="fc" id="L167">            .openConnection();</span>
+<span class="fc" id="L168">        connection.setDefaultUseCaches(false);</span>
+<span class="fc" id="L169">        return new BufferedInputStream(connection.getInputStream());</span>
+    }
+
+    /**
+     * Creates a {@code ResourceMapping} from the available resource files.
+     *
+     * @return A {@code ResourceMapping} or {@code null}
+     *     there is no resource mapping file.
+     */
+    public ResourceMapping getResourceMapping() {
+<span class="fc" id="L179">        final LogBuilder lb = new LogBuilder(64);</span>
+<span class="fc" id="L180">        lb.add(&quot;Resource mappings:&quot;);</span>
+<span class="fc" id="L181">        lb.mark();</span>
+<span class="fc" id="L182">        final Properties properties = readResourcesProperties(lb);</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (properties == null) {</span>
+<span class="nc" id="L184">            return null;</span>
+        }
+
+<span class="fc" id="L187">        final ResourceMapping rc = new ResourceMapping();</span>
+<span class="fc" id="L188">        final List&lt;String&gt; virtualResources = handleResources(properties, rc);</span>
+<span class="fc" id="L189">        handleVirtualResources(virtualResources, lb, properties, rc);</span>
+        
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (lb.grew()) lb.log(logger, Level.FINE);</span>
+<span class="fc" id="L192">        return rc;</span>
+    }
+
+    /**
+     * Handles loading of all resources defined in {@code properties}.
+     * 
+     * This method also handles alternate variations and sizes.
+     *  
+     * @param properties The resources to be loaded.
+     * @param rc The output object where resolved resources should be placed.
+     * @return A list of keys that are virtual resources, that is a link to
+     *      another resource. Virtual resources are used by mods when the
+     *      author wants to reuse graphics that are defined in other FreeCol
+     *      data files.
+     */
+    private List&lt;String&gt; handleResources(final Properties properties, ResourceMapping rc) {
+<span class="fc" id="L208">        final ResourceFactory resourceFactory = new ResourceFactory();</span>
+<span class="fc" id="L209">        final List&lt;String&gt; virtualResources = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L210">        final Enumeration&lt;?&gt; pn = properties.propertyNames();</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        while (pn.hasMoreElements()) {</span>
+<span class="fc" id="L212">            final String key = (String) pn.nextElement();</span>
+            
+            /*
+             * We are stripping &quot;.r0&quot; from the end of keys in order to
+             * support old keys where the variant was listed in
+             * resources.properties.
+             */
+<span class="fc" id="L219">            final String updatedKey = stripEnding(key, &quot;.r0&quot;);</span>
+<span class="fc" id="L220">            final String value = properties.getProperty(key);</span>
+            
+<span class="fc bfc" id="L222" title="All 2 branches covered.">            if (value.startsWith(resourceScheme)) {</span>
+<span class="fc" id="L223">                virtualResources.add(updatedKey);</span>
+            } else {
+<span class="fc" id="L225">                handleNormalResource(resourceFactory, rc, key, value);</span>
+            }
+<span class="fc" id="L227">        }</span>
+<span class="fc" id="L228">        return virtualResources;</span>
+    }
+
+    private void handleNormalResource(ResourceFactory resourceFactory, ResourceMapping rc, final String key, final String value) {
+<span class="fc" id="L232">        final URI uri = getURI(value);</span>
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">        if (uri == null) {</span>
+<span class="nc" id="L234">            return;</span>
+        }
+        
+        /*
+         * The caching key should be (and only be) the same when it's the
+         * same actual resource data (for example, the same image file).
+         * 
+         * Please note that the key is not suitable for a caching key,
+         * since the resource might get replaced by a mod.
+         */
+<span class="fc" id="L244">        final String cachingKey = uri.toString();</span>
+<span class="fc" id="L245">        final Resource resource = resourceFactory.createResource(key, cachingKey, uri);</span>
+        
+        /*
+         * Rivers need new keys in order to support variations.
+         */
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        final boolean supportsVariations = !key.contains(&quot;.improvement.river.&quot;);</span>
+        
+<span class="fc bfc" id="L252" title="All 4 branches covered.">        if (resource instanceof ImageResource &amp;&amp; supportsVariations) {</span>
+<span class="fc" id="L253">            final ImageResource imageResource = (ImageResource) resource;</span>
+<span class="fc" id="L254">            extendWithAdditionalSizesAndVariations(resourceFactory, imageResource, value);</span>
+        }
+        
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        if (resource != null) {</span>
+<span class="fc" id="L258">            rc.add(key, resource);</span>
+        }
+<span class="fc" id="L260">    }</span>
+
+    private void handleVirtualResources(List&lt;String&gt; virtualResources, final LogBuilder lb, final Properties properties, ResourceMapping rc) {
+<span class="fc" id="L263">        boolean progress = true;</span>
+<span class="fc" id="L264">        List&lt;String&gt; miss = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L265" title="1 of 4 branches missed.">        while (progress &amp;&amp; !virtualResources.isEmpty()) {</span>
+<span class="fc" id="L266">            miss.clear();</span>
+<span class="fc" id="L267">            progress = false;</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">            while (!virtualResources.isEmpty()) {</span>
+<span class="fc" id="L269">                final String key = virtualResources.remove(0);</span>
+                /*
+                 * We are stripping &quot;.r0&quot; from the end of keys in order to
+                 * support old keys where the variant was listed in
+                 * resources.properties.
+                 */
+<span class="fc" id="L275">                final String updatedKey = stripEnding(key, &quot;.r0&quot;);</span>
+                
+<span class="fc" id="L277">                final String value = properties.getProperty(key)</span>
+<span class="fc" id="L278">                    .substring(resourceScheme.length());</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">                if (!rc.duplicateResource(value, updatedKey)) {</span>
+<span class="nc" id="L280">                    miss.add(key);</span>
+                } else {
+<span class="fc" id="L282">                    progress = true;</span>
+                }
+<span class="fc" id="L284">            }</span>
+<span class="fc" id="L285">            virtualResources.addAll(miss);</span>
+        }
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">        if (!virtualResources.isEmpty()) {</span>
+<span class="nc" id="L288">            lb.add(&quot;, could not resolve virtual resource/s: &quot;,</span>
+<span class="nc" id="L289">                   join(&quot; &quot;, virtualResources));</span>
+        }
+<span class="fc" id="L291">    }</span>
+
+    /**
+     * Reads &quot;resources.properties&quot;. We support localized versions of this
+     * file, so that localized images can be provided.
+     * 
+     * @param lb Just used for logging.
+     * @return The read properties, or {@code null} if an error occured while
+     *      reading the file(s).
+     */
+    private Properties readResourcesProperties(final LogBuilder lb) {
+<span class="fc" id="L302">        final Properties properties = new Properties();</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        for (String fileName : FreeColDirectories.getResourceFileNames()) {</span>
+            try (
+<span class="fc" id="L305">                final InputStream is = getInputStream(fileName);</span>
+            ) {
+<span class="fc" id="L307">                properties.load(is);</span>
+<span class="fc" id="L308">                lb.add(' ', file, '/', fileName, &quot;:ok&quot;);</span>
+<span class="fc" id="L309">            } catch (FileNotFoundException e) { // Expected failure</span>
+<span class="fc" id="L310">                lb.add(' ', file, '/', fileName, &quot;:not-found&quot;);</span>
+<span class="nc" id="L311">            } catch (IOException e) {</span>
+<span class="nc" id="L312">                logger.log(Level.WARNING, &quot;ResourceMapping read exception: &quot;</span>
+                    + file + &quot;/&quot; + fileName, e);
+<span class="nc" id="L314">                return null;</span>
+<span class="fc" id="L315">            }</span>
+<span class="fc" id="L316">        }</span>
+<span class="fc" id="L317">        return properties;</span>
+    }
+    
+    private String stripEnding(String key, String ending) {
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">        return (key.endsWith(ending)) ? key.substring(0, key.length() - 3) : key;</span>
+    }
+    
+    private void extendWithAdditionalSizesAndVariations(ResourceFactory resourceFactory, ImageResource imageResource, String value) {
+<span class="fc" id="L325">        Map&lt;URI, List&lt;URI&gt;&gt; variationsWithAlternateSizes = findVariationsWithAlternateSizes(value);</span>
+<span class="fc" id="L326">        imageResource.addAlternativeResourceLocators(variationsWithAlternateSizes.get(null));</span>
+        
+<span class="fc" id="L328">        variationsWithAlternateSizes.entrySet()</span>
+<span class="fc" id="L329">            .stream()</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">            .filter(entry -&gt; entry.getKey() != null)</span>
+<span class="fc" id="L331">            .forEach(entry -&gt; {</span>
+<span class="fc" id="L332">                final ImageResource variationResource = (ImageResource) resourceFactory.createResource(&quot;&quot;, imageResource.getCachingKey(), entry.getKey());</span>
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">                if (variationResource != null) {</span>
+<span class="fc" id="L334">                    variationResource.addAlternativeResourceLocators(entry.getValue());</span>
+<span class="fc" id="L335">                    imageResource.addVariation(variationResource);</span>
+                }
+<span class="fc" id="L337">            });</span>
+<span class="fc" id="L338">    }</span>
+
+    private Map&lt;URI, List&lt;URI&gt;&gt; findVariationsWithAlternateSizes(String name) {
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">        if (name.indexOf(&quot;.&quot;) &lt;= 0) {</span>
+<span class="nc" id="L342">            return Map.of();</span>
+        }
+
+<span class="fc" id="L345">        FileSystem fileSystem = null;</span>
+        try {
+            final Path filePath;
+<span class="pc bpc" id="L348" title="1 of 2 branches missed.">            if (file.isDirectory()) {</span>
+<span class="fc" id="L349">                filePath = new File(file, name).toPath();</span>
+            } else {
+                /*
+                 * We can use JarEntry instead, if this solution causes problems. 
+                 */
+<span class="nc" id="L354">                fileSystem = FileSystems.newFileSystem(new URI(&quot;jar:file&quot;, file.getAbsolutePath(), null), Map.of());</span>
+<span class="nc" id="L355">                filePath = fileSystem.getPath(jarDirectory + name);</span>
+            }
+            
+            /*
+             * Using LinkedHashMap to ensure we keep the variations in order.
+             */
+<span class="fc" id="L361">            final Map&lt;URI, List&lt;URI&gt;&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L362" title="1 of 2 branches missed.">            if (MemoryManager.isHighQualityGraphicsEnabled()) {</span>
+<span class="nc" id="L363">                result.put(null, findFilesWithVariationOrAlternativeSizeAsUri(filePath, false));</span>
+            } else {
+<span class="fc" id="L365">                result.put(null, List.of());</span>
+            }
+            
+<span class="fc" id="L368">            final List&lt;Path&gt; variations = findFilesWithVariationOrAlternativeSize(filePath, true);</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">            for (Path variationPath : variations) {</span>
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">                if (MemoryManager.isHighQualityGraphicsEnabled()) {</span>
+<span class="nc" id="L371">                    result.put(variationPath.toUri(), findFilesWithVariationOrAlternativeSizeAsUri(variationPath, false));</span>
+                } else {
+<span class="fc" id="L373">                    result.put(variationPath.toUri(), List.of());</span>
+                }
+<span class="fc" id="L375">            } </span>
+            
+<span class="fc" id="L377">            return result;</span>
+<span class="nc" id="L378">        } catch (IOException | URISyntaxException e) {</span>
+<span class="nc" id="L379">            logger.log(Level.WARNING, &quot;Failed to read directory from jar/zip file: &quot; + file + &quot; jarDirectory&quot; + jarDirectory, e);</span>
+<span class="nc" id="L380">            return Map.of();</span>
+        } finally {
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">            if (fileSystem != null) {</span>
+                try {
+<span class="nc" id="L384">                    fileSystem.close();</span>
+<span class="nc" id="L385">                } catch (IOException e) {}</span>
+            }
+        }
+    }
+
+    private List&lt;URI&gt; findFilesWithVariationOrAlternativeSizeAsUri(final Path filePath, boolean findVariation) throws IOException {
+<span class="nc" id="L391">        return toUris(findFilesWithVariationOrAlternativeSize(filePath, findVariation));</span>
+    }
+    
+    private List&lt;URI&gt; toUris(List&lt;Path&gt; paths) {
+<span class="nc" id="L395">        return paths.stream()</span>
+<span class="nc" id="L396">                .map(p -&gt; p.toUri())</span>
+<span class="nc" id="L397">                .collect(Collectors.toList());</span>
+    }
+    
+    private List&lt;Path&gt; findFilesWithVariationOrAlternativeSize(final Path filePath, boolean findVariation) throws IOException {
+<span class="fc" id="L401">        final String variationFileRegex = &quot;[0-9][0-9]?&quot;;</span>
+<span class="fc" id="L402">        final String sizeFileRegex = &quot;\\.size[0-9][0-9]*&quot;;</span>
+        
+<span class="pc bpc" id="L404" title="1 of 2 branches missed.">        final String regex = (findVariation) ? variationFileRegex : sizeFileRegex;       </span>
+<span class="fc" id="L405">        final String resourceFilename = filePath.getFileName().toString();</span>
+<span class="fc" id="L406">        String prefix = resourceFilename.substring(0, resourceFilename.lastIndexOf(&quot;.&quot;));</span>
+<span class="pc bpc" id="L407" title="1 of 2 branches missed.">        if (findVariation) {</span>
+<span class="fc" id="L408">            prefix = prefix.replaceAll(&quot;[0-9]*$&quot;, &quot;&quot;);</span>
+        }
+<span class="fc" id="L410">        final String suffix = resourceFilename.substring(resourceFilename.lastIndexOf(&quot;.&quot;));</span>
+<span class="fc" id="L411">        final String completeRegex = Pattern.quote(prefix) + regex + Pattern.quote(suffix);</span>
+        
+<span class="fc" id="L413">        try (Stream&lt;Path&gt; pathStream = Files.list(filePath.getParent())) {</span>
+<span class="fc" id="L414">            return pathStream</span>
+<span class="fc" id="L415">                    .sorted()</span>
+<span class="pc bpc" id="L416" title="1 of 6 branches missed.">                    .filter(p -&gt; p.getFileName().toString().matches(completeRegex) &amp;&amp; (!findVariation || !p.equals(filePath)))</span>
+<span class="fc" id="L417">                    .collect(Collectors.toList());</span>
+        }
+    }
+
+    /**
+     * Get the path to the underlying file.
+     *
+     * Useful for error messages.
+     *
+     * @return The path to the file.
+     */
+    public String getPath() {
+<span class="nc" id="L429">        return file.getPath();</span>
+    }
+
+
+    /**
+     * Get a file filter for a given extension.
+     *
+     * @param extension The file extension to filter on.
+     * @return File filters for the extension.
+     */
+    public static FileFilter getFileFilter(String extension) {
+<span class="nc" id="L440">        String s = Messages.message(&quot;filter.&quot; + extension);</span>
+<span class="nc bnc" id="L441" title="All 2 branches missed.">        if (extension.equals(&quot;*&quot;)) {</span>
+<span class="nc" id="L442">            return new FileFilter() {</span>
+                @Override
+                public boolean accept(File f) {
+<span class="nc" id="L445">                    return true;</span>
+                }
+                
+                @Override
+                public String getDescription() {
+<span class="nc" id="L450">                    return s;</span>
+                }
+            };
+        }
+<span class="nc" id="L454">        return new FileNameExtensionFilter(s, extension);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

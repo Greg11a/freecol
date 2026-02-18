@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NativeTradeItem.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">NativeTradeItem.java</span></div><h1>NativeTradeItem.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import java.util.Comparator;
+import java.util.function.Predicate;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+
+
+/**
+ * A trade item consisting of some goods to be traded with the natives.
+ * Therefore we include the current valuation and the haggle count.
+ */
+public class NativeTradeItem extends GoodsTradeItem {
+
+    public static final String TAG = &quot;nativeTradeItem&quot;;
+
+    /** Compare the trade item price. */
+<span class="nc" id="L42">    public static final Comparator&lt;NativeTradeItem&gt; descendingPriceComparator</span>
+<span class="nc" id="L43">        = Comparator.comparingInt(NativeTradeItem::getPrice).reversed()</span>
+<span class="nc" id="L44">            .thenComparingInt(NativeTradeItem::getHaggleCount)</span>
+<span class="nc" id="L45">            .thenComparing(nti -&gt; nti.getGoods().getType(),</span>
+                           GoodsType.goodsTypeComparator);
+
+    /** Magic number to denote that the price has not been initialized. */
+    public static final int PRICE_UNSET = 0;
+
+    /** Magic number for price to denote an invalid item. */
+    public static final int PRICE_INVALID = -1;
+
+
+    /** The current valuation by the natives. */
+    private int price;
+
+    /** The number of haggling rounds. */
+    private int haggleCount;
+    
+
+    /**
+     * Creates a new {@code NativeTradeItem} instance.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param source The source {@code Player}.
+     * @param destination The destination {@code Player}.
+     * @param goods The {@code Goods} to trade.
+     */
+    public NativeTradeItem(Game game, Player source, Player destination,
+                           Goods goods) {
+<span class="nc" id="L72">        super(game, source, destination, goods);</span>
+
+<span class="nc" id="L74">        this.price = PRICE_UNSET;</span>
+<span class="nc" id="L75">        this.haggleCount = 0;</span>
+<span class="nc" id="L76">    }</span>
+
+    /**
+     * Copy a new {@code NativeTradeItem} instance.  Used by readList.
+     *
+     * @param nti The {@code NativeTradeItem} to copy.
+     */
+    public NativeTradeItem(NativeTradeItem nti) {
+<span class="nc" id="L84">        super(nti.getGoods().getGame(), nti.getSource(), nti.getDestination(),</span>
+<span class="nc" id="L85">              nti.getGoods());</span>
+
+<span class="nc" id="L87">        this.price = nti.getPrice();</span>
+<span class="nc" id="L88">        this.haggleCount = nti.getHaggleCount();</span>
+<span class="nc" id="L89">    }</span>
+
+    /**
+     * Creates a new {@code NativeTradeItem} instance.
+     *
+     * @param game The enclosing {@code Game}.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is an error reading the stream.
+     */
+    public NativeTradeItem(Game game, FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L99">        super(game, xr);</span>
+<span class="nc" id="L100">    }</span>
+
+
+    /**
+     * Has a price been set for this item?
+     *
+     * @return True if a price has been set.
+     */
+    public boolean priceIsSet() {
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        return this.price != PRICE_UNSET;</span>
+    }
+
+    /**
+     * Is the price valid for trade.
+     *
+     * @return True if the price is positive.
+     */
+    public boolean priceIsValid() {
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        return this.price &gt; 0;</span>
+    }
+
+    /**
+     * Get the price for this item.
+     *
+     * @return The current price.
+     */
+    public int getPrice() {
+<span class="nc" id="L127">        return this.price;</span>
+    }
+
+    /**
+     * Set the price for this item.
+     *
+     * @param price The new price.
+     */
+    public void setPrice(int price) {
+<span class="nc" id="L136">        this.price = price;</span>
+<span class="nc" id="L137">    }</span>
+
+    /**
+     * Get the haggle count for this item.
+     *
+     * @return The current haggle count.
+     */
+    public int getHaggleCount() {
+<span class="nc" id="L145">        return this.haggleCount;</span>
+    }
+
+    /**
+     * Set the haggle count for this item.
+     *
+     * @param haggleCount The new haggle count.
+     */
+    public void setHaggleCount(int haggleCount) {
+<span class="nc" id="L154">        this.haggleCount = haggleCount;</span>
+<span class="nc" id="L155">    }</span>
+
+    /**
+     * Get a predicate to match this native trade item by its goods.
+     *
+     * @return A suitable {@code Predicate}.
+     */
+    public Predicate&lt;NativeTradeItem&gt; goodsMatcher() {
+<span class="nc" id="L163">        return matchKeyEquals(this.getGoods(), NativeTradeItem::getGoods);</span>
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L174">        NativeTradeItem o = copyInCast(other, NativeTradeItem.class);</span>
+<span class="nc bnc" id="L175" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L176">        this.price = o.getPrice();</span>
+<span class="nc" id="L177">        this.haggleCount = o.getHaggleCount();</span>
+<span class="nc" id="L178">        return true;</span>
+    }
+
+
+    // Interface TradeItem
+    // All provided by superclass
+
+    // Serialization
+
+    private static final String HAGGLE_COUNT_TAG = &quot;haggleCount&quot;;
+    private static final String PRICE_TAG = &quot;price&quot;;
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="nc" id="L196">        super.writeAttributes(xw);</span>
+
+<span class="nc" id="L198">        xw.writeAttribute(PRICE_TAG, this.price);</span>
+
+<span class="nc" id="L200">        xw.writeAttribute(HAGGLE_COUNT_TAG, this.haggleCount);</span>
+<span class="nc" id="L201">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="nc" id="L208">        super.readAttributes(xr);</span>
+
+<span class="nc" id="L210">        this.price = xr.getAttribute(PRICE_TAG, PRICE_INVALID);</span>
+
+<span class="nc" id="L212">        this.haggleCount = xr.getAttribute(HAGGLE_COUNT_TAG, -1);</span>
+<span class="nc" id="L213">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="nc" id="L218">    public String getXMLTagName() { return TAG; }</span>
+
+
+    // Override Object
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="nc bnc" id="L228" title="All 2 branches missed.">        if (!(o instanceof NativeTradeItem)) return false;</span>
+<span class="nc" id="L229">        NativeTradeItem other = (NativeTradeItem)o;</span>
+<span class="nc bnc" id="L230" title="All 4 branches missed.">        return this.price == other.price</span>
+            &amp;&amp; this.haggleCount == other.haggleCount
+<span class="nc bnc" id="L232" title="All 2 branches missed.">            &amp;&amp; super.equals(other);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+<span class="nc" id="L240">        int hash = super.hashCode();</span>
+<span class="nc" id="L241">        hash = 37 * hash + this.price;</span>
+<span class="nc" id="L242">        return 37 * hash + this.haggleCount;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L250">        StringBuilder sb = new StringBuilder(16);</span>
+<span class="nc" id="L251">        sb.append('[').append(getId())</span>
+<span class="nc" id="L252">            .append(' ').append(this.goods.getAmount()).append(' ')</span>
+<span class="nc" id="L253">            .append(Messages.getName(this.goods))</span>
+<span class="nc" id="L254">            .append(' ').append(price).append(' ').append(haggleCount)</span>
+<span class="nc" id="L255">            .append(']');</span>
+<span class="nc" id="L256">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

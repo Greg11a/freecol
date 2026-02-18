@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NationSummaryMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">NationSummaryMessage.java</span></div><h1>NationSummaryMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.NationSummary;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent when summarizing a nation.
+ */
+public class NationSummaryMessage extends ObjectMessage {
+
+    public static final String TAG = &quot;nationSummary&quot;;
+    private static final String PLAYER_TAG = &quot;player&quot;;
+
+
+    /**
+     * Create a new {@code NationSummaryMessage} for the
+     * specified player.
+     *
+     * @param player The {@code Player} to summarize.
+     * @param nationSummary An optional {@code NationSummary} to attach.
+     */
+    public NationSummaryMessage(Player player, NationSummary nationSummary) {
+<span class="fc" id="L51">        super(TAG, PLAYER_TAG, player.getId());</span>
+
+<span class="fc" id="L53">        appendChild(nationSummary);</span>
+<span class="fc" id="L54">    }</span>
+
+    /**
+     * Create a new {@code NationSummaryMessage} from a stream.
+     *
+     * @param game The {@code Game} containing the nation to summarize.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public NationSummaryMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L65">        super(TAG, xr, PLAYER_TAG);</span>
+
+<span class="nc" id="L67">        NationSummary ns = null;</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        while (xr.moreTags()) {</span>
+<span class="nc" id="L69">            String tag = xr.getLocalName();</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">            if (NationSummary.TAG.equals(tag)) {</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">                if (ns == null) {</span>
+<span class="nc" id="L72">                    ns = xr.readFreeColObject(game, NationSummary.class);</span>
+                } else {
+<span class="nc" id="L74">                    expected(TAG, tag);</span>
+                }
+            } else {
+<span class="nc" id="L77">                expected(NationSummary.TAG, tag);</span>
+            }
+<span class="nc" id="L79">            xr.expectTag(tag);</span>
+<span class="nc" id="L80">        }</span>
+<span class="nc" id="L81">        xr.expectTag(TAG);</span>
+<span class="nc" id="L82">        appendChild(ns);</span>
+<span class="nc" id="L83">    }</span>
+
+
+    /**
+     * Client side helper to get the player.
+     *
+     * @param game The {@code Game} to look for a player within.
+     * @return The player.
+     */
+    private Player getPlayer(Game game) {
+<span class="fc" id="L93">        return game.getFreeColGameObject(getStringAttribute(PLAYER_TAG),</span>
+                                         Player.class);
+    }
+
+    /**
+     * Client side helper to get the summary.
+     *
+     * @return The summary.
+     */
+    private NationSummary getNationSummary() {
+<span class="fc" id="L103">        return getChild(0, NationSummary.class);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L111">        return Message.MessagePriority.LATE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+<span class="fc" id="L119">        final Player other = getPlayer(freeColServer.getGame());</span>
+<span class="fc" id="L120">        final NationSummary ns = getNationSummary();</span>
+
+<span class="fc" id="L122">        aiPlayer.nationSummaryHandler(other, ns);</span>
+<span class="fc" id="L123">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L130">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L131">        final Player other = getPlayer(game);</span>
+<span class="nc" id="L132">        final NationSummary ns = getNationSummary();</span>
+
+<span class="nc" id="L134">        igc(freeColClient).nationSummaryHandler(other, ns);</span>
+<span class="nc" id="L135">        clientGeneric(freeColClient);</span>
+<span class="nc" id="L136">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="fc" id="L144">        final Game game = freeColServer.getGame();</span>
+
+<span class="fc" id="L146">        Player player = getPlayer(game);</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        if (player == null) {</span>
+<span class="nc" id="L148">            return serverPlayer.clientError(&quot;Not a player: &quot;</span>
+<span class="nc" id="L149">                + getStringAttribute(PLAYER_TAG));</span>
+<span class="pc bpc" id="L150" title="3 of 4 branches missed.">        } else if (player.isIndian() &amp;&amp; !serverPlayer.hasContacted(player)) {</span>
+<span class="nc" id="L151">            return null;</span>
+        }
+
+<span class="fc" id="L154">        return igc(freeColServer)</span>
+<span class="fc" id="L155">            .nationSummary(serverPlayer, player);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

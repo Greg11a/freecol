@@ -1,0 +1,805 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Utility.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">Utility.java</span></div><h1>Utility.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.GridLayout;
+import java.awt.Insets;
+import java.awt.RenderingHints;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.font.TextLayout;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import javax.swing.BorderFactory;
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuItem;
+import javax.swing.JPanel;
+import javax.swing.JRadioButtonMenuItem;
+import javax.swing.JTextArea;
+import javax.swing.JTextPane;
+import javax.swing.SwingConstants;
+import javax.swing.border.BevelBorder;
+import javax.swing.border.Border;
+import javax.swing.border.TitledBorder;
+import javax.swing.text.DefaultStyledDocument;
+import javax.swing.text.Style;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyleContext;
+
+import net.sf.freecol.client.gui.FontLibrary;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.panel.FreeColButton.ButtonStyle;
+import net.sf.freecol.client.gui.plaf.FreeColComboBoxRenderer;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.FreeColGameObject;
+import net.sf.freecol.common.model.FreeColSpecObjectType;
+import net.sf.freecol.common.model.Location;
+import net.sf.freecol.common.model.Named;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Unit;
+
+
+/**
+ * Static utilities for panels and dialogs.
+ */
+<span class="nc" id="L82">public final class Utility {</span>
+
+    /** Useful static borders. */
+<span class="nc" id="L85">    public static final Border BEVEL_BORDER</span>
+<span class="nc" id="L86">        = BorderFactory.createBevelBorder(BevelBorder.LOWERED);</span>
+
+    public static final Border ETCHED_BORDER
+<span class="nc" id="L89">        = BorderFactory.createEtchedBorder();</span>
+
+    // FIXME: color should be a Resource
+<span class="nc" id="L92">    public static final Border PROGRESS_BORDER = BorderFactory</span>
+<span class="nc" id="L93">        .createLineBorder(new Color(122, 109, 82));</span>
+
+<span class="nc" id="L95">    private static Border COLOR_CELL_BORDER = null,</span>
+<span class="nc" id="L96">        DIALOG_BORDER = null,</span>
+<span class="nc" id="L97">        SIMPLE_LINE_BORDER = null,</span>
+<span class="nc" id="L98">        TOPCELLBORDER = null,</span>
+<span class="nc" id="L99">        CELLBORDER = null,</span>
+<span class="nc" id="L100">        LEFTCELLBORDER = null,</span>
+<span class="nc" id="L101">        TOPLEFTCELLBORDER = null;</span>
+
+    /** How many columns (em-widths) to use in the text area. */
+    private static final int DEFAULT_TEXT_COLUMNS = 20;
+
+    /** The margin to use for a link button. */
+<span class="nc" id="L107">    public static final Insets EMPTY_MARGIN = new Insets(0, 0, 0, 0);</span>
+
+    /** A style context to use for panels and dialogs. */
+<span class="nc" id="L110">    private static StyleContext STYLE_CONTEXT = null;</span>
+
+    /** Font specification for panel titles. */
+<span class="nc" id="L113">    public static String FONTSPEC_TITLE = &quot;header-plain-max&quot;;</span>
+    /** Font specification for panel subtitles. */
+<span class="nc" id="L115">    public static String FONTSPEC_SUBTITLE = &quot;header-plain-large&quot;;</span>
+    
+    public static void initStyleContext(Font font) {
+<span class="nc" id="L118">        Style defaultStyle = StyleContext.getDefaultStyleContext()</span>
+<span class="nc" id="L119">            .getStyle(StyleContext.DEFAULT_STYLE);</span>
+
+<span class="nc" id="L121">        STYLE_CONTEXT = new StyleContext();</span>
+<span class="nc" id="L122">        Style regular = STYLE_CONTEXT.addStyle(&quot;regular&quot;, defaultStyle);</span>
+<span class="nc" id="L123">        StyleConstants.setFontFamily(regular, font.getFamily());</span>
+<span class="nc" id="L124">        StyleConstants.setFontSize(regular, font.getSize());</span>
+
+<span class="nc" id="L126">        Style buttonStyle = STYLE_CONTEXT.addStyle(&quot;button&quot;, regular);</span>
+<span class="nc" id="L127">        StyleConstants.setForeground(buttonStyle, getLinkColor());</span>
+
+<span class="nc" id="L129">        Style right = STYLE_CONTEXT.addStyle(&quot;right&quot;, regular);</span>
+<span class="nc" id="L130">        StyleConstants.setAlignment(right, StyleConstants.ALIGN_RIGHT);</span>
+<span class="nc" id="L131">    }</span>
+
+    /** 
+     * Get the standard border color.
+     *
+     * @return The border {@code Color}.
+     */
+    public static Color getBorderColor() {
+<span class="nc" id="L139">        return ImageLibrary.getColor(&quot;color.border.LookAndFeel&quot;,</span>
+                                     Color.BLACK);
+    }
+    
+    /** 
+     * Get the color to use for links.
+     *
+     * @return The link {@code Color}.
+     */
+    public static Color getLinkColor() {
+<span class="nc" id="L149">        return ImageLibrary.getColor(&quot;color.link.LookAndFeel&quot;, Color.BLUE);</span>
+    }
+
+    /** 
+     * Get the color to use for things the player probably should not do.
+     *
+     * @return The warning {@code Color}.
+     */
+    public static Color getWarningColor() {
+<span class="nc" id="L158">        return ImageLibrary.getColor(&quot;color.warning.LookAndFeel&quot;, Color.RED);</span>
+    }
+
+    // Borders that depend on Resources
+    
+    public static synchronized Border getColorCellBorder() {
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        if (COLOR_CELL_BORDER == null) {</span>
+<span class="nc" id="L165">            ImageIcon icon = new ImageIcon(ImageLibrary</span>
+<span class="nc" id="L166">                .getColorCellRendererBackground());</span>
+<span class="nc" id="L167">            COLOR_CELL_BORDER = BorderFactory</span>
+<span class="nc" id="L168">                .createCompoundBorder(BorderFactory</span>
+<span class="nc" id="L169">                    .createMatteBorder(5, 10, 5, 10, icon),</span>
+<span class="nc" id="L170">                    BorderFactory.createLineBorder(getBorderColor()));</span>
+        }
+<span class="nc" id="L172">        return COLOR_CELL_BORDER;</span>
+    }
+    
+    public static synchronized Border getDialogBorder() {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (DIALOG_BORDER == null) {</span>
+            DIALOG_BORDER = BorderFactory
+<span class="nc" id="L178">                .createCompoundBorder(getTrivialLineBorder(),</span>
+<span class="nc" id="L179">                                      blankBorder(10, 20, 10, 20));</span>
+        }
+<span class="nc" id="L181">        return DIALOG_BORDER;</span>
+    }
+
+    public static synchronized Border getProductionBorder() {
+<span class="nc" id="L185">        return BorderFactory.createCompoundBorder(BorderFactory</span>
+<span class="nc" id="L186">            .createMatteBorder(1, 0, 0, 0, getBorderColor()),</span>
+<span class="nc" id="L187">                               blankBorder(2, 2, 2, 2));</span>
+    }
+    
+    public static synchronized Border getSimpleLineBorder() {
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (SIMPLE_LINE_BORDER == null) {</span>
+            SIMPLE_LINE_BORDER = BorderFactory
+<span class="nc" id="L193">                .createCompoundBorder(getTrivialLineBorder(),</span>
+<span class="nc" id="L194">                                      blankBorder(5, 5, 5, 5));</span>
+        }
+<span class="nc" id="L196">        return SIMPLE_LINE_BORDER;</span>
+    }
+
+    public static synchronized Border getTrivialLineBorder() {
+<span class="nc" id="L200">        return BorderFactory.createLineBorder(getBorderColor());</span>
+    }
+
+    // The borders to use for table cells
+
+    public static synchronized Border getTopCellBorder() {
+<span class="nc bnc" id="L206" title="All 2 branches missed.">        if (TOPCELLBORDER == null) {</span>
+<span class="nc" id="L207">            TOPCELLBORDER = BorderFactory</span>
+<span class="nc" id="L208">                .createCompoundBorder(BorderFactory</span>
+<span class="nc" id="L209">                    .createMatteBorder(1, 0, 1, 1, getBorderColor()),</span>
+<span class="nc" id="L210">                    BorderFactory.createEmptyBorder(2, 2, 2, 2));</span>
+        }
+<span class="nc" id="L212">        return TOPCELLBORDER;</span>
+    }
+
+    public static synchronized Border getCellBorder() {
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (CELLBORDER == null) {</span>
+<span class="nc" id="L217">            CELLBORDER = BorderFactory</span>
+<span class="nc" id="L218">                .createCompoundBorder(BorderFactory</span>
+<span class="nc" id="L219">                    .createMatteBorder(0, 0, 1, 1, getBorderColor()),</span>
+<span class="nc" id="L220">                    BorderFactory.createEmptyBorder(2, 2, 2, 2));</span>
+        }
+<span class="nc" id="L222">        return CELLBORDER;</span>
+    }
+
+    public static synchronized Border getLeftCellBorder() {
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (LEFTCELLBORDER == null) {</span>
+<span class="nc" id="L227">            LEFTCELLBORDER = BorderFactory</span>
+<span class="nc" id="L228">                .createCompoundBorder(BorderFactory</span>
+<span class="nc" id="L229">                    .createMatteBorder(0, 1, 1, 1, getBorderColor()),</span>
+<span class="nc" id="L230">                    BorderFactory.createEmptyBorder(2, 2, 2, 2));</span>
+        }
+<span class="nc" id="L232">        return LEFTCELLBORDER;</span>
+    }
+
+    public static synchronized Border getTopLeftCellBorder() {
+<span class="nc bnc" id="L236" title="All 2 branches missed.">        if (TOPLEFTCELLBORDER == null) {</span>
+<span class="nc" id="L237">            TOPLEFTCELLBORDER = BorderFactory</span>
+<span class="nc" id="L238">                .createCompoundBorder(BorderFactory</span>
+<span class="nc" id="L239">                    .createMatteBorder(1, 1, 1, 1, getBorderColor()),</span>
+<span class="nc" id="L240">                    BorderFactory.createEmptyBorder(2, 2, 2, 2));</span>
+        }
+<span class="nc" id="L242">        return TOPLEFTCELLBORDER;</span>
+    }
+
+    
+    /**
+     * Return a button suitable for linking to another panel
+     * (e.g. ColopediaPanel).
+     *
+     * @param text a {@code String} value
+     * @param icon an {@code Icon} value
+     * @param action a {@code String} value
+     * @return a {@code JButton} value
+     */
+    public static JButton getLinkButton(String text, Icon icon, String action) {
+<span class="nc" id="L256">        JButton button = new FreeColButton(text, icon).withButtonStyle(ButtonStyle.TRANSPARENT);</span>
+<span class="nc" id="L257">        button.setMargin(EMPTY_MARGIN);</span>
+<span class="nc" id="L258">        button.setOpaque(false);</span>
+<span class="nc" id="L259">        button.setForeground(getLinkColor());</span>
+<span class="nc" id="L260">        button.setAlignmentY(0.8f);</span>
+<span class="nc" id="L261">        button.setBorder(blankBorder(0, 0, 0, 0));</span>
+<span class="nc" id="L262">        button.setActionCommand(action);</span>
+<span class="nc" id="L263">        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));</span>
+<span class="nc" id="L264">        return button;</span>
+    }
+
+    /**
+     * Make a suitable link button for a given key.
+     *
+     * Colonies and Europe-like objects are obvious, locations and units
+     * are dependent on the message source.
+     * TODO: Are there more useful possibilities?
+     *
+     * @param key The message key to make a link for.
+     * @param val The text for the link.
+     * @param player The {@code Player} to make a link for.
+     * @param source The message source {@code FreeColGameObject}.
+     * @return A {@code JButton} for the link, or null if no good
+     *     choice found.
+     */
+    public static JButton getMessageButton(String key, String val,
+        Player player, FreeColGameObject source) {
+<span class="nc" id="L283">        FreeColGameObject link = null;</span>
+<span class="nc bnc" id="L284" title="All 4 branches missed.">        if (&quot;%colony%&quot;.equals(key) || key.endsWith(&quot;Colony%&quot;)</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">            || &quot;%settlement%&quot;.equals(key)) {</span>
+<span class="nc" id="L286">            Settlement settlement = player.getGame().getSettlementByName(val);</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">            link = (settlement == null) ? null</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">                : (player.owns(settlement)) ? settlement</span>
+<span class="nc" id="L289">                : settlement.getTile();</span>
+<span class="nc bnc" id="L290" title="All 4 branches missed.">        } else if (&quot;%europe%&quot;.equals(key) || &quot;%market%&quot;.equals(key)) {</span>
+<span class="nc" id="L291">            link = player.getEurope();</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        } else if (&quot;%location%&quot;.equals(key)</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">            || &quot;%repairLocation%&quot;.equals(key)) {</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">            if (source instanceof Location) {</span>
+<span class="nc" id="L295">                link = source.getLinkTarget(player);</span>
+            }
+<span class="nc bnc" id="L297" title="All 2 branches missed.">        } else if (&quot;%unit%&quot;.equals(key)) {</span>
+<span class="nc bnc" id="L298" title="All 4 branches missed.">            if (source instanceof Unit &amp;&amp; player.owns((Unit)source)) {</span>
+<span class="nc" id="L299">                link = source.getLinkTarget(player);</span>
+            }
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        } else if (&quot;%enemyUnit%&quot;.equals(key)) {</span>
+<span class="nc bnc" id="L302" title="All 4 branches missed.">            if (source instanceof Unit &amp;&amp; !player.owns((Unit)source)) {</span>
+<span class="nc" id="L303">                link = source.getLinkTarget(player);</span>
+            }
+        }
+<span class="nc bnc" id="L306" title="All 2 branches missed.">        return (link == null) ? null</span>
+<span class="nc" id="L307">            : getLinkButton(val, null, link.getId());</span>
+    }
+
+    /**
+     * Creates a text area with standard settings suitable for use in FreeCol
+     * panels, without setting its size.
+     *
+     * @param text The text to display in the text area.
+     * @return A suitable text area.
+     */
+    private static JTextArea createTextArea(String text) {
+<span class="nc" id="L318">        JTextArea textArea = new JTextArea(text);</span>
+<span class="nc" id="L319">        textArea.setOpaque(false);</span>
+<span class="nc" id="L320">        textArea.setLineWrap(true);</span>
+<span class="nc" id="L321">        textArea.setWrapStyleWord(true);</span>
+<span class="nc" id="L322">        textArea.setFocusable(false);</span>
+<span class="nc" id="L323">        return textArea;</span>
+    }
+
+    /**
+     * Gets a text area with standard settings suitable for use in FreeCol
+     * panels.
+     *
+     * @param text The text to display in the text area.
+     * @return A suitable text area.
+     */
+    public static JTextArea getDefaultTextArea(String text) {
+<span class="nc" id="L334">        return getDefaultTextArea(text, DEFAULT_TEXT_COLUMNS);</span>
+    }
+
+    /**
+     * Gets a text area with standard settings suitable for use in FreeCol
+     * panels, which adapt their size based on what they contain.
+     *
+     * @param text The text to display in the text area.
+     * @param columns The em-width number of columns to display the text in.
+     * @return A suitable text area.
+     */
+    public static JTextArea getDefaultTextArea(String text, int columns) {
+<span class="nc" id="L346">        JTextArea textArea = createTextArea(text);</span>
+<span class="nc" id="L347">        textArea.setColumns(columns);</span>
+<span class="nc" id="L348">        textArea.setSize(textArea.getPreferredSize());</span>
+<span class="nc" id="L349">        return textArea;</span>
+    }
+
+    /**
+     * Gets a text area with standard settings suitable for use in FreeCol
+     * panels, which can not adapt their size.
+     *
+     * @param text The text to display in the text area.
+     * @param size The size of the area to display the text in.
+     * @return A suitable text area.
+     */
+    public static JTextArea getDefaultTextArea(String text, Dimension size) {
+<span class="nc" id="L361">        JTextArea textArea = createTextArea(text);</span>
+<span class="nc" id="L362">        textArea.setPreferredSize(size);</span>
+<span class="nc" id="L363">        return textArea;</span>
+    }
+
+    /**
+     * Get a {@code JTextPane} with default styles.
+     *
+     * @return The default {@code JTextPane} to use.
+     */
+    public static JTextPane getDefaultTextPane() {
+<span class="nc" id="L372">        DefaultStyledDocument document</span>
+            = new DefaultStyledDocument(STYLE_CONTEXT);
+
+<span class="nc" id="L375">        JTextPane textPane = new JTextPane(document);</span>
+<span class="nc" id="L376">        textPane.setOpaque(false);</span>
+<span class="nc" id="L377">        textPane.setEditable(false);</span>
+<span class="nc" id="L378">        textPane.setLogicalStyle(STYLE_CONTEXT.getStyle(&quot;regular&quot;));</span>
+<span class="nc" id="L379">        return textPane;</span>
+    }
+
+    /**
+     * Get a {@code JTextPane} with default styles and given text.
+     *
+     * @param text The text to display.
+     * @return A suitable {@code JTextPane}.
+     */
+    public static JTextPane getDefaultTextPane(String text) {
+<span class="nc" id="L389">        JTextPane textPane = getDefaultTextPane();</span>
+<span class="nc" id="L390">        textPane.setText(text);</span>
+<span class="nc" id="L391">        return textPane;</span>
+    }
+
+    /**
+     * Get a border consisting of empty space.
+     *
+     * @param top Top spacing.
+     * @param left left spacing.
+     * @param bottom Bottom spacing.
+     * @param right Right spacing.
+     * @return A blank border.
+     */
+    public static Border blankBorder(int top, int left, int bottom, int right) {
+<span class="nc" id="L404">        return BorderFactory.createEmptyBorder(top, left, bottom, right);</span>
+    }
+
+    public static void padBorder(JComponent component, int top, int left,
+                                 int bottom, int right) {
+<span class="nc" id="L409">        component.setBorder(BorderFactory.createCompoundBorder(</span>
+<span class="nc" id="L410">                blankBorder(top, left, bottom, right),</span>
+<span class="nc" id="L411">                component.getBorder()));</span>
+<span class="nc" id="L412">    }</span>
+    
+    /**
+     * Returns a combo box for selecting a possible server address.
+     * @return The combo box.
+     */
+    public static JComboBox&lt;InetAddress&gt; createServerInetAddressBox() {
+<span class="nc" id="L419">        final List&lt;InetAddress&gt; serverAddresses = getPossibleServerAddresses();</span>
+<span class="nc" id="L420">        final JComboBox&lt;InetAddress&gt; serverAddressBox = new JComboBox&lt;&gt;(serverAddresses.toArray(new InetAddress[0]));</span>
+<span class="nc" id="L421">        serverAddressBox.setRenderer(new FreeColComboBoxRenderer&lt;&gt;());</span>
+<span class="nc" id="L422">        return serverAddressBox;</span>
+    }
+
+    private static List&lt;InetAddress&gt; getPossibleServerAddresses() {
+        List&lt;InetAddress&gt; serverAddresses;
+        try {
+<span class="nc" id="L428">            serverAddresses = NetworkInterface.networkInterfaces()</span>
+<span class="nc" id="L429">                    .flatMap(NetworkInterface::inetAddresses)</span>
+<span class="nc" id="L430">                    .filter(ia -&gt; ia instanceof Inet4Address)</span>
+<span class="nc" id="L431">                    .collect(Collectors.toList());</span>
+<span class="nc" id="L432">        } catch (SocketException e) {</span>
+<span class="nc" id="L433">            serverAddresses = List.of(Inet4Address.getLoopbackAddress());</span>
+<span class="nc" id="L434">        }</span>
+<span class="nc" id="L435">        return serverAddresses;</span>
+    }
+
+
+    /**
+     * Localize the a titled border.
+     *
+     * @param component The {@code JComponent} to localize.
+     * @param template The {@code StringTemplate} to use.
+     */
+    public static void localizeBorder(JComponent component,
+                                      StringTemplate template) {
+<span class="nc" id="L447">        TitledBorder tb = (TitledBorder)component.getBorder();</span>
+<span class="nc" id="L448">        tb.setTitle(Messages.message(template));</span>
+<span class="nc" id="L449">    }</span>
+
+    /**
+     * Get a titled border for a Named object.
+     *
+     * @param named The {@code Named} to use.
+     * @return The {@code TitledBorder}.
+     */
+    public static TitledBorder localizedBorder(Named named) {
+<span class="nc" id="L458">        return localizedBorder(named.getNameKey());</span>
+    }
+
+    /**
+     * Get a titled border for a Named object and a given
+     * colored line border.
+     *
+     * @param named The {@code Named} to use.
+     * @param color The color to use.
+     * @return The {@code TitledBorder}.
+     */
+    public static TitledBorder localizedBorder(Named named, Color color) {
+<span class="nc" id="L470">        return localizedBorder(named.getNameKey(), color);</span>
+    }
+
+    /**
+     * Get a titled border with Messages.message(key) as text.
+     *
+     * @param key The key to use.
+     * @return The {@code TitledBorder}.
+     */
+    public static TitledBorder localizedBorder(String key) {
+<span class="nc" id="L480">        return BorderFactory.createTitledBorder(BorderFactory</span>
+<span class="nc" id="L481">            .createEmptyBorder(), Messages.message(key));</span>
+    }
+
+    /**
+     * Get a titled border with Messages.message(key) as text and a given
+     * colored line border.
+     *
+     * @param key The key to use.
+     * @param color The color to use.
+     * @return The {@code TitledBorder}.
+     */
+    public static TitledBorder localizedBorder(String key, Color color) {
+<span class="nc" id="L493">        return BorderFactory.createTitledBorder(BorderFactory</span>
+<span class="nc" id="L494">            .createLineBorder(color, 1), Messages.message(key));</span>
+    }
+
+    /**
+     * Get a JButton with Messages.message(key) as text.
+     *
+     * @param key The key to use.
+     * @return The {@code JButton}.
+     */
+    public static FreeColButton localizedButton(String key) {
+<span class="nc" id="L504">        return new FreeColButton(Messages.message(key));</span>
+    }
+
+    /**
+     * Get a JButton with Messages.message(template) as text.
+     *
+     * @param template The {@code StringTemplate} to use.
+     * @return The {@code JButton}.
+     */
+    public static JButton localizedButton(StringTemplate template) {
+<span class="nc" id="L514">        return new JButton(Messages.message(template));</span>
+    }
+
+    /**
+     * Get a JCheckBoxMenuItem with Messages.message(key) as text.
+     *
+     * @param key The key to use.
+     * @param value The initial value.
+     * @return The {@code JCheckBoxMenuItem}.
+     */
+    public static JCheckBoxMenuItem localizedCheckBoxMenuItem(String key,
+                                                              boolean value) {
+<span class="nc" id="L526">        return new JCheckBoxMenuItem(Messages.message(key), value);</span>
+    }
+
+    /**
+     * Gets a default header for panels containing a localized message.
+     *
+     * @param key The message key to use.
+     * @param fontSpec A font-specification for the font to use.
+     * @return A suitable {@code JLabel}.
+     */
+    public static JLabel localizedHeader(String key, String fontSpec) {
+<span class="nc" id="L537">        JLabel header = localizedHeaderLabel(key, SwingConstants.CENTER,</span>
+                                             fontSpec);
+<span class="nc" id="L539">        header.setBorder(BorderFactory.createEmptyBorder(20, 0, 20, 0));</span>
+<span class="nc" id="L540">        return header;</span>
+    }
+
+    /**
+     * Gets a label containing a localized message using the header font.
+     *
+     * @param key The message key to use.
+     * @param alignment The alignment.
+     * @param fontSpec A font specification.
+     * @return A suitable {@code JLabel}.
+     */
+    public static JLabel localizedHeaderLabel(String key, int alignment,
+                                              String fontSpec) {
+<span class="nc" id="L553">        String text = Messages.message(key);</span>
+<span class="nc" id="L554">        JLabel header = new JLabel(text, alignment);</span>
+<span class="nc" id="L555">        header.setFont(FontLibrary.getScaledFont(fontSpec, text));</span>
+<span class="nc" id="L556">        header.setOpaque(false);</span>
+<span class="nc" id="L557">        return header;</span>
+    }
+
+    public static JLabel localizedHeaderLabel(StringTemplate template,
+                                              int alignment,
+                                              String fontSpec) {
+<span class="nc" id="L563">        String text = Messages.message(template);</span>
+<span class="nc" id="L564">        JLabel header = new JLabel(text, alignment);</span>
+<span class="nc" id="L565">        header.setFont(FontLibrary.getScaledFont(fontSpec, text));</span>
+<span class="nc" id="L566">        header.setOpaque(false);</span>
+<span class="nc" id="L567">        return header;</span>
+    }
+
+    public static JLabel localizedHeaderLabel(Named named,
+                                              String fontSpec) {
+<span class="nc" id="L572">        return localizedHeaderLabel(named.getNameKey(),</span>
+                                    SwingConstants.LEADING, fontSpec);
+    }
+
+    /**
+     * Get a JLabel for a FreeColSpecObjectType.
+     *
+     * @param fcgot The {@code FreeColSpecObjectType} to use.
+     * @return The {@code JLabel}.
+     */
+    public static JLabel localizedLabel(FreeColSpecObjectType fcgot) {
+<span class="nc" id="L583">        return localizedLabel(fcgot.getNameKey());</span>
+    }
+
+    /**
+     * Get a JLabel with Messages.message(key) as text.
+     *
+     * @param key The key to use.
+     * @return The {@code JLabel}.
+     */
+    public static JLabel localizedLabel(String key) {
+<span class="nc" id="L593">        return localizedLabel(StringTemplate.key(key));</span>
+    }
+
+    /**
+     * Get a JLabel with Messages.message(template) as text.
+     *
+     * @param template The {@code StringTemplate} to use.
+     * @return The {@code JLabel}.
+     */
+    public static JLabel localizedLabel(StringTemplate template) {
+<span class="nc" id="L603">        JLabel label = new JLabel(Messages.message(template));</span>
+<span class="nc" id="L604">        label.setOpaque(false);</span>
+<span class="nc" id="L605">        return label;</span>
+    }
+
+    /**
+     * Get a JLabel with Messages.message(template) as text.
+     *
+     * @param template The {@code StringTemplate} to use.
+     * @param icon The icon to use.
+     * @param alignment The alignment.
+     * @return The {@code JLabel}.
+     */
+    public static JLabel localizedLabel(StringTemplate template, Icon icon,
+                                        int alignment) {
+<span class="nc" id="L618">        JLabel label = new JLabel(Messages.message(template), icon, alignment);</span>
+<span class="nc" id="L619">        label.setOpaque(false);</span>
+<span class="nc" id="L620">        return label;</span>
+    }
+
+    /**
+     * Get a JMenu with Messages.message(key) as text.
+     *
+     * @param key The key to use.
+     * @return The {@code JMenu}.
+     */
+    public static JMenu localizedMenu(String key) {
+<span class="nc" id="L630">        return new JMenu(Messages.message(key));</span>
+    }
+
+    /**
+     * Get a JMenu with Messages.message(template) as text.
+     *
+     * @param template The {@code StringTemplate} to use.
+     * @return The {@code JMenu}.
+     */
+    public static JMenu localizedMenu(StringTemplate template) {
+<span class="nc" id="L640">        return new JMenu(Messages.message(template));</span>
+    }
+
+    /**
+     * Get a JMenuItem with Messages.message(key) as text.
+     *
+     * @param key The key to use.
+     * @return The {@code JMenuItem}.
+     */
+    public static JMenuItem localizedMenuItem(String key) {
+<span class="nc" id="L650">        return localizedMenuItem(key, null);</span>
+    }
+
+    /**
+     * Get a JMenuItem with Messages.message(key) as text.
+     *
+     * @param key The key to use.
+     * @param icon The icon to use.
+     * @return The {@code JMenuItem}.
+     */
+    public static JMenuItem localizedMenuItem(String key, Icon icon) {
+<span class="nc" id="L661">        return new JMenuItem(Messages.message(key), icon);</span>
+    }
+
+    /**
+     * Get a JMenuItem with Messages.message(template) as text.
+     *
+     * @param template The {@code StringTemplate} to use.
+     * @return The {@code JMenuItem}.
+     */
+    public static JMenuItem localizedMenuItem(StringTemplate template) {
+<span class="nc" id="L671">        return localizedMenuItem(template, null);</span>
+    }
+
+    /**
+     * Get a JMenuItem with Messages.message(template) as text.
+     *
+     * @param template The {@code StringTemplate} to use.
+     * @param icon The icon to use.
+     * @return The {@code JMenuItem}.
+     */
+    public static JMenuItem localizedMenuItem(StringTemplate template,
+                                              Icon icon) {
+<span class="nc" id="L683">        return new JMenuItem(Messages.message(template), icon);</span>
+    }
+
+    /**
+     * Get a JRadioButtonMenuItem with Messages.message(template) as text.
+     *
+     * @param template The {@code StringTemplate} to generate the text.
+     * @param value The initial value.
+     * @return The {@code JRadioButtonMenuItem}.
+     */
+    public static JRadioButtonMenuItem localizedRadioButtonMenuItem(StringTemplate template,
+                                                                    boolean value) {
+<span class="nc" id="L695">        return new JRadioButtonMenuItem(Messages.message(template), value);</span>
+    }
+
+    /**
+     * Get a text area containing a localized message.
+     *
+     * @param key The message key.
+     * @return A suitable {@code JTextArea}.
+     */
+    public static JTextArea localizedTextArea(String key) {
+<span class="nc" id="L705">        return localizedTextArea(StringTemplate.key(key));</span>
+    }
+
+    /**
+     * Get a text area containing a localized message.
+     *
+     * @param key The message key.
+     * @param columns The em-width number of columns to display the text in.
+     * @return A suitable {@code JTextArea}.
+     */
+    public static JTextArea localizedTextArea(String key, int columns) {
+<span class="nc" id="L716">        return localizedTextArea(StringTemplate.key(key), columns);</span>
+    }
+
+    /**
+     * Get a text area containing a localized message.
+     *
+     * @param template The {@code StringTemplate} to use.
+     * @return A suitable {@code JTextArea}.
+     */
+    public static JTextArea localizedTextArea(StringTemplate template) {
+<span class="nc" id="L726">        return localizedTextArea(template, DEFAULT_TEXT_COLUMNS);</span>
+    }
+
+    /**
+     * Get a text area containing a localized message.
+     *
+     * @param template The {@code StringTemplate} to use.
+     * @param columns The em-width number of columns to display the text in.
+     * @return A suitable {@code JTextArea}.
+     */
+    public static JTextArea localizedTextArea(StringTemplate template,
+                                              int columns) {
+<span class="nc" id="L738">        return getDefaultTextArea(Messages.message(template), columns);</span>
+    }
+
+    /**
+     * Get a panel with a localized message and icon.
+     *
+     * @param template The {@code StringTemplate} to use.
+     * @param icon An {@code ImageIcon} to use.
+     * @return The resulting {@code JPanel}.
+     */
+    public static JPanel localizedTextPanel(StringTemplate template,
+                                            ImageIcon icon) {
+<span class="nc" id="L750">        JPanel panel = new JPanel(new GridLayout(0, 2));</span>
+<span class="nc" id="L751">        panel.add(new JLabel(icon));</span>
+<span class="nc" id="L752">        panel.add(Utility.localizedTextArea(template));</span>
+<span class="nc" id="L753">        panel.setBorder(getDialogBorder());</span>
+<span class="nc" id="L754">        return panel;</span>
+    }
+        
+    /**
+     * Localize the tool tip message for a JComponent.
+     *
+     * @param comp The {@code JComponent} to localize.
+     * @param key The key to use.
+     */
+    public static void localizeToolTip(JComponent comp, String key) {
+<span class="nc" id="L764">        comp.setToolTipText(Messages.message(key));</span>
+<span class="nc" id="L765">    }</span>
+
+    /**
+     * Localize the tool tip message for a JComponent.
+     *
+     * @param comp The {@code JComponent} to localize.
+     * @param template The {@code StringTemplate} to use.
+     */
+    public static void localizeToolTip(JComponent comp,
+                                       StringTemplate template) {
+<span class="nc" id="L775">        comp.setToolTipText(Messages.message(template));</span>
+<span class="nc" id="L776">    }</span>
+
+    public static void drawGoldenText(final String text, Graphics2D g2d, final Font font, final int x, final int y) {
+<span class="nc" id="L779">        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);</span>
+        
+<span class="nc" id="L781">        final Shape textShape = new TextLayout(text, font, g2d.getFontRenderContext()).getOutline(null);</span>
+<span class="nc" id="L782">        final float strokeScaling = FontLibrary.getFontScaling() / 2;</span>
+<span class="nc" id="L783">        final Stroke oldStroke = g2d.getStroke();        </span>
+<span class="nc" id="L784">        g2d.translate(x, y);</span>
+        
+<span class="nc" id="L786">        g2d.setStroke(new BasicStroke(strokeScaling * 4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));</span>
+<span class="nc" id="L787">        g2d.setColor(Color.BLACK);</span>
+<span class="nc" id="L788">        g2d.draw(textShape);</span>
+        
+<span class="nc" id="L790">        g2d.setStroke(new BasicStroke(strokeScaling * 2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));</span>
+<span class="nc" id="L791">        g2d.setColor(new Color(162, 136, 105));</span>
+<span class="nc" id="L792">        g2d.draw(textShape);</span>
+        
+<span class="nc" id="L794">        g2d.setStroke(new BasicStroke(strokeScaling * 1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));</span>
+<span class="nc" id="L795">        g2d.setColor(new Color(64, 31, 6));</span>
+<span class="nc" id="L796">        g2d.draw(textShape);</span>
+
+<span class="nc" id="L798">        g2d.setStroke(oldStroke);</span>
+<span class="nc" id="L799">        g2d.setColor(new Color(222, 194, 161));</span>
+<span class="nc" id="L800">        g2d.fill(textShape);</span>
+        
+<span class="nc" id="L802">        g2d.translate(-x, -y);</span>
+<span class="nc" id="L803">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

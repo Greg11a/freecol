@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Nation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.model</a> &gt; <span class="el_source">Nation.java</span></div><h1>Nation.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.model;
+
+import static net.sf.freecol.common.model.Constants.UNDEFINED;
+import static net.sf.freecol.common.util.CollectionUtils.find;
+import static net.sf.freecol.common.util.CollectionUtils.makeUnmodifiableList;
+import static net.sf.freecol.common.util.CollectionUtils.matchKey;
+import static net.sf.freecol.common.util.RandomUtils.randomInt;
+
+import java.awt.Color;
+import java.util.List;
+import java.util.Random;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.io.FreeColXMLWriter;
+
+
+/**
+ * Represents one of the nations present in the game.
+ */
+public class Nation extends FreeColSpecObjectType {
+
+    public static final String TAG = &quot;nation&quot;;
+
+    /** The unknown enemy id. */
+    public static final String UNKNOWN_NATION_ID = &quot;model.nation.unknownEnemy&quot;;
+
+    /** The last resort unknown nation color. */
+<span class="fc" id="L50">    public static final Color UNKNOWN_NATION_COLOR = Color.BLACK;</span>
+
+    /**
+     * A list of European nation names, where model.nation.X.name exists.
+     * Used by getNonPlayerNation().
+     */
+<span class="fc" id="L56">    private static final List&lt;String&gt; EUROPEAN_NATIONS = makeUnmodifiableList(</span>
+        // Original Col1 nations
+        &quot;dutch&quot;, &quot;english&quot;, &quot;french&quot;, &quot;spanish&quot;,
+        // FreeCol's additions
+        &quot;danish&quot;, &quot;portuguese&quot;, &quot;swedish&quot;, &quot;russian&quot;,
+        // other European non-player nations
+        &quot;austrian&quot;, &quot;german&quot;, &quot;prussian&quot;, &quot;turkish&quot;);
+
+
+    /** The nation type, European, native, etc. */
+    private NationType type;
+
+    /** Can this nation be selected? */
+    private boolean selectable;
+
+    /** The REF nation to oppose this nation. */
+    private Nation refNation;
+
+    /** The preferred starting latitude for this nation. */
+<span class="fc" id="L75">    private int preferredLatitude = 0;</span>
+
+    /** Whether this nation starts on the East coast by default. */
+<span class="fc" id="L78">    private boolean startsOnEastCoast = true;</span>
+
+    /** The color of this nation. */
+    private Color color;
+
+
+    /**
+     * Create a new nation.
+     *
+     * @param id The object identifier.
+     * @param specification The {@code Specification} to refer to.
+     */
+    public Nation(String id, Specification specification) {
+<span class="fc" id="L91">        super(id, specification);</span>
+<span class="fc" id="L92">    }</span>
+
+
+    /**
+     * Is this the unknown enemy nation?
+     *
+     * @return True if this is the unknown enemy.
+     */
+    public final boolean isUnknownEnemy() {
+<span class="fc" id="L101">        return UNKNOWN_NATION_ID.equals(getId());</span>
+    }
+
+    /**
+     * Get the nation type.
+     *
+     * @return The nation type.
+     */
+    public final NationType getType() {
+<span class="fc" id="L110">        return type;</span>
+    }
+
+    /**
+     * Set the nation type.  Needed to when &quot;no advantages&quot; is selected.
+     *
+     * @param type The new {@code NationType}.
+     */
+    public final void setType(NationType type) {
+<span class="fc" id="L119">        this.type = type;</span>
+<span class="fc" id="L120">    }</span>
+
+    /**
+     * Is this nation selectable?
+     *
+     * @return True if the nation is selectable.
+     */
+    public final boolean isSelectable() {
+<span class="fc" id="L128">        return selectable;</span>
+    }
+
+    /**
+     * Get the REF nation to oppose this nation.
+     *
+     * @return The REF {@code Nation}, or null if not applicable.
+     */
+    public final Nation getREFNation() {
+<span class="fc" id="L137">        return refNation;</span>
+    }
+
+    /**
+     * Get the rebel nation to oppose this REF nation.
+     *
+     * @return The rebel {@code Nation}, or null if not applicable.
+     */
+    public final Nation getRebelNation() {
+<span class="nc" id="L146">        return find(getSpecification().getEuropeanNations(),</span>
+<span class="nc" id="L147">                    matchKey(this, Nation::getREFNation));</span>
+    }
+
+    /**
+     * Get the preferred latitude of this nation.
+     *
+     * @return The preferred latitude.
+     */
+    public final int getPreferredLatitude() {
+<span class="nc" id="L156">        return preferredLatitude;</span>
+    }
+
+    /**
+     * Does this nation start on the east coast by default?
+     *
+     * @return True if the nation starts on the east coast.
+     */
+    public final boolean getStartsOnEastCoast() {
+<span class="fc" id="L165">        return startsOnEastCoast;</span>
+    }
+
+    /**
+     * Get the nation color.
+     *
+     * @return The color for this nation.
+     */
+    public Color getColor() {
+<span class="fc" id="L174">        return color;</span>
+    }
+
+    /**
+     * Set the nation color.
+     *
+     * @param color The new nation color.
+     */
+    public void setColor(Color color) {
+<span class="fc" id="L183">        this.color = color;</span>
+<span class="fc" id="L184">    }</span>
+
+    /**
+     * Get a message key for the ruler of this nation.
+     *
+     * @return The name key for the ruler.
+     */
+    public final String getRulerNameKey() {
+<span class="fc" id="L192">        return Messages.rulerKey(getId());</span>
+    }
+
+    /**
+     * Get the name of the nation monarch.
+     *
+     * @return The ruler name.
+     */
+    public String getRulerName() {
+<span class="fc" id="L201">        return Messages.message(getRulerNameKey());</span>
+    }
+
+    /**
+     * Get a random player name key that is not in use by an active player.
+     *
+     * @param game The current {@code Game}.
+     * @param random A pseudo-random number source.
+     * @return A player name key, or an empty string on failure.
+     */
+    public static String getRandomNonPlayerNationNameKey(Game game,
+                                                         Random random) {
+<span class="nc" id="L213">        int nations = EUROPEAN_NATIONS.size();</span>
+<span class="nc" id="L214">        int start = randomInt(logger, &quot;Random nation&quot;, random, nations);</span>
+<span class="nc bnc" id="L215" title="All 2 branches missed.">        for (int index = 0; index &lt; nations; index++) {</span>
+<span class="nc" id="L216">            String nationId = &quot;model.nation.&quot;</span>
+<span class="nc" id="L217">                + EUROPEAN_NATIONS.get((start + index) % nations);</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">            if (game.getPlayerByNationId(nationId) == null) {</span>
+<span class="nc" id="L219">                return Messages.nameKey(nationId);</span>
+            }
+        }
+        // this should never happen
+<span class="nc" id="L223">        return &quot;&quot;;</span>
+    }
+
+
+    // Override FreeColObject
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;T extends FreeColObject&gt; boolean copyIn(T other) {
+<span class="nc" id="L234">        Nation o = copyInCast(other, Nation.class);</span>
+<span class="nc bnc" id="L235" title="All 4 branches missed.">        if (o == null || !super.copyIn(o)) return false;</span>
+<span class="nc" id="L236">        this.type = o.getType();</span>
+<span class="nc" id="L237">        this.selectable = o.isSelectable();</span>
+<span class="nc" id="L238">        this.refNation = o.getREFNation();</span>
+<span class="nc" id="L239">        this.preferredLatitude = o.getPreferredLatitude();</span>
+<span class="nc" id="L240">        this.startsOnEastCoast = o.getStartsOnEastCoast();</span>
+<span class="nc" id="L241">        this.color = o.getColor();</span>
+<span class="nc" id="L242">        return true;</span>
+    }
+
+    
+    // Serialization
+
+    private static final String COLOR_TAG = &quot;color&quot;;
+    private static final String NATION_TYPE_TAG = &quot;nation-type&quot;;
+    private static final String PREFERRED_LATITUDE_TAG = &quot;preferred-latitude&quot;;
+    private static final String REF_TAG = &quot;ref&quot;;
+    private static final String SELECTABLE_TAG = &quot;selectable&quot;;
+    private static final String STARTS_ON_EAST_COAST_TAG = &quot;starts-on-east-coast&quot;;
+    // @compat 0.11.3
+    private static final String OLD_PREFERRED_LATITUDE_TAG = &quot;preferredLatitude&quot;;
+    private static final String OLD_STARTS_ON_EAST_COAST_TAG = &quot;startsOnEastCoast&quot;;
+    // end @compat 0.11.3
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void writeAttributes(FreeColXMLWriter xw) throws XMLStreamException {
+<span class="fc" id="L265">        super.writeAttributes(xw);</span>
+
+<span class="fc" id="L267">        xw.writeAttribute(NATION_TYPE_TAG, type);</span>
+
+<span class="fc" id="L269">        xw.writeAttribute(SELECTABLE_TAG, selectable);</span>
+
+<span class="fc" id="L271">        xw.writeAttribute(PREFERRED_LATITUDE_TAG, preferredLatitude);</span>
+
+<span class="fc" id="L273">        xw.writeAttribute(STARTS_ON_EAST_COAST_TAG, startsOnEastCoast);</span>
+
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (refNation != null) xw.writeAttribute(REF_TAG, refNation);</span>
+
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">        if (color != null) xw.writeAttribute(COLOR_TAG, color.getRGB());</span>
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void readAttributes(FreeColXMLReader xr) throws XMLStreamException {
+<span class="fc" id="L285">        super.readAttributes(xr);</span>
+
+<span class="fc" id="L287">        final Specification spec = getSpecification();</span>
+
+<span class="fc" id="L289">        type = xr.getType(spec, NATION_TYPE_TAG,</span>
+                          NationType.class, (NationType)null);
+
+<span class="fc" id="L292">        selectable = xr.getAttribute(SELECTABLE_TAG, false);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_PREFERRED_LATITUDE_TAG)) {</span>
+<span class="nc" id="L296">            preferredLatitude = xr.getAttribute(OLD_PREFERRED_LATITUDE_TAG, 0);</span>
+        } else
+        // end @compat 0.11.3
+<span class="fc" id="L299">            preferredLatitude = xr.getAttribute(PREFERRED_LATITUDE_TAG, 0);</span>
+
+        // @compat 0.11.3
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">        if (xr.hasAttribute(OLD_STARTS_ON_EAST_COAST_TAG)) {</span>
+<span class="nc" id="L303">            startsOnEastCoast = xr.getAttribute(OLD_STARTS_ON_EAST_COAST_TAG, true);</span>
+        } else
+        // end @compat 0.11.3
+<span class="fc" id="L306">            startsOnEastCoast = xr.getAttribute(STARTS_ON_EAST_COAST_TAG, true);</span>
+
+<span class="fc" id="L308">        refNation = xr.getType(spec, REF_TAG, Nation.class, (Nation)null);</span>
+
+<span class="fc" id="L310">        int rgb = xr.getAttribute(COLOR_TAG, UNDEFINED);</span>
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">        if (rgb != UNDEFINED) setColor(new Color(rgb));</span>
+<span class="fc" id="L312">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+<span class="fc" id="L317">    public String getXMLTagName() { return TAG; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

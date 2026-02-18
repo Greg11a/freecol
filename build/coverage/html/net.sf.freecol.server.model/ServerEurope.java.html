@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServerEurope.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.server.model</a> &gt; <span class="el_source">ServerEurope.java</span></div><h1>ServerEurope.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.server.model;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.logging.Logger;
+
+import net.sf.freecol.common.FreeColException;
+import net.sf.freecol.common.model.Ability;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.AbstractUnit;
+import net.sf.freecol.common.model.Europe;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Role;
+import net.sf.freecol.common.model.Specification;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.model.UnitType;
+import net.sf.freecol.common.networking.ChangeSet;
+import net.sf.freecol.common.networking.ChangeSet.See;
+import net.sf.freecol.common.option.GameOptions;
+import net.sf.freecol.common.option.IntegerOption;
+import net.sf.freecol.common.util.LogBuilder;
+import net.sf.freecol.common.util.RandomChoice;
+import static net.sf.freecol.common.util.CollectionUtils.*;
+import static net.sf.freecol.common.util.RandomUtils.*;
+
+
+/**
+ * The server version of Europe.
+ */
+public class ServerEurope extends Europe implements TurnTaker {
+
+<span class="fc" id="L53">    private static final Logger logger = Logger.getLogger(ServerEurope.class.getName());</span>
+
+
+    /**
+     * Trivial constructor for Game.newInstance.
+     *
+     * @param game The {@code Game} this object belongs to.
+     * @param id The object identifier.
+     */
+    public ServerEurope(Game game, String id) {
+<span class="fc" id="L63">        super(game, id);</span>
+<span class="fc" id="L64">    }</span>
+
+    /**
+     * Creates a new ServerEurope.
+     *
+     * @param game The {@code Game} in which this object belongs.
+     * @param owner The {@code Player} that will be using this object of
+     *            {@code Europe}.
+     */
+    public ServerEurope(Game game, Player owner) {
+<span class="fc" id="L74">        super(game, owner);</span>
+<span class="fc" id="L75">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equipForRole(Unit unit, Role role, int roleCount) {
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        if (!unit.roleIsAvailable(role)) return false;</span>
+
+        // Get the change in goods
+<span class="nc" id="L86">        List&lt;AbstractGoods&gt; req = unit.getGoodsDifference(role, roleCount);</span>
+
+        // Check the pricing and ability to trade
+        try {
+<span class="nc" id="L90">            int price = priceGoods(req);</span>
+<span class="nc bnc" id="L91" title="All 4 branches missed.">            if (price &gt; 0 &amp;&amp; !unit.getOwner().checkGold(price)) return false;</span>
+<span class="nc" id="L92">        } catch (FreeColException fce) {</span>
+<span class="nc" id="L93">            return false;</span>
+<span class="nc" id="L94">        }</span>
+
+        // Sell any excess
+<span class="nc" id="L97">        final Player owner = getOwner();</span>
+<span class="nc bnc" id="L98" title="All 4 branches missed.">        for (AbstractGoods ag : transform(req, g -&gt; g.getAmount() &lt; 0)) {</span>
+<span class="nc" id="L99">            int rm = ((ServerPlayer)owner).sellInEurope(null, null, ag.getType(), -ag.getAmount());</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">            if (rm &gt; 0) {</span>
+<span class="nc" id="L101">                ((ServerPlayer)owner).addExtraTrade(new AbstractGoods(ag.getType(), rm));</span>
+            }
+<span class="nc" id="L103">        }</span>
+        // Buy what is needed
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        for (AbstractGoods ag : transform(req, AbstractGoods::isPositive)) {</span>
+<span class="nc" id="L106">            int m = ((ServerPlayer)owner).buyInEurope(null, null,</span>
+<span class="nc" id="L107">                ag.getType(), ag.getAmount());</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">            if (m &gt; 0) {</span>
+<span class="nc" id="L109">                ((ServerPlayer)owner).addExtraTrade(new AbstractGoods(ag.getType(), -m));</span>
+            }
+<span class="nc" id="L111">        }</span>
+
+<span class="nc" id="L113">        unit.changeRole(role, roleCount);</span>
+<span class="nc" id="L114">        return true;</span>
+    }
+
+    /**
+     * Generates the initial recruits for this player.  Recruits may
+     * be determined by the difficulty level, or generated randomly.
+     *
+     * @param random A pseudo-random number source.
+     */
+    public void initializeMigration(Random random) {
+<span class="fc" id="L124">        final Specification spec = getGame().getSpecification();</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        for (AbstractUnit au : spec.getUnitList(GameOptions.IMMIGRANTS)) {</span>
+<span class="fc" id="L126">            addRecruitable(au, true);</span>
+<span class="fc" id="L127">        }</span>
+<span class="fc" id="L128">        fillRecruitables(random);</span>
+<span class="fc" id="L129">    }</span>
+
+    /**
+     * Fill out to the full amount of recruits.
+     *
+     * @param random A pseudo-random number source.
+     */
+    private void fillRecruitables(Random random) {
+<span class="fc" id="L137">        List&lt;RandomChoice&lt;UnitType&gt;&gt; recruits = generateRecruitablesList();</span>
+        UnitType unitType;
+        do {
+<span class="fc" id="L140">            unitType = RandomChoice.getWeightedRandom(logger, &quot;Recruits&quot;,</span>
+                                                      recruits, random);
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        } while (addRecruitable(unitType, false));</span>
+<span class="fc" id="L143">    }</span>
+
+    /**
+     * Increases the base price and lower cap for recruits.
+     */
+    public void increaseRecruitmentDifficulty() {
+<span class="nc" id="L149">        final Specification spec = getSpecification();</span>
+<span class="nc" id="L150">        this.baseRecruitPrice += spec.getInteger(GameOptions.RECRUIT_PRICE_INCREASE);</span>
+<span class="nc" id="L151">        this.recruitLowerCap += spec.getInteger(GameOptions.LOWER_CAP_INCREASE);</span>
+<span class="nc" id="L152">    }</span>
+
+    /**
+     * Extract the recruitable at a given slot, and replace it with
+     * the given new recruitable type.
+     *
+     * Note that we shift the old units down, because the AI always
+     * recruits from the lowest slot.
+     *
+     * @param slot The slot to recruit with.
+     * @param random A pseudo-random number source.
+     * @return The recruited {@code AbstractUnit}.
+     */
+    public AbstractUnit extractRecruitable(int slot, Random random) {
+        // An invalid slot is normal when the player has no control over
+        // recruit type.
+<span class="fc" id="L168">        final int count = MigrationType.getMigrantCount();</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        int index = (MigrationType.specificMigrantSlot(slot))</span>
+<span class="nc" id="L170">            ? MigrationType.migrantSlotToIndex(slot)</span>
+<span class="fc" id="L171">            : randomInt(logger, &quot;Choose emigrant&quot;, random, count);</span>
+<span class="fc" id="L172">        List&lt;AbstractUnit&gt; expanded = getExpandedRecruitables(true);</span>
+<span class="fc" id="L173">        AbstractUnit result = expanded.remove(index);</span>
+<span class="fc" id="L174">        this.recruitables.clear();</span>
+<span class="fc" id="L175">        AbstractUnit top = expanded.remove(0);</span>
+<span class="fc" id="L176">        this.recruitables.add(top);</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        for (AbstractUnit au : expanded) {</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            if (au.getId().equals(top.getId())</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">                &amp;&amp; au.getRoleId().equals(top.getRoleId())) {</span>
+<span class="fc" id="L180">                top.addToNumber(au.getNumber());</span>
+            } else {
+<span class="fc" id="L182">                this.recruitables.add(au);</span>
+<span class="fc" id="L183">                top = au;</span>
+            }
+<span class="fc" id="L185">        }</span>
+<span class="fc" id="L186">        fillRecruitables(random);</span>
+<span class="fc" id="L187">        return result;</span>
+    }
+
+    /**
+     * Generate a weighted list of unit types recruitable by this player.
+     *
+     * @return A weighted list of recruitable unit types.
+     */
+    private List&lt;RandomChoice&lt;UnitType&gt;&gt; generateRecruitablesList() {
+<span class="fc" id="L196">        final Player owner = getOwner();</span>
+<span class="fc" id="L197">        return transform(getSpecification().getUnitTypeList(),</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">                         ut -&gt; ut.isRecruitable()</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">                             &amp;&amp; owner.hasAbility(Ability.CAN_RECRUIT_UNIT, ut)</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">                             &amp;&amp; ut.isAvailableTo(owner),</span>
+<span class="fc" id="L201">                         ut -&gt; new RandomChoice&lt;&gt;(ut, ut.getRecruitProbability()));</span>
+    }
+
+    /**
+     * Replace any non-recruitable recruits.
+     *
+     * @param random A pseudo-random number source.
+     * @return True if any recruit was replaced.
+     */
+    public boolean replaceRecruits(Random random) {
+<span class="nc" id="L211">        final Specification spec = getSpecification();</span>
+<span class="nc" id="L212">        boolean result = removeInPlace(recruitables,</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">            au -&gt; !hasAbility(Ability.CAN_RECRUIT_UNIT, au.getType(spec)));</span>
+<span class="nc" id="L214">        fillRecruitables(random);</span>
+<span class="nc" id="L215">        return result;</span>
+    }
+
+    /**
+     * Generate new recruits following a Fountain of Youth discovery.
+     *
+     * FIXME: Get rid of this, it is only used because the AI is stupid.
+     *
+     * @param n The number of new units.
+     * @param random A pseudo-random number source.
+     * @return The generated units.
+     */
+    public List&lt;Unit&gt; generateFountainRecruits(int n, Random random) {
+<span class="nc" id="L228">        final Game game = getGame();</span>
+<span class="nc" id="L229">        final Player owner = getOwner();</span>
+<span class="nc" id="L230">        List&lt;Unit&gt; ret = new ArrayList&lt;&gt;(n);</span>
+<span class="nc" id="L231">        List&lt;RandomChoice&lt;UnitType&gt;&gt; recruits = generateRecruitablesList();</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        for (int k = 0; k &lt; n; k++) {</span>
+<span class="nc" id="L233">            UnitType ut = RandomChoice.getWeightedRandom(logger, &quot;Choose FoY&quot;,</span>
+                                                         recruits, random);
+<span class="nc" id="L235">            ret.add(new ServerUnit(game, this, owner, ut));//-vis: safe, Europe</span>
+        }
+<span class="nc" id="L237">        return ret;</span>
+    }
+
+    /**
+     * Increases the price for a unit.
+     *
+     * @param unitType The {@code UnitType}, trained or purchased
+     * @param price The current price of the unit
+     */
+    public void increasePrice(UnitType unitType, int price) {
+<span class="fc" id="L247">        final Specification spec = getSpecification();</span>
+<span class="fc" id="L248">        String baseOption = GameOptions.PRICE_INCREASE_PER_TYPE;</span>
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">        String option = (spec.getBoolean(baseOption))</span>
+<span class="fc" id="L250">            ? &quot;model.option.priceIncrease.&quot; + unitType.getSuffix()</span>
+<span class="pc" id="L251">            : &quot;model.option.priceIncrease&quot;;</span>
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">        int increase = (spec.hasOption(option, IntegerOption.class))</span>
+<span class="pc" id="L253">            ? spec.getInteger(option) : 0;</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">        if (increase != 0) {</span>
+<span class="nc" id="L255">            unitPrices.put(unitType, price + increase);</span>
+        }
+<span class="fc" id="L257">    }</span>
+
+    /**
+     * Equip a unit for a specific role.
+     *
+     * @param unit The {@code Unit} to equip.
+     * @param role The {@code Role} to equip for.
+     * @param roleCount The role count.
+     * @param random A pseudo-random number source.
+     * @param cs A {@code ChangeSet} to update.
+     * @return True if the equipping succeeds.
+     */
+    public boolean csEquipForRole(Unit unit, Role role, int roleCount,
+                                  Random random, ChangeSet cs) {
+<span class="nc" id="L271">        boolean ret = equipForRole(unit, role, roleCount);</span>
+
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        if (ret) {</span>
+<span class="nc" id="L274">            Player owner = getOwner();</span>
+<span class="nc" id="L275">            cs.addPartial(See.only(owner), owner,</span>
+<span class="nc" id="L276">                &quot;gold&quot;, String.valueOf(owner.getGold()));</span>
+<span class="nc" id="L277">            cs.add(See.only(owner), unit);</span>
+<span class="nc" id="L278">            ((ServerPlayer)owner).flushExtraTrades(random);</span>
+<span class="nc" id="L279">            ((ServerPlayer)owner).csFlushMarket(cs);</span>
+        }
+<span class="nc" id="L281">        return ret;</span>
+    }
+
+
+    // Implement TurnTaker
+
+    /**
+     * New turn for this colony tile.
+     *
+     * FIXME: give Europe a shipyard and remove this?
+     *
+     * @param random A {@code Random} number source.
+     * @param lb A {@code LogBuilder} to log to.
+     * @param cs A {@code ChangeSet} to update.
+     */
+    @Override
+    public void csNewTurn(Random random, LogBuilder lb, ChangeSet cs) {
+<span class="fc" id="L298">        lb.add(this);</span>
+
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">        for (Unit unit : transform(getUnits(),</span>
+<span class="pc bpc" id="L301" title="3 of 4 branches missed.">                                   u -&gt; u.isNaval() &amp;&amp; u.isDamaged())) {</span>
+<span class="nc" id="L302">            ((ServerUnit)unit).csRepairUnit(cs);</span>
+<span class="nc" id="L303">        }</span>
+<span class="fc" id="L304">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

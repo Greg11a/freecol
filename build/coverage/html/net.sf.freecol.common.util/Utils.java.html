@@ -1,0 +1,422 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Utils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.util</a> &gt; <span class="el_source">Utils.java</span></div><h1>Utils.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.util;
+
+import static java.nio.file.StandardOpenOption.APPEND;
+import static java.nio.file.StandardOpenOption.CREATE;
+
+import java.awt.DisplayMode;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
+import java.awt.HeadlessException;
+import java.awt.MouseInfo;
+import java.awt.Toolkit;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.CharBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.xml.XMLConstants;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
+
+/**
+ * Collection of small static helper methods.
+ */
+<span class="nc" id="L65">public class Utils {</span>
+
+<span class="fc" id="L67">    private static final Logger logger = Logger.getLogger(Utils.class.getName());</span>
+
+    /** Hex constant digits for get/restoreRandomState. */
+    private static final String HEX_DIGITS = &quot;0123456789ABCDEF&quot;;
+
+
+    /**
+     * Check if two objects are equal but also checks for null.
+     *
+     * @param &lt;T&gt; The object type.
+     * @param one First object to compare
+     * @param two Second object to compare
+     * @return True if the arguments are either both null or equal in the
+     *     sense of their equals() method.
+     */
+    public static &lt;T&gt; boolean equals(T one, T two) {
+<span class="fc bfc" id="L83" title="All 4 branches covered.">        return (one == null) ? (two == null) : one.equals(two);</span>
+    }
+
+    /**
+     * Get a hash code for an object, even null.
+     *
+     * @param object The {@code Object} to use.
+     * @return A hash code.
+     */
+    public static int hashCode(Object object) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        return (object == null) ? 31 : object.hashCode();</span>
+    }
+
+    /**
+     * Get the internal state of a random number generator as a
+     * string.  It would have been more convenient to simply return
+     * the current seed, but unfortunately it is private.
+     *
+     * @param random A pseudo-random number source.
+     * @return A {@code String} encapsulating the object state.
+     * @exception IOException is the byte stream output breaks.
+     */
+    public static synchronized String getRandomState(Random random)
+        throws IOException {
+<span class="fc" id="L107">        ByteArrayOutputStream bos = new ByteArrayOutputStream();</span>
+<span class="fc" id="L108">        try (ObjectOutputStream oos = new ObjectOutputStream(bos)) {</span>
+<span class="fc" id="L109">            oos.writeObject(random);</span>
+<span class="fc" id="L110">            oos.flush();</span>
+        }
+<span class="fc" id="L112">        byte[] bytes = bos.toByteArray();</span>
+<span class="fc" id="L113">        StringBuilder sb = new StringBuilder(bytes.length * 2);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (byte b : bytes) {</span>
+<span class="fc" id="L115">            sb.append(HEX_DIGITS.charAt((b &gt;&gt; 4) &amp; 0x0F));</span>
+<span class="fc" id="L116">            sb.append(HEX_DIGITS.charAt(b &amp; 0x0F));</span>
+        }
+<span class="fc" id="L118">        return sb.toString();</span>
+    }
+
+    /**
+     * Restore a previously saved state.
+     *
+     * @param state The saved state (@see #getRandomState()).
+     * @return The restored {@code Random}.
+     */
+    public static synchronized Random restoreRandomState(String state) {
+<span class="pc bpc" id="L128" title="2 of 4 branches missed.">        if (state == null || state.isEmpty()) return null;</span>
+<span class="fc" id="L129">        byte[] bytes = new byte[state.length() / 2];</span>
+<span class="fc" id="L130">        int pos = 0;</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        for (int i = 0; i &lt; bytes.length; i++) {</span>
+<span class="fc" id="L132">            bytes[i] = (byte) HEX_DIGITS.indexOf(state.charAt(pos++));</span>
+<span class="fc" id="L133">            bytes[i] &lt;&lt;= 4;</span>
+<span class="fc" id="L134">            bytes[i] |= (byte) HEX_DIGITS.indexOf(state.charAt(pos++));</span>
+        }
+<span class="fc" id="L136">        ByteArrayInputStream bis = new ByteArrayInputStream(bytes);</span>
+        try {
+<span class="fc" id="L138">            ObjectInputStream ois = new ObjectInputStream(bis);</span>
+<span class="fc" id="L139">            return (Random) ois.readObject();</span>
+<span class="nc" id="L140">        } catch (IOException | ClassNotFoundException e) {</span>
+<span class="nc" id="L141">            logger.log(Level.WARNING, &quot;Unable to restore random state.&quot;, e);</span>
+        }
+<span class="nc" id="L143">        return null;</span>
+    }
+
+    /**
+     * Create a new file reader that uses UTF-8.
+     *
+     * @param file A {@code File} to read from.
+     * @return A {@code Reader} for this file.
+     */
+    public static Reader getFileUTF8Reader(File file) {
+        try {
+<span class="nc" id="L154">            InputStream fis = Files.newInputStream(file.toPath());</span>
+<span class="nc" id="L155">            return new InputStreamReader(fis, StandardCharsets.UTF_8);</span>
+<span class="nc" id="L156">        } catch (IOException ioe) {</span>
+<span class="nc" id="L157">            logger.log(Level.WARNING, &quot;No input stream for &quot; + file.getPath(),</span>
+                       ioe);
+        }
+<span class="nc" id="L160">        return null;</span>
+    }
+
+    /**
+     * Get the UTF-8 encoded contents of a file.
+     *
+     * @param file The {@code File} to query.
+     * @return The contents string, or null on error.
+     */
+    public static String getUTF8Contents(File file) {
+<span class="nc" id="L170">        String ret = null;</span>
+<span class="nc" id="L171">        Reader reader = getFileUTF8Reader(file);</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (reader != null) {</span>
+<span class="nc" id="L173">            CharBuffer cb = CharBuffer.allocate((int)file.length());</span>
+            try {
+<span class="nc" id="L175">                reader.read(cb);</span>
+<span class="nc" id="L176">            } catch (IOException ioe) {</span>
+<span class="nc" id="L177">                logger.log(Level.WARNING, &quot;Read failed for &quot; + file.getPath(),</span>
+                           ioe);
+<span class="nc" id="L179">            }</span>
+<span class="nc" id="L180">            cb.flip();</span>
+<span class="nc" id="L181">            ret = cb.toString();</span>
+            try {
+<span class="nc" id="L183">                reader.close();</span>
+<span class="nc" id="L184">            } catch (IOException ioe) {</span>
+<span class="nc" id="L185">                logger.log(Level.WARNING, &quot;Failed to close&quot;, ioe);</span>
+<span class="nc" id="L186">            }</span>
+        }
+<span class="nc" id="L188">        return ret;</span>
+    }
+        
+    /**
+     * Create a new file writer that uses UTF-8.
+     *
+     * @param os An {@code OutputStream} to write to.
+     * @return A {@code Writer} for this file.
+     */
+    public static Writer getUTF8Writer(OutputStream os) {
+<span class="nc" id="L198">        return new OutputStreamWriter(os, StandardCharsets.UTF_8);</span>
+    }
+
+    /**
+     * Create a new file writer that uses UTF-8.
+     *
+     * @param file A {@code File} to write to.
+     * @param append If true, append to the file.
+     * @return A {@code Writer} for this file.
+     */
+    private static Writer getF8W(File file, boolean append) {
+        try {
+<span class="nc bnc" id="L210" title="All 2 branches missed.">            OutputStream fos = (append)</span>
+<span class="nc" id="L211">                ? Files.newOutputStream(file.toPath(), CREATE, APPEND)</span>
+<span class="nc" id="L212">                : Files.newOutputStream(file.toPath());</span>
+<span class="nc" id="L213">            return getUTF8Writer(fos);</span>
+<span class="nc" id="L214">        } catch (IOException ioe) {</span>
+<span class="nc" id="L215">            logger.log(Level.WARNING, &quot;No output stream for &quot; + file.getName(),</span>
+                       ioe);
+        }
+<span class="nc" id="L218">        return null;</span>
+    }
+
+    /**
+     * Create a new file writer that uses UTF-8.
+     *
+     * @param file A {@code File} to write to.
+     * @return A {@code Writer} for this file.
+     */
+    public static Writer getFileUTF8Writer(File file) {
+<span class="nc" id="L228">        return getF8W(file, false);</span>
+    }
+
+    /**
+     * Create a new appending file writer that uses UTF-8.
+     *
+     * @param file A {@code File} to append to.
+     * @return A {@code Writer} for this file.
+     */
+    public static Writer getFileUTF8AppendWriter(File file) {
+<span class="nc" id="L238">        return getF8W(file, true);</span>
+    }
+    
+    /**
+     * Helper to make an XML Transformer.
+     *
+     * @param declaration If true, include the XML declaration.
+     * @param indent If true, set up the transformer to indent.
+     * @return A suitable {@code Transformer}.
+     */
+    public static Transformer makeTransformer(boolean declaration,
+                                              boolean indent) {
+<span class="nc" id="L250">        Transformer tf = null;</span>
+        try {
+<span class="nc" id="L252">            TransformerFactory factory = TransformerFactory.newInstance();</span>
+<span class="nc" id="L253">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="nc" id="L254">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, &quot;&quot;);</span>
+<span class="nc" id="L255">            factory.setAttribute(&quot;indent-number&quot;, Integer.valueOf(2));</span>
+<span class="nc" id="L256">            tf = factory.newTransformer();</span>
+<span class="nc" id="L257">            tf.setOutputProperty(OutputKeys.ENCODING, &quot;UTF-8&quot;);</span>
+<span class="nc" id="L258">            tf.setOutputProperty(OutputKeys.METHOD, &quot;xml&quot;);</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">            if (!declaration) {</span>
+<span class="nc" id="L260">                tf.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, &quot;yes&quot;);</span>
+            }
+<span class="nc bnc" id="L262" title="All 2 branches missed.">            if (indent) {</span>
+<span class="nc" id="L263">                tf.setOutputProperty(OutputKeys.INDENT, &quot;yes&quot;);</span>
+<span class="nc" id="L264">                tf.setOutputProperty(&quot;{http://xml.apache.org/xslt}indent-amount&quot;, &quot;2&quot;);</span>
+            }
+<span class="nc" id="L266">        } catch (TransformerException e) {</span>
+<span class="nc" id="L267">            logger.log(Level.WARNING, &quot;Failed to install transformer!&quot;, e);</span>
+<span class="nc" id="L268">        }</span>
+<span class="nc" id="L269">        return tf;</span>
+    }
+
+    /**
+     * Delete a file.
+     *
+     * @param file The {@code File} to delete.
+     */
+    public static void deleteFile(File file) {
+        try {
+<span class="nc bnc" id="L279" title="All 2 branches missed.">            if (!file.delete()) {</span>
+<span class="nc" id="L280">                logger.warning(&quot;Failed to delete: &quot; + file.getPath());</span>
+            }
+<span class="nc" id="L282">        } catch (SecurityException ex) {</span>
+<span class="nc" id="L283">            logger.log(Level.WARNING, &quot;Exception deleting: &quot;</span>
+<span class="nc" id="L284">                + file.getPath(), ex);</span>
+<span class="nc" id="L285">        }</span>
+<span class="nc" id="L286">    }</span>
+        
+    /**
+     * Delete a list of files.
+     *
+     * @param files The list of {@code File}s to delete.
+     */
+    public static void deleteFiles(List&lt;File&gt; files) {
+<span class="nc bnc" id="L294" title="All 2 branches missed.">        for (File f : files) deleteFile(f);</span>
+<span class="nc" id="L295">    }</span>
+
+    /**
+     * Does a readable file have a matching suffix?
+     *
+     * @param file The {@code File} to check.
+     * @param suffixes Suffixes to test.
+     * @return True if any suffix matches.
+     */
+    public static boolean fileAnySuffix(File file, String... suffixes) {
+<span class="pc bpc" id="L305" title="4 of 6 branches missed.">        if (file == null || !file.isFile() || !file.canRead()) return false;</span>
+<span class="nc" id="L306">        final String name = file.getName();</span>
+<span class="nc bnc" id="L307" title="All 4 branches missed.">        for (String s : suffixes) if (name.endsWith(s)) return true;</span>
+<span class="nc" id="L308">        return false;</span>
+    }
+
+    /**
+     * Does a directory contain the given file/s?
+     *
+     * @param dir The directory {@code File} to check.
+     * @param names The name of the files to find therein.
+     * @return True if the file is present and readable.
+     */
+    public static boolean directoryAllPresent(File dir, String... names) {
+<span class="pc bpc" id="L319" title="3 of 6 branches missed.">        if (dir == null || !dir.isDirectory() || !dir.canRead()) return false;</span>
+<span class="fc bfc" id="L320" title="All 2 branches covered.">        for (String n : names) {</span>
+<span class="fc bfc" id="L321" title="All 2 branches covered.">            if (!new File(dir, n).canRead()) return false;</span>
+        }
+<span class="fc" id="L323">        return true;</span>
+    }
+
+    /**
+     * Delay by a number of milliseconds.
+     *
+     * @param ms The number of milliseconds to delay.
+     * @param warning If non-null, log this warning message on interrupt,
+     *     otherwise propagate the interrupt.
+     */
+    public static void delay(long ms, String warning) {
+        try {
+<span class="nc" id="L335">            TimeUnit.MILLISECONDS.sleep(ms);</span>
+<span class="nc" id="L336">        } catch (InterruptedException ie) {</span>
+<span class="nc bnc" id="L337" title="All 2 branches missed.">            if (warning == null) {</span>
+<span class="nc" id="L338">                Thread.currentThread().interrupt();</span>
+            } else {
+<span class="nc" id="L340">                logger.log(Level.WARNING, warning, ie);</span>
+            }
+<span class="nc" id="L342">        }</span>
+<span class="nc" id="L343">    }</span>
+
+    /**
+     * Current time since epoch in milliseconds.
+     *
+     * @return Time since epoch.
+     */
+    public static long now() {
+<span class="nc" id="L351">        return System.currentTimeMillis();</span>
+    }
+
+
+    /**
+     * Run the garbage collector.
+     *
+     * Route all gc calls here, so we can disable the findbugs warning.
+     */
+    @SuppressFBWarnings(value=&quot;DM_GC&quot;, justification=&quot;Deliberate&quot;)
+    public static void garbageCollect() {
+<span class="fc" id="L362">        System.gc();</span>
+<span class="fc" id="L363">    }</span>
+
+    /**
+     * Are we in headless mode?
+     *
+     * @return True if in headless mode.
+     */
+    public static boolean isHeadless() {
+<span class="nc" id="L371">        return &quot;true&quot;.equals(System.getProperty(&quot;java.awt.headless&quot;, &quot;false&quot;));</span>
+    }
+
+    /**
+     * Get a good screen device for starting FreeCol.
+     *
+     * @return A screen device, or null if none available
+     *     (as in headless mode).
+     */
+    public static GraphicsDevice getGoodGraphicsDevice() {
+        try {
+<span class="nc" id="L382">            return MouseInfo.getPointerInfo().getDevice();</span>
+<span class="nc" id="L383">        } catch (HeadlessException he) {}</span>
+
+        try {
+            final GraphicsEnvironment lge
+<span class="nc" id="L387">                = GraphicsEnvironment.getLocalGraphicsEnvironment();</span>
+<span class="nc" id="L388">            return lge.getDefaultScreenDevice();</span>
+<span class="nc" id="L389">        } catch (HeadlessException he) {}</span>
+<span class="nc" id="L390">        return null;</span>
+    }
+    
+    /**
+     * Tries to determine the DPI of the given {@code GraphicsDevice}.
+     * 
+     * @param gd The {@code GraphicsDevice} to determine the DPI for.
+     * @return The calculated DPI.
+     */
+    public static int determineDpi(GraphicsDevice gd) {
+        /*
+         * getScreenResolution returns the DPI at maximum resolution -- but we might
+         * currently be running with a lower resolution.
+         */
+<span class="nc" id="L404">        final int candidateDpi = Toolkit.getDefaultToolkit().getScreenResolution();</span>
+
+<span class="nc" id="L406">        final DisplayMode[] displayModes = gd.getDisplayModes();</span>
+<span class="nc bnc" id="L407" title="All 2 branches missed.">        if (displayModes.length &lt;= 1) {</span>
+            /*
+             * There is a bug when running under KDE X11 with multiple screens
+             * where getDisplayModes() return an empty array.
+             */
+<span class="nc" id="L412">            return candidateDpi;</span>
+        }
+
+<span class="nc" id="L415">        final int highestScreenSize = Arrays.stream(displayModes).map(dm -&gt; dm.getHeight()).max(Integer::compare).get();</span>
+<span class="nc" id="L416">        final int currentScreenSize = gd.getDisplayMode().getHeight();</span>
+
+<span class="nc" id="L418">        final int actualDpi = (candidateDpi * currentScreenSize) / highestScreenSize;</span>
+<span class="nc" id="L419">        return actualDpi;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

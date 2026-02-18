@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NewRegionNameMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">NewRegionNameMessage.java</span></div><h1>NewRegionNameMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Region;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent when naming a new region.
+ */
+public class NewRegionNameMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;newRegionName&quot;;
+    private static final String NEW_REGION_NAME_TAG = &quot;newRegionName&quot;;
+    private static final String REGION_TAG = &quot;region&quot;;
+    private static final String TILE_TAG = &quot;tile&quot;;
+    private static final String UNIT_TAG = &quot;unit&quot;;
+
+
+    /**
+     * Create a new {@code NewRegionNameMessage} with the
+     * supplied name.
+     *
+     * @param region The {@code Region} being discovered.
+     * @param tile The {@code Tile} where the region is discovered.
+     * @param unit The {@code Unit} that discovers the region.
+     * @param newRegionName The default new region name.
+     */
+    public NewRegionNameMessage(Region region, Tile tile, Unit unit,
+                                String newRegionName) {
+<span class="nc" id="L59">        super(TAG, REGION_TAG, region.getId(), TILE_TAG, tile.getId(),</span>
+<span class="nc" id="L60">              UNIT_TAG, unit.getId(), NEW_REGION_NAME_TAG, newRegionName);</span>
+<span class="nc" id="L61">    }</span>
+
+    /**
+     * Create a new {@code NewRegionNameMessage} from a stream.
+     *
+     * @param game The {@code Game} to read within.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public NewRegionNameMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L72">        super(TAG, xr, REGION_TAG, TILE_TAG, UNIT_TAG, NEW_REGION_NAME_TAG);</span>
+<span class="nc" id="L73">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L81">        return Message.MessagePriority.LATE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+<span class="nc" id="L89">        final Game game = freeColServer.getGame();</span>
+<span class="nc" id="L90">        final Region region = getRegion(game);</span>
+<span class="nc" id="L91">        final Tile tile = getTile(game);</span>
+<span class="nc" id="L92">        final Unit unit = getUnit(aiPlayer.getPlayer());</span>
+<span class="nc" id="L93">        final String name = getNewRegionName();</span>
+
+<span class="nc" id="L95">        aiPlayer.newRegionNameHandler(region, tile, unit, name);</span>
+<span class="nc" id="L96">    }</span>
+        
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L103">        final Game game = freeColClient.getGame();</span>
+<span class="nc" id="L104">        final Tile tile = getTile(game);</span>
+<span class="nc" id="L105">        final Unit unit = getUnit(freeColClient.getMyPlayer());</span>
+<span class="nc" id="L106">        final Region region = getRegion(game);</span>
+<span class="nc" id="L107">        final String name = getNewRegionName();</span>
+
+<span class="nc bnc" id="L109" title="All 4 branches missed.">        if (name == null || region == null) return;</span>
+
+<span class="nc" id="L111">        igc(freeColClient).newRegionNameHandler(region, tile, unit, name);</span>
+<span class="nc" id="L112">        clientGeneric(freeColClient);</span>
+<span class="nc" id="L113">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc" id="L121">        final Game game = freeColServer.getGame();</span>
+
+<span class="nc" id="L123">        Tile tile = getTile(game);</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if (!serverPlayer.hasExplored(tile)) {</span>
+<span class="nc" id="L125">            return serverPlayer.clientError(&quot;Can not claim discovery in unexplored tile: &quot;</span>
+<span class="nc" id="L126">                + getStringAttribute(TILE_TAG));</span>
+        }
+
+        Unit unit;
+        try {
+<span class="nc" id="L131">            unit = getUnit(serverPlayer);</span>
+<span class="nc" id="L132">        } catch (Exception e) {</span>
+<span class="nc" id="L133">            return serverPlayer.clientError(e.getMessage());</span>
+<span class="nc" id="L134">        }</span>
+
+<span class="nc" id="L136">        Region region = tile.getDiscoverableRegion();</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">        if (region == null) {</span>
+<span class="nc" id="L138">            return serverPlayer.clientError(&quot;No discoverable region in: &quot;</span>
+<span class="nc" id="L139">                + tile.getId());</span>
+        }
+<span class="nc" id="L141">        String regionId = getStringAttribute(REGION_TAG);</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (!region.getId().equals(regionId)) {</span>
+<span class="nc" id="L143">            return serverPlayer.clientError(&quot;Region mismatch, &quot;</span>
+<span class="nc" id="L144">                + region.getId() + &quot; != &quot; + regionId);</span>
+        }
+
+        // Do the discovery
+<span class="nc" id="L148">        return igc(freeColServer)</span>
+<span class="nc" id="L149">            .setNewRegionName(serverPlayer, unit, region, getNewRegionName());</span>
+    }
+
+
+    // Public interface
+
+    /**
+     * Public accessor for the region.
+     *
+     * @param game The {@code Game} to look for a region in.
+     * @return The region of this message.
+     */
+    public Region getRegion(Game game) {
+<span class="nc" id="L162">        return game.getFreeColGameObject(getStringAttribute(REGION_TAG), Region.class);</span>
+    }
+
+    /**
+     * Public accessor for the tile.
+     *
+     * @param game The {@code Game} to look for a tile in.
+     * @return The tile of this message.
+     */
+    public Tile getTile(Game game) {
+<span class="nc" id="L172">        return game.getFreeColGameObject(getStringAttribute(TILE_TAG), Tile.class);</span>
+    }
+
+    /**
+     * Public accessor for the unit.
+     *
+     * @param player The {@code Player} who owns the unit.
+     * @return The {@code Unit} of this message.
+     */
+    public Unit getUnit(Player player) {
+<span class="nc" id="L182">        return player.getOurFreeColGameObject(getStringAttribute(UNIT_TAG), Unit.class);</span>
+    }
+
+    /**
+     * Public accessor for the new region name.
+     *
+     * @return The new region name of this message.
+     */
+    public String getNewRegionName() {
+<span class="nc" id="L191">        return getStringAttribute(NEW_REGION_NAME_TAG);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

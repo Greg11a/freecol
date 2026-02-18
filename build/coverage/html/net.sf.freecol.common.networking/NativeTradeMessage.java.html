@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NativeTradeMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">NativeTradeMessage.java</span></div><h1>NativeTradeMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.NativeTrade;
+import net.sf.freecol.common.model.NativeTrade.NativeTradeAction;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.ai.AIPlayer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent to handle native trade sessions.
+ */
+public class NativeTradeMessage extends ObjectMessage {
+
+    public static final String TAG = &quot;nativeTrade&quot;;
+    private static final String ACTION_TAG = &quot;action&quot;;
+
+
+    /**
+     * Create a new {@code NativeTradeMessage} request with the
+     * supplied unit and settlement.
+     *
+     * @param unit The {@code Unit} performing the trade.
+     * @param is The {@code IndianSettlement} where the
+     *     trade occurs.
+     */
+    public NativeTradeMessage(Unit unit, IndianSettlement is) {
+<span class="nc" id="L54">        this(NativeTradeAction.OPEN, new NativeTrade(unit, is));</span>
+<span class="nc" id="L55">    }</span>
+
+    /**
+     * Create a new {@code NativetradeMessage} with the
+     * supplied unit and native settlement.
+     *
+     * @param action The {@code NativeTradeAction}
+     * @param nt The {@code NativeTrade}
+     */
+    public NativeTradeMessage(NativeTradeAction action, NativeTrade nt) {
+<span class="nc" id="L65">        super(TAG, ACTION_TAG, action.toString());</span>
+
+<span class="nc" id="L67">        appendChild(nt);</span>
+<span class="nc" id="L68">    }</span>
+
+    /**
+     * Create a new {@code NativeTradeMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if there is a problem reading the stream.
+     */
+    public NativeTradeMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L79">        super(TAG, xr, ACTION_TAG);</span>
+
+<span class="nc" id="L81">        NativeTrade nt = null;</span>
+<span class="nc" id="L82">        FreeColXMLReader.ReadScope rs</span>
+<span class="nc" id="L83">            = xr.replaceScope(FreeColXMLReader.ReadScope.NOINTERN);</span>
+        try {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">            while (xr.moreTags()) {</span>
+<span class="nc" id="L86">                String tag = xr.getLocalName();</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">                if (NativeTrade.TAG.equals(tag)) {</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">                    if (nt == null) {</span>
+<span class="nc" id="L89">                        nt = xr.readFreeColObject(game, NativeTrade.class);</span>
+                    } else {
+<span class="nc" id="L91">                        expected(TAG, tag);</span>
+                    }
+                } else {
+<span class="nc" id="L94">                    expected(NativeTrade.TAG, tag);</span>
+                }
+<span class="nc" id="L96">                xr.expectTag(tag);</span>
+<span class="nc" id="L97">            }</span>
+<span class="nc" id="L98">            xr.expectTag(TAG);</span>
+        } finally {
+<span class="nc" id="L100">            xr.replaceScope(rs);</span>
+        }
+<span class="nc" id="L102">        appendChild(nt);</span>
+<span class="nc" id="L103">    }</span>
+
+
+    private NativeTradeAction getAction() {
+<span class="nc" id="L107">        return getEnumAttribute(ACTION_TAG, NativeTradeAction.class,</span>
+                                (NativeTradeAction)null);
+    }
+
+    private NativeTrade getNativeTrade() {
+<span class="nc" id="L112">        return getChild(0, NativeTrade.class);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L120">        return Message.MessagePriority.LATE;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void aiHandler(FreeColServer freeColServer, AIPlayer aiPlayer) {
+<span class="nc" id="L128">        final NativeTrade nt = getNativeTrade();</span>
+<span class="nc" id="L129">        final NativeTradeAction action = getAction();</span>
+
+<span class="nc" id="L131">        aiPlayer.nativeTradeHandler(action, nt);</span>
+<span class="nc" id="L132">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void clientHandler(FreeColClient freeColClient) {
+<span class="nc" id="L139">        final NativeTradeAction action = getAction();</span>
+<span class="nc" id="L140">        final NativeTrade nt = getNativeTrade();</span>
+
+<span class="nc" id="L142">        igc(freeColClient).nativeTradeHandler(action, nt);</span>
+<span class="nc" id="L143">        clientGeneric(freeColClient);</span>
+<span class="nc" id="L144">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc" id="L152">        final NativeTrade nt = getNativeTrade();</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (nt == null) {</span>
+<span class="nc" id="L154">            return serverPlayer.clientError(&quot;Null native trade&quot;);</span>
+        }
+        
+<span class="nc" id="L157">        final Unit unit = nt.getUnit();</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        if (unit == null) {</span>
+<span class="nc" id="L159">            return serverPlayer.clientError(&quot;Null unit&quot;);</span>
+        }
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (!unit.hasTile()) {</span>
+<span class="nc" id="L162">            return serverPlayer.clientError(&quot;Unit not on the map: &quot;</span>
+<span class="nc" id="L163">                + unit.getId());</span>
+        }
+
+<span class="nc" id="L166">        final IndianSettlement is = nt.getIndianSettlement();</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        if (is == null) {</span>
+<span class="nc" id="L168">            return serverPlayer.clientError(&quot;Null settlement&quot;);</span>
+        }
+
+<span class="nc bnc" id="L171" title="All 2 branches missed.">        if (!unit.getTile().isAdjacent(is.getTile())) {</span>
+<span class="nc" id="L172">            return serverPlayer.clientError(&quot;Unit not adjacent to settlement&quot;);</span>
+        }
+
+<span class="nc" id="L175">        return igc(freeColServer)</span>
+<span class="nc" id="L176">            .nativeTrade(serverPlayer, getAction(), nt);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

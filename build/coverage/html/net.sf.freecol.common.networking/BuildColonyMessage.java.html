@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BuildColonyMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.common.networking</a> &gt; <span class="el_source">BuildColonyMessage.java</span></div><h1>BuildColonyMessage.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.common.networking;
+
+import javax.xml.stream.XMLStreamException;
+
+import net.sf.freecol.common.io.FreeColXMLReader;
+import net.sf.freecol.common.model.Game;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.server.FreeColServer;
+import net.sf.freecol.server.model.ServerPlayer;
+
+
+/**
+ * The message sent when the client requests building of a colony.
+ */
+public class BuildColonyMessage extends AttributeMessage {
+
+    public static final String TAG = &quot;buildColony&quot;;
+    private static final String NAME_TAG = &quot;name&quot;;
+    private static final String UNIT_TAG = &quot;unit&quot;;
+
+
+    /**
+     * Create a new {@code BuildColonyMessage} with the supplied name
+     * and building unit.
+     *
+     * @param colonyName The name for the new colony.
+     * @param builder The {@code Unit} to do the building.
+     */
+    public BuildColonyMessage(String colonyName, Unit builder) {
+<span class="nc" id="L51">        super(TAG, NAME_TAG, colonyName, UNIT_TAG, builder.getId());</span>
+<span class="nc" id="L52">    }</span>
+
+    /**
+     * Create a new {@code BuildColonyMessage} from a stream.
+     *
+     * @param game The {@code Game} this message belongs to.
+     * @param xr The {@code FreeColXMLReader} to read from.
+     * @exception XMLStreamException if the stream is corrupt.
+     */
+    public BuildColonyMessage(Game game, FreeColXMLReader xr)
+        throws XMLStreamException {
+<span class="nc" id="L63">        super(TAG, xr, NAME_TAG, UNIT_TAG);</span>
+<span class="nc" id="L64">    }</span>
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean currentPlayerMessage() {
+<span class="nc" id="L72">        return true;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessagePriority getPriority() {
+<span class="nc" id="L80">        return Message.MessagePriority.NORMAL;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeSet serverHandler(FreeColServer freeColServer,
+                                   ServerPlayer serverPlayer) {
+<span class="nc" id="L89">        final Game game = freeColServer.getGame();</span>
+<span class="nc" id="L90">        final String colonyName = getStringAttribute(NAME_TAG);</span>
+<span class="nc" id="L91">        final String unitId = getStringAttribute(UNIT_TAG);</span>
+
+        Unit unit;
+        try {
+<span class="nc" id="L95">            unit = serverPlayer.getOurFreeColGameObject(unitId, Unit.class);</span>
+<span class="nc" id="L96">        } catch (Exception e) {</span>
+<span class="nc" id="L97">            return serverPlayer.clientError(e.getMessage());</span>
+<span class="nc" id="L98">        }</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        if (!unit.canBuildColony()) {</span>
+<span class="nc" id="L100">            return serverPlayer.clientError(&quot;Unit &quot; + unitId</span>
+                + &quot; can not build colony.&quot;);
+        }
+
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        if (colonyName == null) {</span>
+<span class="nc" id="L105">            return serverPlayer.clientError(&quot;Null colony name&quot;);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        } else if (Player.ASSIGN_SETTLEMENT_NAME.equals(colonyName)) {</span>
+            ; // ok
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        } else if (game.getSettlementByName(colonyName) != null) {</span>
+<span class="nc" id="L109">            return serverPlayer.clientError(&quot;Non-unique colony name &quot;</span>
+                + colonyName);
+        }
+
+<span class="nc" id="L113">        Tile tile = unit.getTile();</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (!serverPlayer.canClaimToFoundSettlement(tile)) {</span>
+<span class="nc" id="L115">            return serverPlayer.clientError(&quot;Can not build colony on tile &quot;</span>
+<span class="nc" id="L116">                + tile + &quot;: &quot; + serverPlayer.canClaimToFoundSettlementReason(tile));</span>
+        }
+
+        // Build can proceed.
+<span class="nc" id="L120">        return igc(freeColServer)</span>
+<span class="nc" id="L121">            .buildSettlement(serverPlayer, unit, colonyName);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

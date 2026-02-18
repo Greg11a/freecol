@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FindSettlementPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">FindSettlementPanel.java</span></div><h1>FindSettlementPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import java.awt.Dimension;
+import java.awt.event.ActionEvent;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.logging.Logger;
+
+import javax.swing.AbstractAction;
+import javax.swing.Action;
+import javax.swing.DefaultListModel;
+import javax.swing.ImageIcon;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JScrollPane;
+import javax.swing.KeyStroke;
+import javax.swing.ListSelectionModel;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.plaf.FreeColComboBoxRenderer;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.Colony;
+import net.sf.freecol.common.model.IndianSettlement;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.Settlement;
+import net.sf.freecol.common.model.StringTemplate;
+
+
+/**
+ * Centers the map on a known settlement or colony.  Pressing ENTER
+ * opens a panel if appropriate.
+ */
+public final class FindSettlementPanel extends FreeColPanel
+    implements ListSelectionListener, ItemListener {
+
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L63">    private static final Logger logger = Logger.getLogger(FindSettlementPanel.class.getName());</span>
+
+    private static class SettlementRenderer
+        extends FreeColComboBoxRenderer&lt;Settlement&gt; {
+
+        private final ImageLibrary lib;
+        
+<span class="nc" id="L70">        public SettlementRenderer(ImageLibrary lib) {</span>
+<span class="nc" id="L71">            this.lib = lib;</span>
+<span class="nc" id="L72">        }</span>
+        
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void setLabelValues(JLabel label, Settlement value) {
+<span class="nc" id="L79">            StringTemplate template = StringTemplate</span>
+<span class="nc" id="L80">                .template(&quot;findSettlementPanel.settlement&quot;)</span>
+<span class="nc" id="L81">                .addName(&quot;%name%&quot;, value.getName())</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                .addName(&quot;%capital%&quot;, ((value.isCapital()) ? &quot;*&quot; : &quot;&quot;))</span>
+<span class="nc" id="L83">                .addStringTemplate(&quot;%nation%&quot;,</span>
+<span class="nc" id="L84">                    value.getOwner().getNationLabel());</span>
+<span class="nc" id="L85">            label.setText(Messages.message(template));</span>
+<span class="nc" id="L86">            label.setIcon(new ImageIcon(lib.getSettlementImage(value,</span>
+                        new Dimension(64, -1))));
+<span class="nc" id="L88">        }</span>
+    }
+
+<span class="nc" id="L91">    private static enum DisplayListOption {</span>
+<span class="nc" id="L92">        ALL,</span>
+<span class="nc" id="L93">        ONLY_NATIVES,</span>
+<span class="nc" id="L94">        ONLY_EUROPEAN</span>
+    }
+
+    /** Box to choose the type of settlements to list. */
+    private JComboBox&lt;String&gt; displayOptionBox;
+
+    /** The list of settlements to display. */
+    private final JList&lt;Settlement&gt; settlementList;
+
+
+    /**
+     * Create a new panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public FindSettlementPanel(FreeColClient freeColClient) {
+<span class="nc" id="L110">        super(freeColClient, null,</span>
+              new MigLayout(&quot;wrap 1&quot;, &quot;[align center]&quot;, &quot;[]30[]30[]&quot;));
+<span class="nc" id="L112">        this.settlementList = new JList&lt;&gt;();</span>
+<span class="nc" id="L113">        this.settlementList.setCellRenderer(new SettlementRenderer(getImageLibrary()));</span>
+<span class="nc" id="L114">        this.settlementList.setFixedCellHeight(48);</span>
+<span class="nc" id="L115">        this.settlementList.addListSelectionListener(this);</span>
+<span class="nc" id="L116">        this.settlementList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);</span>
+<span class="nc" id="L117">        Action selectAction = new AbstractAction() {</span>
+                @Override
+                public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L120">                    selectSettlement();</span>
+<span class="nc" id="L121">                }</span>
+            };
+<span class="nc" id="L123">        this.settlementList.getInputMap().put(KeyStroke.getKeyStroke(&quot;ENTER&quot;),</span>
+                                              &quot;select&quot;);
+<span class="nc" id="L125">        this.settlementList.getActionMap().put(&quot;select&quot;, selectAction);</span>
+<span class="nc" id="L126">        Action quitAction = new AbstractAction() {</span>
+                @Override
+                public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L129">                    getGUI().removeComponent(FindSettlementPanel.this);</span>
+<span class="nc" id="L130">                }</span>
+            };
+<span class="nc" id="L132">        this.settlementList.getInputMap().put(KeyStroke.getKeyStroke(&quot;ESCAPE&quot;),</span>
+                                             &quot;quit&quot;);
+<span class="nc" id="L134">        this.settlementList.getActionMap().put(&quot;quit&quot;, quitAction);</span>
+<span class="nc" id="L135">        this.settlementList.addMouseListener(new MouseAdapter() {</span>
+                @Override
+                public void mouseClicked(MouseEvent e) {
+<span class="nc bnc" id="L138" title="All 2 branches missed.">                    if (e.getClickCount() == 2) {</span>
+<span class="nc" id="L139">                        selectSettlement();</span>
+                    }
+<span class="nc" id="L141">                }</span>
+            });
+<span class="nc" id="L143">        JScrollPane listScroller = new JScrollPane(this.settlementList);</span>
+<span class="nc" id="L144">        listScroller.setPreferredSize(new Dimension(250, 250));</span>
+
+<span class="nc" id="L146">        this.displayOptionBox = new JComboBox&lt;&gt;(new String[] {</span>
+<span class="nc" id="L147">                Messages.message(&quot;findSettlementPanel.displayAll&quot;),</span>
+<span class="nc" id="L148">                Messages.message(&quot;findSettlementPanel.displayOnlyNatives&quot;),</span>
+<span class="nc" id="L149">                Messages.message(&quot;findSettlementPanel.displayOnlyEuropean&quot;),</span>
+            });
+<span class="nc" id="L151">        this.displayOptionBox.addItemListener(this);</span>
+
+<span class="nc" id="L153">        add(Utility.localizedHeader(Messages.nameKey(&quot;findSettlementPanel&quot;),</span>
+                                    Utility.FONTSPEC_SUBTITLE));
+<span class="nc" id="L155">        add(listScroller, &quot;width max(300, 100%), height max(300, 100%)&quot;);</span>
+<span class="nc" id="L156">        add(this.displayOptionBox);</span>
+<span class="nc" id="L157">        add(okButton, &quot;tag ok&quot;);</span>
+
+<span class="nc" id="L159">        getGUI().restoreSavedSize(this, getPreferredSize());</span>
+
+<span class="nc" id="L161">        updateSearch(DisplayListOption.valueOf(&quot;ALL&quot;));</span>
+        
+<span class="nc" id="L163">        setEscapeAction(new AbstractAction() {</span>
+            @Override
+            public void actionPerformed(ActionEvent ae) {
+<span class="nc" id="L166">                okButton.doClick();</span>
+<span class="nc" id="L167">            }</span>
+        });
+<span class="nc" id="L169">    }</span>
+
+    private void updateSearch(DisplayListOption displayListOption) {
+<span class="nc" id="L172">        DefaultListModel&lt;Settlement&gt; model</span>
+            = new DefaultListModel&lt;&gt;();
+<span class="nc" id="L174">        Object selected = this.settlementList.getSelectedValue();</span>
+
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        for (Player player : getGame().getLivePlayerList()) {</span>
+            boolean ok;
+<span class="nc bnc" id="L178" title="All 4 branches missed.">            switch (displayListOption) {</span>
+            case ONLY_NATIVES:
+<span class="nc" id="L180">                ok = player.isIndian();</span>
+<span class="nc" id="L181">                break;</span>
+            case ONLY_EUROPEAN:
+<span class="nc" id="L183">                ok = player.isEuropean();</span>
+<span class="nc" id="L184">                break;</span>
+            case ALL:
+<span class="nc" id="L186">                ok = true;</span>
+<span class="nc" id="L187">                break;</span>
+            default:
+<span class="nc" id="L189">                ok = false;</span>
+                break;
+            }
+<span class="nc bnc" id="L192" title="All 2 branches missed.">            if (ok) {</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">                for (Settlement s : player.getSettlementList()) {</span>
+<span class="nc" id="L194">                    model.addElement(s);</span>
+<span class="nc" id="L195">                }</span>
+            }
+<span class="nc" id="L197">        }</span>
+
+<span class="nc" id="L199">        this.settlementList.setModel(model);</span>
+<span class="nc" id="L200">        this.settlementList.setSelectedValue(selected, true);</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        if (this.settlementList.getSelectedIndex() &lt; 0) {</span>
+<span class="nc" id="L202">            this.settlementList.setSelectedIndex(0);</span>
+        }
+<span class="nc" id="L204">    }</span>
+
+    private void selectSettlement() {
+<span class="nc" id="L207">        Settlement settlement = this.settlementList.getSelectedValue();</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        if (settlement instanceof Colony</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">            &amp;&amp; settlement.getOwner() == getMyPlayer()) {</span>
+<span class="nc" id="L210">            getGUI().removeComponent(FindSettlementPanel.this);</span>
+<span class="nc" id="L211">            getGUI().showColonyPanel((Colony)settlement, null);</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        } else if (settlement instanceof IndianSettlement) {</span>
+<span class="nc" id="L213">            getGUI().removeComponent(FindSettlementPanel.this);</span>
+<span class="nc" id="L214">            getGUI().showIndianSettlementPanel((IndianSettlement)settlement);</span>
+        }
+<span class="nc" id="L216">    }</span>
+
+
+    // Interface ItemListener
+
+    @Override
+    public void itemStateChanged(ItemEvent event) {
+<span class="nc bnc" id="L223" title="All 3 branches missed.">        switch (this.displayOptionBox.getSelectedIndex()) {</span>
+        case 0:
+        default:
+<span class="nc" id="L226">            updateSearch(DisplayListOption.valueOf(&quot;ALL&quot;));</span>
+<span class="nc" id="L227">            break;</span>
+        case 1:
+<span class="nc" id="L229">            updateSearch(DisplayListOption.valueOf(&quot;ONLY_NATIVES&quot;));</span>
+<span class="nc" id="L230">            break;</span>
+        case 2:
+<span class="nc" id="L232">            updateSearch(DisplayListOption.valueOf(&quot;ONLY_EUROPEAN&quot;));</span>
+        }
+<span class="nc" id="L234">    }</span>
+
+
+    // Interface ListSelectionListener
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void valueChanged(ListSelectionEvent e) {
+<span class="nc" id="L244">        Settlement settlement = this.settlementList.getSelectedValue();</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        if (settlement != null) {</span>
+<span class="nc" id="L246">            getGUI().setFocus(settlement.getTile());</span>
+        }
+<span class="nc" id="L248">    }</span>
+
+
+    // Override Component
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void requestFocus() {
+<span class="nc" id="L258">        this.settlementList.requestFocus();</span>
+<span class="nc" id="L259">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void removeNotify() {
+<span class="nc" id="L266">        super.removeNotify();</span>
+
+<span class="nc" id="L268">        removeAll();</span>
+<span class="nc" id="L269">        this.displayOptionBox = null;</span>
+<span class="nc" id="L270">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

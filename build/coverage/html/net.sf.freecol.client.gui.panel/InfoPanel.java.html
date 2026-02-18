@@ -1,0 +1,619 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="zh"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InfoPanel.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">FreeCol</a> &gt; <a href="index.source.html" class="el_package">net.sf.freecol.client.gui.panel</a> &gt; <span class="el_source">InfoPanel.java</span></div><h1>InfoPanel.java</h1><pre class="source lang-java linenums">/**
+ *  Copyright (C) 2002-2024   The FreeCol Team
+ *
+ *  This file is part of FreeCol.
+ *
+ *  FreeCol is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  FreeCol is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with FreeCol.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */
+
+package net.sf.freecol.client.gui.panel;
+
+import static net.sf.freecol.common.util.CollectionUtils.sort;
+import static net.sf.freecol.common.util.StringUtils.splitText;
+
+import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Image;
+import java.awt.LayoutManager;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Logger;
+
+import javax.swing.BorderFactory;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+
+import net.miginfocom.swing.MigLayout;
+import net.sf.freecol.client.FreeColClient;
+import net.sf.freecol.client.control.MapTransform;
+import net.sf.freecol.client.gui.ImageLibrary;
+import net.sf.freecol.client.gui.SwingGUI.PopupPosition;
+import net.sf.freecol.client.gui.action.EndTurnAction;
+import net.sf.freecol.common.i18n.Messages;
+import net.sf.freecol.common.model.AbstractGoods;
+import net.sf.freecol.common.model.Goods;
+import net.sf.freecol.common.model.GoodsContainer;
+import net.sf.freecol.common.model.GoodsType;
+import net.sf.freecol.common.model.Player;
+import net.sf.freecol.common.model.StringTemplate;
+import net.sf.freecol.common.model.Tile;
+import net.sf.freecol.common.model.Unit;
+import net.sf.freecol.common.resources.PropertyList;
+import net.sf.freecol.common.resources.ResourceManager;
+
+
+/**
+ * The InfoPanel is a wrapper for several informative displays in the
+ * lower right corner.
+ */
+public final class InfoPanel extends FreeColPanel
+    implements PropertyChangeListener {
+
+    @SuppressWarnings(&quot;unused&quot;)
+<span class="nc" id="L73">    private static final Logger logger = Logger.getLogger(InfoPanel.class.getName());</span>
+
+
+<span class="nc" id="L76">    private static enum InfoPanelMode {</span>
+<span class="nc" id="L77">        NONE, END, MAP, TILE, UNIT;</span>
+    }
+
+    /** A small pixel gap. */
+    private static final int SLACK = 5;
+
+    /** Number of goods/production items to show. */
+    private static final int PRODUCTION = 4;
+
+    /** Preferred size for non-skinned panel. */
+<span class="nc" id="L87">    public static final Dimension PREFERRED_SIZE = new Dimension(250, 138);</span>
+    
+    /** The image library to use for the font. */
+    private final ImageLibrary lib;
+
+    /** The font for the end turn message. */
+    private Font font;
+
+    /** An optional background image (the standard one has shape). */
+    private Image skin;
+
+    /** The mouse listener for the various subpanels. */
+    private final MouseAdapter mouseAdapter;
+    
+    /** The panel mode. */
+<span class="nc" id="L102">    private InfoPanelMode mode = InfoPanelMode.NONE;</span>
+
+    /** The associated map transform when in MAP mode. */
+<span class="nc" id="L105">    private MapTransform mapTransform = null;</span>
+    
+    /** The associated tile when in TILE mode. */
+<span class="nc" id="L108">    private Tile tile = null;</span>
+    
+    /** The associated unit when in UNIT mode. */
+<span class="nc" id="L111">    private Unit unit = null;</span>
+    
+    /** Use the info panel skin. */
+    private boolean useSkin;
+
+
+    /**
+     * The constructor that will add the items to this panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     */
+    public InfoPanel(final FreeColClient freeColClient) {
+<span class="nc" id="L123">        this(freeColClient, true);</span>
+<span class="nc" id="L124">    }</span>
+
+    /**
+     * The constructor that will add the items to this panel.
+     *
+     * @param freeColClient The {@code FreeColClient} for the game.
+     * @param useSkin Use the info panel skin.
+     */
+    public InfoPanel(final FreeColClient freeColClient, boolean useSkin) {
+<span class="nc" id="L133">        super(freeColClient, null, null);</span>
+
+<span class="nc" id="L135">        this.lib = freeColClient.getGUI().getFixedImageLibrary();</span>
+<span class="nc" id="L136">        this.useSkin = useSkin;</span>
+        
+        // No layout manager!  Panels will be sized and placed explicitly
+
+<span class="nc" id="L140">        this.mouseAdapter = new MouseAdapter() {</span>
+                /**
+                 * {@inheritDoc}
+                 */
+                @Override
+                public void mousePressed(MouseEvent e) {
+<span class="nc" id="L146">                    Tile tile = InfoPanel.this.getTile();</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">                    if (tile != null) getGUI().setFocus(tile);</span>
+<span class="nc" id="L148">                }</span>
+            };
+<span class="nc" id="L150">    }</span>
+    
+    public void updateLayoutIfNeeded(boolean newUseSkin) {
+<span class="nc" id="L153">        final Font newFont = this.lib.getScaledFont(&quot;normal-plain-tiny&quot;, null);</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        final Image newSkin = (newUseSkin) ? this.lib.getScaledImage(&quot;image.skin.InfoPanel&quot;)</span>
+<span class="nc" id="L155">            : null;</span>
+        
+<span class="nc bnc" id="L157" title="All 6 branches missed.">        if (useSkin == newUseSkin &amp;&amp; newFont == font &amp;&amp; newSkin == skin) {</span>
+            // No change.
+<span class="nc" id="L159">            return;</span>
+        }
+
+<span class="nc" id="L162">        this.font = newFont;</span>
+<span class="nc" id="L163">        this.skin = newSkin;</span>
+<span class="nc" id="L164">        this.useSkin = newUseSkin;</span>
+
+<span class="nc bnc" id="L166" title="All 2 branches missed.">        if (this.skin != null) {</span>
+<span class="nc" id="L167">            setBorder(null);</span>
+<span class="nc" id="L168">            setSize(this.skin.getWidth(null), this.skin.getHeight(null));</span>
+            // skin is output in overridden paintComponent(), which calls
+            // its parent, which will display panels added here
+<span class="nc" id="L171">            setOpaque(false);</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        } else if (!useSkin) {</span>
+<span class="nc" id="L173">            setSize(this.lib.scale(PREFERRED_SIZE));</span>
+<span class="nc" id="L174">            setBorder(BorderFactory.createEmptyBorder());</span>
+<span class="nc" id="L175">            setOpaque(true);</span>
+        } else {
+<span class="nc" id="L177">            setSize(this.lib.scale(PREFERRED_SIZE));</span>
+<span class="nc" id="L178">            setBorder(FreeColImageBorder.panelWithoutShadowBorder);</span>
+<span class="nc" id="L179">            setOpaque(true);</span>
+        }
+<span class="nc" id="L181">    }</span>
+
+    /**
+     * Get a new MigPanel with specified layout and size it to fit neatly.
+     *
+     * @param layout The {@code LayoutManager} for the panel.
+     * @return The new {@code MigPanel}.
+     */
+    private MigPanel newPanel(LayoutManager layout) {
+<span class="nc" id="L190">        MigPanel panel = new MigPanel(layout);</span>
+<span class="nc" id="L191">        panel.setSize(new Dimension((int)(this.getWidth() * 0.8),</span>
+<span class="nc" id="L192">                (int)(this.getHeight() * 0.6)));</span>
+<span class="nc" id="L193">        return panel;</span>
+    }
+    
+    /**
+     * Size, place and request redraw of the given panel.
+     *
+     * @param panel The new panel to display.
+     */
+    private void setPanel(MigPanel panel) {
+<span class="nc" id="L202">        panel.addMouseListener(this.mouseAdapter);        </span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (this.skin != null) {</span>
+<span class="nc" id="L204">            panel.setOpaque(false);</span>
+<span class="nc" id="L205">            final PropertyList pl = ResourceManager.getPropertyList(&quot;image.skin.InfoPanel.properties&quot;);</span>
+<span class="nc" id="L206">            panel.setLocation(lib.scaleInt(pl.getInt(&quot;panel.x&quot;)), lib.scaleInt(pl.getInt(&quot;panel.y&quot;)));</span>
+<span class="nc" id="L207">            panel.setSize(lib.scaleInt(pl.getInt(&quot;panel.width&quot;)), lib.scaleInt(pl.getInt(&quot;panel.height&quot;)));</span>
+<span class="nc" id="L208">        } else {</span>
+<span class="nc" id="L209">            panel.setSize(lib.scale(PREFERRED_SIZE));</span>
+<span class="nc" id="L210">            panel.setLocation(0, 0);</span>
+        }
+ 
+<span class="nc" id="L213">        this.removeAll();</span>
+<span class="nc" id="L214">        this.add(panel);</span>
+<span class="nc" id="L215">        this.revalidate();</span>
+<span class="nc" id="L216">        this.repaint();</span>
+<span class="nc" id="L217">    }</span>
+    
+    /**
+     * Get the mode-dependent associated tile.
+     *
+     * @return The {@code Tile} associated with this panel.
+     */
+    private Tile getTile() {
+<span class="nc bnc" id="L225" title="All 3 branches missed.">        switch (this.mode) {</span>
+        case TILE:
+<span class="nc" id="L227">            return this.tile;</span>
+        case UNIT:
+<span class="nc bnc" id="L229" title="All 2 branches missed.">            return (this.unit == null) ? null : this.unit.getTile();</span>
+        default:
+            break;
+        }
+<span class="nc" id="L233">        return null;</span>
+    }
+
+    /**
+     * Change the panel mode.
+     *
+     * The important job here is to clear out all the old settings.
+     *
+     * @param newMode The new {@code InfoPanelMode}.
+     * @return The old {@code InfoPanelMode}.
+     */
+    private InfoPanelMode changeMode(InfoPanelMode newMode) {
+<span class="nc" id="L245">        InfoPanelMode oldMode = this.mode;</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        if (oldMode != newMode) {</span>
+<span class="nc bnc" id="L247" title="All 4 branches missed.">            switch (oldMode) {</span>
+            case MAP:
+<span class="nc" id="L249">                this.mapTransform = null;</span>
+<span class="nc" id="L250">                break;</span>
+            case TILE:
+<span class="nc" id="L252">                this.tile = null;</span>
+<span class="nc" id="L253">                break;</span>
+            case UNIT:
+<span class="nc" id="L255">                this.unit.removePropertyChangeListener(this);</span>
+<span class="nc" id="L256">                GoodsContainer gc = this.unit.getGoodsContainer();</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">                if (gc != null) gc.removePropertyChangeListener(this);</span>
+<span class="nc" id="L258">                this.unit = null;</span>
+<span class="nc" id="L259">                break;</span>
+            default:
+                break;
+            }
+<span class="nc" id="L263">            this.mode = newMode;</span>
+        }
+<span class="nc" id="L265">        return oldMode;</span>
+    }
+
+    /**
+     * Fill in an end turn message into a new panel and add it.
+     */
+    private void fillEndPanel() {
+<span class="nc" id="L272">        MigPanel panel = newPanel(new MigLayout(&quot;wrap 1, center&quot;,</span>
+                                                &quot;[center]&quot;, &quot;&quot;));
+        
+<span class="nc" id="L275">        String labelString = Messages.message(&quot;infoPanel.endTurn&quot;);</span>
+<span class="nc" id="L276">        final int width = (int)(0.3 * this.getWidth());</span>
+<span class="nc" id="L277">        panel.add(new JLabel(&quot;&quot;)); // hack, one blank entry at top</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">        for (String s : splitText(labelString, &quot; /&quot;,</span>
+<span class="nc" id="L279">                                  getFontMetrics(this.font), width)) {</span>
+<span class="nc" id="L280">            JLabel label = new JLabel(s);</span>
+<span class="nc" id="L281">            label.setFont(this.font);</span>
+<span class="nc" id="L282">            panel.add(label);</span>
+<span class="nc" id="L283">        }</span>
+<span class="nc" id="L284">        JButton button = new JButton(getFreeColClient().getActionManager()</span>
+<span class="nc" id="L285">            .getFreeColAction(EndTurnAction.id));</span>
+<span class="nc" id="L286">        button.setFont(this.font);</span>
+<span class="nc" id="L287">        panel.add(button);</span>
+
+<span class="nc" id="L289">        setPanel(panel);</span>
+<span class="nc" id="L290">    }</span>
+    
+    /**
+     * Fill map transform information into a new panel and add it.
+     *
+     * @param mapTransform The {@code MapTransform} to display.
+     * @return The {@code MapTransform}.
+     */
+    private MapTransform fillMapPanel(MapTransform mapTransform) {
+<span class="nc" id="L299">        MigPanel panel = newPanel(new BorderLayout());</span>
+        
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        final JPanel p = (mapTransform == null) ? null</span>
+<span class="nc" id="L302">            : mapTransform.getDescriptionPanel();</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">        if (p != null) {</span>
+<span class="nc" id="L304">            p.setOpaque(false);</span>
+<span class="nc" id="L305">            final Dimension d = p.getPreferredSize();</span>
+<span class="nc" id="L306">            p.setBounds(0, (this.getHeight() - d.height)/2,</span>
+<span class="nc" id="L307">                        this.getWidth(), d.height);</span>
+<span class="nc" id="L308">            panel.add(p, BorderLayout.CENTER);</span>
+        }
+
+<span class="nc" id="L311">        setPanel(panel);</span>
+<span class="nc" id="L312">        return mapTransform;</span>
+    }
+
+    /**
+     * Fill tile information into a new panel and add it.
+     *
+     * @param tile The {@code Tile} to display.
+     * @return The {@code Tile}.
+     */
+    private Tile fillTilePanel(Tile tile) {
+<span class="nc" id="L322">        MigPanel panel = newPanel(new MigLayout(&quot;fill, wrap &quot; + (PRODUCTION+1) + &quot;, gap 1 1&quot;,</span>
+                &quot;&quot;, &quot;&quot;));
+
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        if (tile != null) {</span>
+<span class="nc" id="L326">            BufferedImage image = getGUI()</span>
+<span class="nc" id="L327">                .createTileImageWithBeachBorderAndItems(tile);</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">            if (tile.isExplored()) {</span>
+<span class="nc" id="L329">                final int width = panel.getWidth() - SLACK;</span>
+<span class="nc" id="L330">                String text = Messages.message(tile.getLabel());</span>
+<span class="nc bnc" id="L331" title="All 2 branches missed.">                for (String s : splitText(text, &quot; /&quot;,</span>
+<span class="nc" id="L332">                                          getFontMetrics(this.font), width)) {</span>
+<span class="nc" id="L333">                    JLabel label = new JLabel(s);</span>
+<span class="nc" id="L334">                    label.setFont(this.font);</span>
+<span class="nc" id="L335">                    panel.add(label, &quot;span, align center&quot;);</span>
+<span class="nc" id="L336">                }</span>
+<span class="nc" id="L337">                panel.add(new JLabel(new ImageIcon(image)), &quot;spany&quot;);</span>
+<span class="nc" id="L338">                final Player owner = tile.getOwner();</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">                if (owner == null) {</span>
+<span class="nc" id="L340">                    panel.add(new JLabel(), &quot;span &quot; + PRODUCTION);</span>
+                } else {
+<span class="nc" id="L342">                    StringTemplate t = owner.getNationLabel();</span>
+<span class="nc" id="L343">                    JLabel label = Utility.localizedLabel(t);</span>
+<span class="nc" id="L344">                    label.setFont(this.font);</span>
+<span class="nc" id="L345">                    panel.add(label, &quot;span &quot; + PRODUCTION);</span>
+                }
+
+<span class="nc" id="L348">                JLabel defenceLabel = Utility.localizedLabel(StringTemplate</span>
+<span class="nc" id="L349">                    .template(&quot;infoPanel.defenseBonus&quot;)</span>
+<span class="nc" id="L350">                    .addAmount(&quot;%bonus%&quot;, tile.getDefenceBonusPercentage()));</span>
+<span class="nc" id="L351">                defenceLabel.setFont(this.font);</span>
+<span class="nc" id="L352">                panel.add(defenceLabel, &quot;span &quot; + PRODUCTION);</span>
+
+<span class="nc" id="L354">                JLabel moveLabel = Utility.localizedLabel(StringTemplate</span>
+<span class="nc" id="L355">                    .template(&quot;infoPanel.movementCost&quot;)</span>
+<span class="nc" id="L356">                    .addAmount(&quot;%cost%&quot;, tile.getType().getBasicMoveCost()/3));</span>
+<span class="nc" id="L357">                moveLabel.setFont(this.font);</span>
+<span class="nc" id="L358">                add(moveLabel, &quot;span &quot; + PRODUCTION);</span>
+
+<span class="nc" id="L360">                List&lt;AbstractGoods&gt; produce</span>
+<span class="nc" id="L361">                    = sort(tile.getType().getPossibleProduction(true),</span>
+                           AbstractGoods.descendingAmountComparator);
+<span class="nc bnc" id="L363" title="All 2 branches missed.">                if (produce.isEmpty()) {</span>
+<span class="nc" id="L364">                    panel.add(new JLabel(), &quot;span &quot; + PRODUCTION);</span>
+                } else {
+<span class="nc bnc" id="L366" title="All 2 branches missed.">                    for (AbstractGoods ag : produce) {</span>
+<span class="nc" id="L367">                        GoodsType type = ag.getType();</span>
+<span class="nc" id="L368">                        int n = tile.getPotentialProduction(type, null);</span>
+<span class="nc" id="L369">                        JLabel label = new JLabel(String.valueOf(n),</span>
+<span class="nc" id="L370">                            new ImageIcon(lib.getSmallGoodsTypeImage(type)),</span>
+                            JLabel.RIGHT);
+<span class="nc" id="L372">                        label.setToolTipText(Messages.getName(type));</span>
+<span class="nc" id="L373">                        label.setFont(this.font);</span>
+<span class="nc" id="L374">                        panel.add(label);</span>
+<span class="nc" id="L375">                    }</span>
+                }
+<span class="nc" id="L377">            } else {</span>
+<span class="nc" id="L378">                panel.add(Utility.localizedLabel(&quot;unexplored&quot;),</span>
+                    &quot;span, align center&quot;);
+<span class="nc" id="L380">                panel.add(new JLabel(new ImageIcon(image)), &quot;spany&quot;);</span>
+            }
+        }
+
+<span class="nc" id="L384">        setPanel(panel);</span>
+<span class="nc" id="L385">        return tile;</span>
+    }
+
+    /**
+     * Add labels to a panel with MigLayout, on one line.
+     *
+     * @param panel The {@code JPanel} to add to.
+     * @param labels A list of {@code JLabel}s to add.
+     * @param max The maximum number of labels to put on a line
+     */
+    private static void addLabels(JPanel panel, List&lt;JLabel&gt; labels, int max) {
+        for (;;) {
+<span class="nc" id="L397">            int n = Math.min(max, labels.size());</span>
+<span class="nc bnc" id="L398" title="All 2 branches missed.">            if (n &lt;= 0) {</span>
+<span class="nc" id="L399">                break;</span>
+<span class="nc bnc" id="L400" title="All 2 branches missed.">            } else if (n == 1) {</span>
+<span class="nc" id="L401">                panel.add(labels.get(0));</span>
+<span class="nc" id="L402">                break;</span>
+            } else {
+<span class="nc" id="L404">                panel.add(labels.remove(0), &quot;split &quot; + n);</span>
+<span class="nc bnc" id="L405" title="All 2 branches missed.">                for (int i = 1; i &lt; n; i++) panel.add(labels.remove(0));</span>
+            }            
+<span class="nc" id="L407">        }</span>
+<span class="nc" id="L408">    }</span>
+    
+    /**
+     * Fill unit information into a new panel and add it.
+     *
+     * @param unit The {@code Unit} to display.
+     * @return The {@code Unit}.
+     */
+    private Unit fillUnitPanel(Unit unit) {
+<span class="nc" id="L417">        ImageIcon ii = new ImageIcon(lib.getScaledUnitImage(unit));</span>
+<span class="nc" id="L418">        final int width = ii.getIconWidth();</span>
+        // Two columns filling whole space with no gaps
+        //   1. Icon of fixed width spanning full height
+        //   2. Text/icon fields filling the remaining horizontal space
+<span class="nc" id="L422">        MigPanel panel = newPanel(new MigLayout(&quot;wrap 2, fill, gap 0 0&quot;,</span>
+                                               &quot;[&quot; + width + &quot;][fill]&quot;, &quot;&quot;));
+<span class="nc" id="L424">        panel.add(new JLabel(ii), &quot;spany, center&quot;);</span>
+<span class="nc" id="L425">        String text = unit.getDescription(Unit.UnitLabelType.FULL);</span>
+        JLabel textLabel;
+<span class="nc bnc" id="L427" title="All 2 branches missed.">        for (String s : splitText(text, &quot; /&quot;, getFontMetrics(this.font),</span>
+<span class="nc" id="L428">                                  panel.getWidth() - width)) {</span>
+<span class="nc" id="L429">            textLabel = new JLabel(s);</span>
+<span class="nc" id="L430">            textLabel.setFont(this.font);</span>
+<span class="nc" id="L431">            panel.add(textLabel);</span>
+<span class="nc" id="L432">        }</span>
+        
+<span class="nc bnc" id="L434" title="All 2 branches missed.">        text = (unit.isInEurope())</span>
+<span class="nc" id="L435">            ? Messages.getName(unit.getOwner().getEurope())</span>
+<span class="nc" id="L436">            : Messages.message(&quot;infoPanel.moves&quot;)</span>
+<span class="nc" id="L437">            + &quot; &quot; + unit.getMovesAsString();</span>
+<span class="nc" id="L438">        textLabel = new JLabel(text);</span>
+<span class="nc" id="L439">        textLabel.setFont(this.font);</span>
+<span class="nc" id="L440">        panel.add(textLabel);</span>
+        
+<span class="nc bnc" id="L442" title="All 2 branches missed.">        if (unit.isCarrier()) {</span>
+<span class="nc" id="L443">            List&lt;JLabel&gt; labels = new ArrayList&lt;&gt;();</span>
+            ImageIcon icon;
+            JLabel label;
+<span class="nc bnc" id="L446" title="All 2 branches missed.">            for (Unit carriedUnit : unit.getUnitList()) {</span>
+<span class="nc" id="L447">                icon = new ImageIcon(lib.getSmallerUnitImage(carriedUnit));</span>
+<span class="nc" id="L448">                label = new JLabel(icon);</span>
+<span class="nc" id="L449">                text = carriedUnit.getDescription(Unit.UnitLabelType.NATIONAL);</span>
+<span class="nc" id="L450">                label.setFont(this.font);</span>
+<span class="nc" id="L451">                label.setToolTipText(text);</span>
+<span class="nc" id="L452">                labels.add(label);</span>
+<span class="nc" id="L453">            }</span>
+<span class="nc" id="L454">            addLabels(panel, labels, 6); // 6 units fit well enough</span>
+
+<span class="nc" id="L456">            labels.clear();</span>
+<span class="nc bnc" id="L457" title="All 2 branches missed.">            for (Goods goods : unit.getGoodsList()) {</span>
+<span class="nc" id="L458">                int amount = goods.getAmount();</span>
+<span class="nc" id="L459">                GoodsType gt = goods.getType();</span>
+<span class="nc" id="L460">                icon = new ImageIcon(lib.getSmallerGoodsTypeImage(gt));</span>
+<span class="nc" id="L461">                label = new JLabel(String.valueOf(amount), icon, JLabel.CENTER);</span>
+<span class="nc" id="L462">                text = Messages.message(goods.getLabel(true));</span>
+<span class="nc" id="L463">                label.setFont(this.font);</span>
+<span class="nc" id="L464">                label.setToolTipText(text);</span>
+<span class="nc" id="L465">                labels.add(label);</span>
+<span class="nc" id="L466">            }</span>
+<span class="nc" id="L467">            addLabels(panel, labels, 3); // goods icon+number is fits less well</span>
+        }
+<span class="nc" id="L469">        panel.add(new JLabel(&quot;&quot;), &quot;growy&quot;); // fill up remaining vertical space</span>
+<span class="nc" id="L470">        setPanel(panel);</span>
+<span class="nc" id="L471">        return unit;</span>
+    }
+
+    /**
+     * Update this {@code InfoPanel} to end turn mode.
+     */
+    public void update() {
+<span class="nc bnc" id="L478" title="All 2 branches missed.">        if (getFreeColClient().isMapEditor()) {</span>
+<span class="nc" id="L479">            changeMode(InfoPanelMode.NONE);</span>
+<span class="nc" id="L480">            removeAll();</span>
+<span class="nc" id="L481">            revalidate();</span>
+<span class="nc" id="L482">            repaint();</span>
+        } else {
+<span class="nc" id="L484">            boolean updated = false;</span>
+<span class="nc" id="L485">            InfoPanelMode oldMode = changeMode(InfoPanelMode.END);</span>
+<span class="nc bnc" id="L486" title="All 2 branches missed.">            if (oldMode != InfoPanelMode.END) {</span>
+<span class="nc" id="L487">                fillEndPanel();</span>
+<span class="nc" id="L488">                updated = true;</span>
+            }
+<span class="nc bnc" id="L490" title="All 2 branches missed.">            logger.info(&quot;InfoPanel &quot; + ((updated) ? &quot;updated &quot; : &quot;maintained &quot;)</span>
+                    + oldMode + &quot; -&gt; &quot; + this.mode);
+        }
+<span class="nc" id="L493">    }</span>
+        
+    /**
+     * Update this {@code InfoPanel} to map mode with a given transform.
+     *
+     * @param mapTransform The {@code MapTransform} to display.
+     */
+    public void update(MapTransform mapTransform) {
+<span class="nc" id="L501">        boolean updated = false;</span>
+<span class="nc" id="L502">        InfoPanelMode oldMode = changeMode(InfoPanelMode.MAP);</span>
+<span class="nc bnc" id="L503" title="All 4 branches missed.">        if (oldMode != InfoPanelMode.MAP || mapTransform != this.mapTransform) {</span>
+<span class="nc" id="L504">            this.mapTransform = fillMapPanel(mapTransform);</span>
+<span class="nc" id="L505">            updated = true;</span>
+        }
+<span class="nc bnc" id="L507" title="All 2 branches missed.">        logger.info(&quot;InfoPanel &quot; + ((updated) ? &quot;updated &quot; : &quot;maintained &quot;)</span>
+            + oldMode + &quot; -&gt; &quot; + this.mode + &quot; with &quot; + mapTransform);
+<span class="nc" id="L509">    }</span>
+
+    /**
+     * Update this {@code InfoPanel} to tile mode with a given tile.
+     *
+     * @param tile The displayed {@code Tile}.
+     */
+    public void update(Tile tile) {
+<span class="nc" id="L517">        boolean updated = false;</span>
+<span class="nc" id="L518">        InfoPanelMode oldMode = changeMode(InfoPanelMode.TILE);</span>
+<span class="nc bnc" id="L519" title="All 4 branches missed.">        if (oldMode != InfoPanelMode.TILE || tile != this.tile) {</span>
+<span class="nc" id="L520">            this.tile = fillTilePanel(tile);</span>
+<span class="nc" id="L521">            updated = true;</span>
+        }
+<span class="nc bnc" id="L523" title="All 2 branches missed.">        logger.info(&quot;InfoPanel &quot; + ((updated) ? &quot;updated &quot; : &quot;maintained &quot;)</span>
+            + oldMode + &quot; -&gt; &quot; + this.mode + &quot; with tile &quot; + tile);
+<span class="nc" id="L525">    }</span>
+
+    /**
+     * Update this {@code InfoPanel} to unit mode with a given unit.
+     *
+     * @param unit The displayed {@code Unit}.
+     */
+    public void update(Unit unit) {
+        // Switch to end turn display if no active unit
+<span class="nc bnc" id="L534" title="All 2 branches missed.">        if (unit == null) {</span>
+<span class="nc" id="L535">            update();</span>
+<span class="nc" id="L536">            return;</span>
+        }
+        
+<span class="nc" id="L539">        boolean updated = false;</span>
+<span class="nc" id="L540">        InfoPanelMode oldMode = changeMode(InfoPanelMode.UNIT);</span>
+<span class="nc bnc" id="L541" title="All 2 branches missed.">        if (unit != this.unit) {</span>
+            // Only update the PCLs when the unit changes
+<span class="nc bnc" id="L543" title="All 2 branches missed.">            if (this.unit != null) {</span>
+<span class="nc" id="L544">                this.unit.removePropertyChangeListener(this);</span>
+<span class="nc" id="L545">                GoodsContainer gc = this.unit.getGoodsContainer();</span>
+<span class="nc bnc" id="L546" title="All 2 branches missed.">                if (gc != null) gc.removePropertyChangeListener(this);</span>
+            }
+<span class="nc" id="L548">            unit.addPropertyChangeListener(this);</span>
+<span class="nc" id="L549">            GoodsContainer gc = unit.getGoodsContainer();</span>
+<span class="nc bnc" id="L550" title="All 2 branches missed.">            if (gc != null) gc.addPropertyChangeListener(this);</span>
+        }
+        // Always call fillUnitPanel because while the unit may not
+        // change, its annotations (such as moves left) might
+<span class="nc" id="L554">        this.unit = fillUnitPanel(unit);</span>
+<span class="nc" id="L555">        updated = true;</span>
+<span class="nc bnc" id="L556" title="All 2 branches missed.">        logger.info(&quot;InfoPanel &quot; + ((updated) ? &quot;updated &quot; : &quot;maintained &quot;)</span>
+            + oldMode + &quot; -&gt; &quot; + this.mode + &quot; with unit &quot; + unit);
+<span class="nc" id="L558">    }</span>
+
+    /**
+     * Refresh this panel.
+     *
+     * Apparently this is necessary when adding the info panel back into the
+     * canvas with the skinned corner, otherwise the unit does not get
+     * displayed.
+     * TODO: Explain why, or fix so we do not need this.
+     */
+    public void refresh() {
+<span class="nc bnc" id="L569" title="All 5 branches missed.">        switch (this.mode) {</span>
+        case END:
+<span class="nc" id="L571">            fillEndPanel();</span>
+<span class="nc" id="L572">            break;</span>
+        case MAP:
+<span class="nc" id="L574">            fillMapPanel(this.mapTransform);</span>
+<span class="nc" id="L575">            break;</span>
+        case TILE:
+<span class="nc" id="L577">            fillTilePanel(this.tile);</span>
+<span class="nc" id="L578">            break;</span>
+        case UNIT:
+<span class="nc" id="L580">            fillUnitPanel(this.unit);</span>
+<span class="nc" id="L581">            break;</span>
+        default:
+            break;
+        }
+<span class="nc" id="L585">    }</span>
+
+    @Override
+    public PopupPosition getFramePopupPosition() {
+<span class="nc" id="L589">        return PopupPosition.LOWER_RIGHT;</span>
+    }
+    
+    @Override
+    public String getFrameTitle() {
+<span class="nc" id="L594">        return Messages.message(&quot;infoPanel.title&quot;);</span>
+    }
+
+    // Override JComponent
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void paintComponent(Graphics graphics) {
+<span class="nc bnc" id="L604" title="All 2 branches missed.">        if (this.skin != null) graphics.drawImage(this.skin, 0, 0, null);</span>
+<span class="nc" id="L605">        super.paintComponent(graphics);</span>
+<span class="nc" id="L606">    }</span>
+
+
+    // Interface PropertyChangeListener
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void propertyChange(PropertyChangeEvent event) {
+<span class="nc" id="L616">        refresh();</span>
+<span class="nc" id="L617">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
