@@ -6,10 +6,6 @@ import java.util.Random;
 
 import junit.framework.TestCase;
 
-/**
- * JUnit3-style Mockito test so it can be added via:
- *   suite.addTestSuite(RandomRangeMockitoTest.class)
- */
 public class RandomRangeMockitoTest extends TestCase {
 
     public void testGetAmount_UsesProvidedRandom() {
