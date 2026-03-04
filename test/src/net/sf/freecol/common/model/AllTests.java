@@ -49,9 +49,12 @@ public class AllTests {
         suite.addTestSuite(ModifierTest.class);
         suite.addTestSuite(MonarchTest.class);
         suite.addTestSuite(MovementTest.class);
+
         suite.addTestSuite(PartitionMovementValidityTest.class); // New added Testcase
         suite.addTestSuite(MovementFSMTest.class); // New added Testcase
         suite.addTestSuite(net.sf.freecol.common.model.PlayerCoverageTest.class); // New added Testcase
+        suite.addTestSuite(RandomRangeStubTest.class); // New stub test
+        suite.addTestSuite(RandomRangeMockitoTest.class); // New Mockito test
 
         suite.addTestSuite(NationTypeTest.class);
         suite.addTestSuite(PlayerTest.class);
