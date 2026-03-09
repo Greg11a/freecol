@@ -4,6 +4,28 @@ import net.sf.freecol.server.model.ServerUnit;
 import net.sf.freecol.util.test.FreeColTestCase;
 
 /**
+ * States:
+ * S0 — Ready
+ * Everything initialized and set up.
+ * S1 — Allowed
+ * Movement is Legal
+ * S2 — Rejected
+ * Movement denied due to 0 remaining movement points.
+ * S3 — Rejected_EmbarkDenied
+ * Movement denied due to Land Unit attempts to enter ocean tile.
+ * S5 — Rejected_LandAccessDenied
+ * Movement denied due to Naval Unit attempts to enter land tile.
+ *
+ * **/
+
+/**
+ * G1: land → land AND moves > 0
+ * G2: land → ocean AND moves > 0
+ * G3: naval → ocean AND moves > 0
+ * G4: naval → land AND moves > 0
+ * G5: moves = 0
+ * **/
+/**
  * FSM-based tests for move validity classification.
  * Model states correspond to key MoveType outcome categories.
  */
@@ -119,7 +141,7 @@ public class MovementFSMTest extends FreeColTestCase {
     }
 
     /**
-     * G5 (Boundary): moves = 0 => Rejected (NO_MOVES)
+     * G5: moves = 0 => Rejected (NO_MOVES)
      * Covers transition S0 -> S2.
      */
     public void testBoundary_Rejected_MovesZero() {

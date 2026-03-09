@@ -19,5 +19,6 @@ public class RandomRangeMockitoTest extends TestCase {
 
         verify(rng, atLeastOnce()).nextInt(anyInt());
         verifyNoMoreInteractions(rng);
+        //mini comment to trigger PMD and CodeQL
     }
 }

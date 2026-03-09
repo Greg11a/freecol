@@ -12,16 +12,17 @@ public class PlayerCoverageTest extends FreeColTestCase {
 
     private TileType ocean() {
         TileType t = spec().getTileType("model.tile.ocean");
+        // if can't find ocean then find highseas
         if (t == null) t = spec().getTileType("model.tile.highSeas");
         return t;
     }
 
-    private Player getAnyOtherPlayer(Game game, Player self) {
-        return game.getPlayers(p -> true)
-                .filter(p -> p != null && p != self)
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Could not find a second player in standard game."));
-    }
+//    private Player getAnyOtherPlayer(Game game, Player self) {
+//        return game.getPlayers(p -> true)
+//                .filter(p -> p != null && p != self)
+//                .findFirst()
+//                .orElseThrow(() -> new AssertionError("Could not find a second player in standard game."));
+//    }
 
     private Player getAnyNativePlayer(Game game) {
         return game.getPlayers(p -> true)
@@ -112,9 +113,6 @@ public class PlayerCoverageTest extends FreeColTestCase {
         assertNotNull(dutch);
 
         Player nativePlayer = getAnyNativePlayer(game);
-        if (nativePlayer == null) {
-            return;
-        }
 
         Tile t = map.getTile(5, 8);
         t.setType(plains());
@@ -170,7 +168,7 @@ public class PlayerCoverageTest extends FreeColTestCase {
     }
 
 
-
+    // Are we be able to set up colonies?
     public void testGetAllColonyValues_WaterTile_EarlyReturn() {
         Game game = getStandardGame();
         Player dutch = game.getPlayerByNationId("model.nation.dutch");
@@ -191,6 +189,13 @@ public class PlayerCoverageTest extends FreeColTestCase {
         assertNotNull(values);
         assertTrue(values.size() >= Player.ColonyValueCategory.values().length);
 
+        // Player-Line 3729
+        /**
+         *         case TERRAIN: case WATER:
+         *             values.set(ColonyValueCategory.A_OVERRIDE.ordinal(),
+         *                        NoValueType.TERRAIN.getDouble());
+         *             return values;
+         * **/
         assertEquals(Player.NoValueType.TERRAIN.getDouble(),
                 values.get(Player.ColonyValueCategory.A_OVERRIDE.ordinal()));
     }
